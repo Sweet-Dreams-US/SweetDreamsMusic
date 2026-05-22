@@ -69,7 +69,7 @@ export default function EventRsvpBlock({
           Sign in to {event.visibility === 'public' ? 'RSVP for' : 'request to attend'} this event.
         </p>
         <Link
-          href={`/sign-in?next=${nextUrl}`}
+          href={`/login?redirect=${nextUrl}`}
           className="bg-accent text-black font-mono text-sm font-bold uppercase tracking-wider px-4 py-3 hover:bg-accent/90 transition-colors no-underline inline-flex items-center gap-2 w-full justify-center"
         >
           <LogIn className="w-4 h-4" />
