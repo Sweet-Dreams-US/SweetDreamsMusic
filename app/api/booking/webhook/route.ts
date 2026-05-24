@@ -139,7 +139,9 @@ export async function POST(request: NextRequest) {
         //      24hr it lives on the picked filming-day row.
         const startDateTime = `${meta.session_date}T${meta.start_time}:00`;
         const endDateTime = `${meta.session_date}T${meta.end_time}:00`;
-        const baseDurationHours = parseInt(meta.duration_hours);
+        // duration_hours may be fractional (e.g. "1.5") once the engineer-edit
+        // path lands — parseFloat keeps both integer and decimal shapes valid.
+        const baseDurationHours = parseFloat(meta.duration_hours);
         const isBandBooking = meta.type === 'band_booking_deposit';
         const is3DayBlock = isBandBooking && baseDurationHours === 24;
 
@@ -348,7 +350,7 @@ export async function POST(request: NextRequest) {
         // Times are stored as local Fort Wayne hours in UTC — format as UTC to preserve the intended hour
         const dateStr = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
         const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
-        const duration = parseInt(meta.duration_hours);
+        const duration = parseFloat(meta.duration_hours);
 
         // Customer confirmation
         await sendBookingConfirmation(meta.customer_email, {
@@ -574,7 +576,18 @@ export async function POST(request: NextRequest) {
           } // end if (!existingBooking.engineer_name)
         }
       } else if (meta.type === 'booking_remainder') {
-        // Remainder paid via Checkout (fallback when off-session charge failed)
+        // Remainder paid via Checkout (fallback when off-session charge failed,
+        // OR an engineer sent a custom payment link via "Send Payment Link").
+        //
+        // Engineers commonly use this flow to charge for time/services added
+        // DURING the session ("you ran 30 extra minutes, $25 more"). In that
+        // case the engineer-entered amount exceeds the stored remainder, and
+        // total_amount has to grow to match what was actually collected.
+        //
+        // The direct off-session path in /api/booking/charge-remainder already
+        // does `total = total - remainder + amount` when amount > remainder.
+        // This branch must mirror that logic — otherwise the booking's total
+        // under-reports revenue (see Jordan Hudson May 19 case).
         const bookingId = meta.booking_id;
         const chargeAmount = parseInt(meta.charge_amount || '0') || (session.amount_total || 0);
 
@@ -585,10 +598,17 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (remainderBooking) {
-          await supabase.from('bookings').update({
-            remainder_amount: Math.max(0, remainderBooking.remainder_amount - chargeAmount),
+          const currentRemainder = remainderBooking.remainder_amount || 0;
+          const currentTotal = remainderBooking.total_amount || 0;
+          const overage = Math.max(0, chargeAmount - currentRemainder);
+          const updates: Record<string, unknown> = {
+            remainder_amount: Math.max(0, currentRemainder - chargeAmount),
             updated_at: new Date().toISOString(),
-          }).eq('id', bookingId);
+          };
+          if (overage > 0) {
+            updates.total_amount = currentTotal + overage;
+          }
+          await supabase.from('bookings').update(updates).eq('id', bookingId);
         }
       } else if (meta.type === 'beat_purchase') {
         // Beat store purchase
@@ -1554,7 +1574,7 @@ export async function POST(request: NextRequest) {
             customer_phone: asyncMeta.customer_phone || null,
             start_time: startDateTime,
             end_time: endDateTime,
-            duration: parseInt(asyncMeta.duration_hours),
+            duration: parseFloat(asyncMeta.duration_hours),
             room: asyncMeta.room,
             engineer_name: null,
             requested_engineer: asyncMeta.engineer || null,
@@ -1591,7 +1611,7 @@ export async function POST(request: NextRequest) {
           const startDate = new Date(startDateTime);
           const dateStr = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
           const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
-          const duration = parseInt(asyncMeta.duration_hours);
+          const duration = parseFloat(asyncMeta.duration_hours);
 
           await sendBookingConfirmation(asyncMeta.customer_email, {
             customerName: asyncMeta.customer_name, date: dateStr, startTime: timeStr,
@@ -1950,10 +1970,20 @@ export async function POST(request: NextRequest) {
   // ── Silent-fall-through detection ────────────────────────────────────
   // checkout.session.completed must always be handled by ONE of the
   // branches above (booking_deposit, beat_purchase, media_purchase,
-  // package_quote, etc.). If the event arrived with metadata.type
-  // missing or unrecognized, we'd silently return 200 without creating
-  // any row — the bug that caused the May 8-10 outage would manifest
-  // here. Fire an admin alert + roll back the claim so Stripe retries.
+  // package_quote, etc.) WHEN the payment originated from our site. We
+  // distinguish two cases:
+  //
+  //   1. metadata.type is MISSING entirely (no `type` field at all) —
+  //      the payment did not originate from this site. The most common
+  //      source is a Stripe-Dashboard-created payment link used for an
+  //      unrelated client / off-platform invoice. ACK 200 silently so
+  //      Stripe stops retrying and admins don't get spammed. The
+  //      Stripe dashboard remains the source of truth for those.
+  //
+  //   2. metadata.type is PRESENT but not recognized — the site created
+  //      this checkout but no branch above handled it. This is a real
+  //      bug (the May 8-10 outage signature). Alert + 500 so Stripe
+  //      retries while we deploy a fix.
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
     const meta = (session.metadata || {}) as Record<string, string>;
@@ -1964,21 +1994,29 @@ export async function POST(request: NextRequest) {
       'media_purchase', 'media_remainder', 'media_manual',
       'package_quote',
     ]);
-    if (!meta.type || !knownTypes.has(meta.type)) {
+    if (!meta.type) {
+      // External payment (Stripe Dashboard or another integration).
+      // Don't alert and don't ask Stripe to retry — just ACK.
+      console.log(
+        `[webhook] checkout.session.completed event ${event.id} has no metadata.type — treating as external payment, ACKing without action`,
+      );
+      return NextResponse.json({ received: true, external: true });
+    }
+    if (!knownTypes.has(meta.type)) {
       console.error(
-        `[webhook] checkout.session.completed event ${event.id} fell through — meta.type='${meta.type ?? '(missing)'}'`,
+        `[webhook] checkout.session.completed event ${event.id} fell through — unknown meta.type='${meta.type}'`,
       );
       await supabase.from('stripe_webhook_events').delete().eq('event_id', event.id);
       await alertAdminOfWebhookFailure({
         eventId: event.id,
         eventType: event.type,
-        reason: `Unknown or missing metadata.type: '${meta.type ?? '(missing)'}'. Stripe will retry.`,
+        reason: `Unrecognized metadata.type: '${meta.type}'. Stripe will retry.`,
         metadata: meta,
         paymentIntent: typeof session.payment_intent === 'string' ? session.payment_intent : null,
         amount: session.amount_total,
       });
       return NextResponse.json(
-        { error: `Unknown metadata.type: ${meta.type ?? '(missing)'}` },
+        { error: `Unknown metadata.type: ${meta.type}` },
         { status: 500 },
       );
     }
