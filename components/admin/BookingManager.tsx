@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, ChevronDown, DollarSign, X, Check, Clock, Pencil, Mail, Banknote, CreditCard, Send, Upload, Download, FileAudio, Plus, Edit3 } from 'lucide-react';
-import { formatCents } from '@/lib/utils';
+import { formatCents, formatDuration } from '@/lib/utils';
 import { ENGINEERS, ROOM_LABELS } from '@/lib/constants';
 import CashCorrectionModal from '@/components/booking/CashCorrectionModal';
 
@@ -449,12 +449,20 @@ export default function BookingManager() {
 
   function saveTimeChange(bookingId: string) {
     if (!dateInput || !timeInput) return;
+    if (!(durationInput > 0)) return;
+    // Compute end_time from start + duration. Supports 15-min increments
+    // (durationInput may be 1.25, 1.5, 1.75, etc.) — previously this
+    // quantized to half-hour boundaries which would silently drop the
+    // quarter-hour fractions admins might enter post-fact. Server-side
+    // /api/booking/update derives end_time the same way as a safety net.
     const [h, m] = timeInput.split(':').map(Number);
-    const endDec = (h + (m || 0) / 60 + durationInput) % 24;
-    const endH = Math.floor(endDec);
-    const endM = endDec % 1 >= 0.5 ? '30' : '00';
+    const startMins = h * 60 + (m || 0);
+    const endMins = startMins + Math.round(durationInput * 60);
+    const dayMins = endMins % (24 * 60);
+    const endH = Math.floor(dayMins / 60);
+    const endMin = dayMins % 60;
     const startDateTime = `${dateInput}T${timeInput}:00`;
-    const endDateTime = `${dateInput}T${endH}:${endM}:00`;
+    const endDateTime = `${dateInput}T${String(endH).padStart(2, '0')}:${String(endMin).padStart(2, '0')}:00`;
     updateBooking(bookingId, { start_time: startDateTime, end_time: endDateTime, duration: durationInput, reschedule_requested: false, reschedule_reason: null, reschedule_requested_at: null });
     setEditingTime(null);
   }
@@ -551,7 +559,7 @@ export default function BookingManager() {
                       )}
                     </div>
                     <p className="font-mono text-xs text-black/70 mt-1">
-                      {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })} · {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })} · {b.duration}hr · {roomLabel}
+                      {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })} · {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })} · {formatDuration(b.duration)} · {roomLabel}
                       {b.engineer_name && <span className="text-accent"> · {b.engineer_name}</span>}
                     </p>
                   </div>
@@ -584,7 +592,7 @@ export default function BookingManager() {
                       </div>
                       <div>
                         <p className="text-black/60 uppercase tracking-wider">Duration</p>
-                        <p className="font-semibold">{b.duration}hr</p>
+                        <p className="font-semibold">{formatDuration(b.duration)}</p>
                       </div>
                     </div>
 
@@ -768,15 +776,19 @@ export default function BookingManager() {
                             onChange={(e) => setTimeInput(e.target.value)}
                             className="border border-black/20 px-2 py-1.5 font-mono text-xs"
                           />
-                          <select
+                          {/* Admin duration editor — quarter-hour granularity to match
+                              the engineer side. The booking creation flow itself stays on
+                              integer hours; this is for post-fact corrections. */}
+                          <input
+                            type="number"
+                            min={0.25}
+                            max={24}
+                            step={0.25}
                             value={durationInput}
                             onChange={(e) => setDurationInput(Number(e.target.value))}
-                            className="border border-black/20 px-2 py-1.5 font-mono text-xs"
-                          >
-                            {[1,2,3,4,5,6,7,8].map(h => (
-                              <option key={h} value={h}>{h}hr</option>
-                            ))}
-                          </select>
+                            className="border border-black/20 px-2 py-1.5 font-mono text-xs w-24"
+                            title="Hours (15-min increments)"
+                          />
                           <button
                             onClick={() => saveTimeChange(b.id)}
                             className="bg-accent text-black font-bold text-[10px] uppercase px-2 py-1.5"
