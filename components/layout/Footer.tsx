@@ -18,7 +18,7 @@ export default function Footer() {
           {/* Navigation — Header nav + footer-only extras (Blog) */}
           <div>
             <h4 className="text-lg mb-4">NAVIGATE</h4>
-            <nav className="flex flex-col gap-2">
+            <nav aria-label="Footer" className="flex flex-col gap-2">
               {NAV_LINKS.map((link) => (
                 <Link
                   key={link.href}

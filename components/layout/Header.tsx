@@ -29,9 +29,10 @@ export default function Header() {
           </Link>
 
           {/* Desktop Nav */}
-          <nav className="hidden lg:flex items-center gap-1">
+          <nav aria-label="Primary" className="hidden lg:flex items-center gap-1">
             {NAV_LINKS.map((link) => (
               <Link key={link.href} href={link.href}
+                aria-current={pathname === link.href ? 'page' : undefined}
                 className={cn(
                   'font-mono text-sm font-medium tracking-wider uppercase px-4 py-2 transition-colors no-underline',
                   pathname === link.href ? 'text-accent' : 'text-white/70 hover:text-white'
@@ -64,6 +65,8 @@ export default function Header() {
             onClick={() => setMobileOpen(!mobileOpen)}
             className="lg:hidden text-white p-2"
             aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-nav"
           >
             {mobileOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -72,10 +75,11 @@ export default function Header() {
 
       {/* Mobile Nav */}
       {mobileOpen && (
-        <nav className="lg:hidden bg-black border-t border-white/10">
+        <nav id="mobile-nav" aria-label="Mobile" className="lg:hidden bg-black border-t border-white/10">
           <div className="px-4 py-4 flex flex-col gap-1">
             {NAV_LINKS.map((link) => (
               <Link key={link.href} href={link.href} onClick={() => setMobileOpen(false)}
+                aria-current={pathname === link.href ? 'page' : undefined}
                 className={cn(
                   'font-mono text-base font-medium tracking-wider uppercase px-4 py-3 transition-colors no-underline',
                   pathname === link.href ? 'text-accent' : 'text-white/70 hover:text-white'

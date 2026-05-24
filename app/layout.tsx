@@ -107,9 +107,21 @@ export default function RootLayout({
         <JsonLd />
       </head>
       <body className={ibmPlexMono.className}>
+        {/* Skip-to-content link — visually hidden until focused via keyboard.
+            Lands on the <main> element below so screen reader / keyboard
+            users can bypass the header navigation on every page.
+            WCAG 2.4.1 (Bypass Blocks). */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-accent focus:text-black focus:px-4 focus:py-3 focus:font-mono focus:text-sm focus:font-bold focus:tracking-wider focus:uppercase focus:outline-none focus:ring-2 focus:ring-black"
+        >
+          Skip to main content
+        </a>
         <AudioPlayerProvider>
           <Header />
-          <main className="min-h-screen pt-16 sm:pt-20 pb-20">{children}</main>
+          <main id="main-content" tabIndex={-1} className="min-h-screen pt-16 sm:pt-20 pb-20">
+            {children}
+          </main>
           <Footer />
           <AudioPlayerBar />
           {/* Authenticated-only messaging widget — bottom-right floating
