@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Calendar, Music, FileAudio, Download, Heart, PenLine, ShoppingBag } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { formatCents } from '@/lib/utils';
+import { formatCents, formatDuration } from '@/lib/utils';
 import DashboardNav from '@/components/layout/DashboardNav';
 import RescheduleButton from '@/components/dashboard/RescheduleButton';
 import XPWidget from '@/components/dashboard/XPWidget';
@@ -156,7 +156,7 @@ export default async function DashboardPage() {
                             })}
                           </p>
                           <p className="font-mono text-xs text-black/70 mt-1">
-                            {booking.duration} hour{booking.duration > 1 ? 's' : ''} — {formatCents(booking.total_amount)}
+                            {formatDuration(booking.duration)} — {formatCents(booking.total_amount)}
                             {booking.room && ` · ${booking.room === 'studio_a' ? 'Studio A' : 'Studio B'}`}
                           </p>
                           {booking.engineer_name && (

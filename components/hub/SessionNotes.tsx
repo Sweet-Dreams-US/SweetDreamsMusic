@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { FileText, Plus, Check, MessageSquare, Music, Eye, EyeOff } from 'lucide-react';
+import { formatDuration } from '@/lib/utils';
 
 interface SessionNote {
   id: string;
@@ -207,7 +208,7 @@ export default function SessionNotes({ onXpEarned, isEngineer = false }: { onXpE
                     </p>
                     <p className="font-mono text-[10px] text-black/40">
                       {session.room === 'studio_a' ? 'Studio A' : session.room === 'studio_b' ? 'Studio B' : session.room || 'Studio'}
-                      {' · '}{session.duration}hr
+                      {' · '}{formatDuration(session.duration)}
                       {session.engineer_name && ` · ${session.engineer_name}`}
                     </p>
                   </div>

@@ -7,6 +7,38 @@ export function formatCents(cents: number): string {
   }).format(cents / 100);
 }
 
+/**
+ * Render a session duration (in hours) as a human-readable label.
+ *
+ * Migration 059 widened `bookings.duration` to `numeric(5,2)` so engineers
+ * can record actual session length in 15-min increments after a session
+ * runs long. Quarter-hour values render as compound labels:
+ *
+ *   1     → "1hr"
+ *   1.25  → "1hr 15min"
+ *   1.5   → "1hr 30min"
+ *   1.75  → "1hr 45min"
+ *   2     → "2hr"
+ *   0.5   → "30min"
+ *
+ * Anything that isn't on a 15-min boundary falls back to decimal hours
+ * ("1.33hr") rather than silently truncating, so consumers never lie
+ * about precision. Invalid or non-positive inputs render as "—" so call
+ * sites don't have to null-check.
+ */
+export function formatDuration(hours: number | string | null | undefined): string {
+  const n = typeof hours === 'string' ? Number(hours) : hours;
+  if (!Number.isFinite(n) || (n as number) <= 0) return '—';
+  const totalMins = Math.round((n as number) * 60);
+  const onQuarter = totalMins % 15 === 0;
+  if (!onQuarter) return `${(n as number).toFixed(2)}hr`;
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  if (h === 0) return `${m}min`;
+  if (m === 0) return `${h}hr`;
+  return `${h}hr ${m}min`;
+}
+
 export function cn(...classes: (string | boolean | undefined | null)[]): string {
   return classes.filter(Boolean).join(' ');
 }

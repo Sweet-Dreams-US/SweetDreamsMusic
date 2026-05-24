@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { DollarSign, TrendingUp, Calendar, Filter } from 'lucide-react';
-import { formatCents } from '@/lib/utils';
+import { formatCents, formatDuration } from '@/lib/utils';
 import { ENGINEER_SESSION_SPLIT, MEDIA_SELLER_COMMISSION } from '@/lib/constants';
 
 const ENGINEER_SPLIT = ENGINEER_SESSION_SPLIT;
@@ -386,7 +386,7 @@ function SessionTable({ sessions }: { sessions: Booking[] }) {
           </div>
           <div className="col-span-2 font-semibold truncate">{b.customer_name}</div>
           <div className="col-span-1 text-black/60">{ROOM_LABELS[b.room || ''] || '—'}</div>
-          <div className="col-span-1">{b.duration}hr</div>
+          <div className="col-span-1">{formatDuration(b.duration)}</div>
           <div className="col-span-2 text-right">{formatCents(b.total_amount)}</div>
           <div className="col-span-2 text-right font-bold text-accent">{formatCents(Math.round(b.total_amount * 0.6))}</div>
           <div className="col-span-2 text-right">

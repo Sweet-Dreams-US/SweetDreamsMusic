@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { PRICING, SITE_URL, ROOM_LABELS, type Room } from '@/lib/constants';
+import { formatDuration } from '@/lib/utils';
 
 // Client pays deposit for an invited booking via Stripe Checkout
 export async function POST(request: NextRequest) {
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
             currency: PRICING.currency,
             product_data: {
               name: `Recording Session Deposit — ${roomLabel}`,
-              description: `${booking.duration}hr session on ${dateStr} at ${timeStr}`,
+              description: `${formatDuration(booking.duration)} session on ${dateStr} at ${timeStr}`,
             },
             unit_amount: sessionDeposit,
           },
@@ -130,7 +131,7 @@ export async function POST(request: NextRequest) {
             currency: PRICING.currency,
             product_data: {
               name: `Recording Session Deposit — ${roomLabel}`,
-              description: `${booking.duration}hr session on ${dateStr} at ${timeStr} (50% deposit)`,
+              description: `${formatDuration(booking.duration)} session on ${dateStr} at ${timeStr} (50% deposit)`,
             },
             unit_amount: booking.deposit_amount,
           },

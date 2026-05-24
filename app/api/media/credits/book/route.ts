@@ -68,10 +68,12 @@ export async function POST(request: NextRequest) {
   if (!/^\d{2}:\d{2}$/.test(startTime)) {
     return NextResponse.json({ error: 'start_time must be HH:MM' }, { status: 400 });
   }
-  // The live `bookings.duration` column is INTEGER. Half-hour granularity
-  // would either error on insert or silently truncate, breaking accounting.
-  // Constrain to whole hours here so the credit flow matches the existing
-  // /book contract exactly.
+  // Credit-redemption flow constrains to whole hours by design — credits
+  // are sold in 1-hour units and partial redemption would complicate the
+  // ledger. (Note: `bookings.duration` itself is now numeric(5,2) per
+  // migration 059 — engineers can record fractional time after the fact
+  // via the Edit Time editor. This input restriction is per-flow, not
+  // per-column.)
   if (
     !Number.isFinite(durationHoursRaw) ||
     durationHoursRaw < 1 ||

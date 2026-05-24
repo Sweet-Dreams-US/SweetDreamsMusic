@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { formatDuration } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
       event_type: 'studio_session',
       event_date: b.start_time.split('T')[0],
       event_time: b.start_time.split('T')[1]?.slice(0, 5) || null,
-      description: `${b.duration}hr · ${b.status}`,
+      description: `${formatDuration(b.duration)} · ${b.status}`,
       color: '#000000',
       is_auto_generated: true,
       source: 'booking' as const,

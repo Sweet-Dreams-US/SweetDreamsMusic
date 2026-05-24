@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { DollarSign, TrendingUp, Calendar, Music, Users, Filter, ChevronDown } from 'lucide-react';
-import { formatCents } from '@/lib/utils';
+import { formatCents, formatDuration } from '@/lib/utils';
 import { PRODUCER_COMMISSION, PLATFORM_COMMISSION, ENGINEER_SESSION_SPLIT, BUSINESS_SESSION_SPLIT, MEDIA_SELLER_COMMISSION, MEDIA_BUSINESS_CUT, MEDIA_WORKER_TOTAL, ENGINEERS } from '@/lib/constants';
 import CreditsLiabilityPanel from './CreditsLiabilityPanel';
 import PackageAccounting from './PackageAccounting';
@@ -1587,7 +1587,7 @@ export default function Accounting() {
                                 <div className="space-y-0.5">
                                   {personSessions.map(s => (
                                     <div key={s.id} className="flex justify-between font-mono text-[11px] text-black/60">
-                                      <span>{new Date(s.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {s.customer_name} · {s.duration}hr</span>
+                                      <span>{new Date(s.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {s.customer_name} · {formatDuration(s.duration)}</span>
                                       <span className="text-black/50">{formatCents(s.total_amount)}</span>
                                     </div>
                                   ))}
@@ -1654,7 +1654,7 @@ export default function Accounting() {
                                   {personPendingSessions.map(s => (
                                     <div key={s.id} className="flex justify-between font-mono text-[11px] text-black/60">
                                       <span>
-                                        {new Date(s.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {s.customer_name} · {s.duration}hr
+                                        {new Date(s.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {s.customer_name} · {formatDuration(s.duration)}
                                         <span className="ml-2 text-[10px] uppercase text-amber-700/80">{s.status}</span>
                                       </span>
                                       <span className="text-black/50">{formatCents(s.total_amount)}</span>
@@ -2252,7 +2252,7 @@ export default function Accounting() {
                     <div className="col-span-2 font-semibold truncate">{b.customer_name}</div>
                     <div className="col-span-2 text-black/60 truncate">{b.engineer_name || '—'}</div>
                     <div className="col-span-1 text-black/60">{ROOM_LABELS[b.room || ''] || b.room || '—'}</div>
-                    <div className="col-span-1">{b.duration}hr</div>
+                    <div className="col-span-1">{formatDuration(b.duration)}</div>
                     <div className="col-span-1 text-right font-semibold">{formatCents(b.total_amount)}</div>
                     <div className="col-span-1 text-right text-black/70">{formatCents(b.actual_deposit_paid || 0)}</div>
                     <div className="col-span-1 text-right text-black/70">{formatCents(b.remainder_amount)}</div>

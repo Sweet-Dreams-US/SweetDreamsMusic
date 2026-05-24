@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Search, Copy, Check, ChevronDown, ChevronUp, ArrowUpDown, ExternalLink, Phone, Mail, User, FileText, Pencil, X as XIcon } from 'lucide-react';
-import { formatCents } from '@/lib/utils';
+import { formatCents, formatDuration } from '@/lib/utils';
 
 interface Client {
   id: string;
@@ -509,7 +509,7 @@ function ClientDetail({
                       <td className="px-2 py-1.5">
                         {b.room === 'studio_a' ? 'Studio A' : b.room === 'studio_b' ? 'Studio B' : b.room || '—'}
                       </td>
-                      <td className="px-2 py-1.5">{b.duration}hr</td>
+                      <td className="px-2 py-1.5">{formatDuration(b.duration)}</td>
                       <td className="px-2 py-1.5">{b.engineer_name || '—'}</td>
                       <td className="px-2 py-1.5">
                         <StatusBadge status={b.status} />

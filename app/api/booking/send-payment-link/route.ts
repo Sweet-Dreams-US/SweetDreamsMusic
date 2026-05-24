@@ -3,6 +3,7 @@ import { stripe } from '@/lib/stripe';
 import { createClient } from '@/lib/supabase/server';
 import { verifyEngineerAccess } from '@/lib/admin-auth';
 import { PRICING, SITE_URL } from '@/lib/constants';
+import { formatDuration } from '@/lib/utils';
 import { sendPaymentLink } from '@/lib/email';
 
 // POST — create a Stripe payment link and email it to the client
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
             currency: PRICING.currency,
             product_data: {
               name: 'Recording Session — Balance Due',
-              description: `Balance for ${booking.duration}hr session on ${dateStr}`,
+              description: `Balance for ${formatDuration(booking.duration)} session on ${dateStr}`,
             },
             unit_amount: chargeAmount,
           },

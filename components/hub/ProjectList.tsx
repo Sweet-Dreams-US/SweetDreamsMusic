@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Folder, ChevronRight, Check, X, Trash2, Edit3, Link, Music } from 'lucide-react';
 import { PROJECT_PHASES, PROJECT_TYPES } from '@/lib/hub-constants';
+import { formatDuration } from '@/lib/utils';
 import { SkeletonList } from './LoadingSkeleton';
 import EmptyState from './EmptyState';
 
@@ -373,7 +374,7 @@ export default function ProjectList({ onXpEarned }: { onXpEarned?: () => void })
                                   <Music className="w-3 h-3 text-black/30" />
                                   <span className="font-mono text-xs text-black/60">
                                     {new Date(s.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}
-                                    {' · '}{s.duration}hr
+                                    {' · '}{formatDuration(s.duration)}
                                     {s.room && ` · ${s.room === 'studio_a' ? 'A' : 'B'}`}
                                     {s.engineer_name && ` · ${s.engineer_name}`}
                                   </span>

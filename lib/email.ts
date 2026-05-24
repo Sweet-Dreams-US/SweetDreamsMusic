@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import { SUPER_ADMINS, ROOM_LABELS, SITE_URL, type Room } from './constants';
+import { formatDuration } from './utils';
 import { mirrorToThread } from './messaging-mirror';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -63,7 +64,7 @@ export async function sendBookingConfirmation(to: string, details: {
     userEmail: to,
     kind: 'booking_notification',
     subject: 'Booking Confirmed',
-    body: `Your ${details.duration}hr session is booked for ${details.date} at ${details.startTime} in ${ROOM_LABELS[details.room as Room] || details.room}. Deposit ${formatMoney(details.deposit)} paid; remainder ${formatMoney(details.total - details.deposit)} due at session.`,
+    body: `Your ${formatDuration(details.duration)} session is booked for ${details.date} at ${details.startTime} in ${ROOM_LABELS[details.room as Room] || details.room}. Deposit ${formatMoney(details.deposit)} paid; remainder ${formatMoney(details.total - details.deposit)} due at session.`,
   });
   try {
     const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
@@ -76,7 +77,7 @@ export async function sendBookingConfirmation(to: string, details: {
         ${detailTable(`
           ${detail('Date', details.date)}
           ${detail('Time', details.startTime)}
-          ${detail('Duration', `${details.duration} hour${details.duration > 1 ? 's' : ''}`)}
+          ${detail('Duration', `${formatDuration(details.duration)}`)}
           ${detail('Studio', roomLabel)}
           ${detail('Deposit Paid', formatMoney(details.deposit))}
           ${detail('Remainder Due', formatMoney(details.total - details.deposit))}
@@ -107,7 +108,7 @@ export async function sendEngineerNewBookingAlert(engineerEmails: string[], book
       ${detail('Client', booking.customerName)}
       ${detail('Date', booking.date)}
       ${detail('Time', booking.startTime)}
-      ${detail('Duration', `${booking.duration} hour${booking.duration > 1 ? 's' : ''}`)}
+      ${detail('Duration', `${formatDuration(booking.duration)}`)}
       ${detail('Studio', roomLabel)}
     `)}
     ${btn('Claim Session', `${SITE_URL}/engineer`)}
@@ -146,7 +147,7 @@ export async function sendEngineerPriorityAlert(to: string, details: {
           ${detail('Client', details.customerName)}
           ${detail('Date', details.date)}
           ${detail('Time', details.startTime)}
-          ${detail('Duration', `${details.duration} hour${details.duration > 1 ? 's' : ''}`)}
+          ${detail('Duration', `${formatDuration(details.duration)}`)}
           ${detail('Studio', roomLabel)}
           ${detail('Priority Window', windowLabel)}
         `)}
@@ -230,7 +231,7 @@ export async function sendEngineerPassNotification(engineerEmails: string[], det
       ${detail('Client', details.customerName)}
       ${detail('Date', details.date)}
       ${detail('Time', details.startTime)}
-      ${detail('Duration', `${details.duration} hour${details.duration > 1 ? 's' : ''}`)}
+      ${detail('Duration', `${formatDuration(details.duration)}`)}
       ${detail('Studio', roomLabel)}
     `)}
     ${btn('Accept Session', `${SITE_URL}/engineer`)}
@@ -274,7 +275,7 @@ export async function sendBandSessionNeedsRescheduleAdmin(details: {
           ${detail('Booker', details.customerName)}
           ${detail('Original date', details.date)}
           ${detail('Original time', details.startTime)}
-          ${detail('Duration', `${details.duration} hour${details.duration > 1 ? 's' : ''}`)}
+          ${detail('Duration', `${formatDuration(details.duration)}`)}
           ${detail('Booking ID', details.bookingId.slice(0, 8))}
         `)}
         ${btn('Open in admin', `${SITE_URL}/admin`)}
@@ -386,7 +387,7 @@ export async function sendEngineerClaimConfirmation(to: string, details: {
           ${detail('Client', details.customerName)}
           ${detail('Date', details.date)}
           ${detail('Time', details.startTime)}
-          ${detail('Duration', `${details.duration} hour${details.duration > 1 ? 's' : ''}`)}
+          ${detail('Duration', `${formatDuration(details.duration)}`)}
           ${detail('Studio', roomLabel)}
           ${detail('Session Total', formatMoney(details.total))}
           ${detail('Remainder to Collect', formatMoney(details.remainder))}
@@ -413,7 +414,7 @@ export async function sendAdminBookingAlert(booking: {
           ${detail('Email', booking.customerEmail)}
           ${detail('Date', booking.date)}
           ${detail('Time', booking.startTime)}
-          ${detail('Duration', `${booking.duration}hr`)}
+          ${detail('Duration', `${formatDuration(booking.duration)}`)}
           ${detail('Studio', roomLabel)}
           ${detail('Total', formatMoney(booking.total))}
         `)}
@@ -491,7 +492,7 @@ export async function sendSessionReminderToStaff(emails: string[], details: {
         ${detail('Email', details.customerEmail)}
         ${detail('Date', details.date)}
         ${detail('Time', details.startTime)}
-        ${detail('Duration', `${details.duration} hour${details.duration > 1 ? 's' : ''}`)}
+        ${detail('Duration', `${formatDuration(details.duration)}`)}
         ${detail('Studio', roomLabel)}
         ${detail('Engineer', details.engineerName)}
       `)}
@@ -649,7 +650,7 @@ export async function sendSessionInvite(to: string, details: {
         ${detailTable(`
           ${detail('Date', details.date)}
           ${detail('Time', details.startTime)}
-          ${detail('Duration', `${details.duration} hour${details.duration > 1 ? 's' : ''}`)}
+          ${detail('Duration', `${formatDuration(details.duration)}`)}
           ${detail('Studio', roomLabel)}
           ${detail('Total', formatMoney(details.total))}
           ${details.isCash
@@ -1045,7 +1046,7 @@ export async function sendPaymentReminder(to: string, details: {
         p(`Hey ${details.customerName}, thanks for coming in! We hope you had a great session.`) +
         p(`We wanted to reach out because there's a remaining balance from your recent session. Please take a moment to complete your payment when you get a chance.`) +
         detailTable(
-          detail('Session', `${details.sessionDate} · ${details.duration}hr · ${ROOM_LABELS[details.room as Room] || details.room}`) +
+          detail('Session', `${details.sessionDate} · ${formatDuration(details.duration)} · ${ROOM_LABELS[details.room as Room] || details.room}`) +
           detail('Total', formatMoney(details.totalAmount)) +
           detail('Paid', formatMoney(details.amountPaid)) +
           detail('Remaining Balance', formatMoney(details.remainingAmount))

@@ -3,7 +3,7 @@ import { stripe } from '@/lib/stripe';
 import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import { PRICING, SITE_URL, ROOM_LABELS, STUDIO_A_WEEKDAY_START, MAX_GUESTS, type Room } from '@/lib/constants';
-import { calculateSessionTotal, calculateBandSessionTotal, isSelfServeBandHours, parseTimeSlot } from '@/lib/utils';
+import { calculateSessionTotal, calculateBandSessionTotal, isSelfServeBandHours, parseTimeSlot, formatDuration } from '@/lib/utils';
 import { memberHasFlag } from '@/lib/bands';
 import { getMembership } from '@/lib/bands-server';
 import { isEngineerBlocked } from '@/lib/engineer-blocks';
@@ -242,9 +242,9 @@ export async function POST(request: NextRequest) {
       ? `${
           Number(duration) === 24
             ? `3-day band block (8hr/day) starting ${date}`
-            : `${duration}hr band session on ${date} at ${startTime}`
+            : `${formatDuration(duration)} band session on ${date} at ${startTime}`
         }${sweetSpotAddon ? ' + Sweet Spot filming' : ''} (50% deposit)`
-      : `${duration}hr session on ${date} at ${startTime} (50% deposit)`;
+      : `${formatDuration(duration)} session on ${date} at ${startTime} (50% deposit)`;
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,

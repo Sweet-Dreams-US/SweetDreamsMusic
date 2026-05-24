@@ -8,7 +8,7 @@ import {
   FileAudio, ExternalLink
 } from 'lucide-react';
 import { ROOM_LABELS, type Room } from '@/lib/constants';
-import { formatCents } from '@/lib/utils';
+import { formatCents, formatDuration } from '@/lib/utils';
 
 type Booking = {
   id: string;
@@ -283,7 +283,7 @@ export default function SessionPrepPage() {
               {' · '}
               {new Date(booking.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })}
               {' · '}
-              {booking.duration}hr
+              {formatDuration(booking.duration)}
               {booking.engineer_name && ` · ${booking.engineer_name}`}
               {booking.room && ` · ${ROOM_LABELS[booking.room as Room]}`}
             </p>

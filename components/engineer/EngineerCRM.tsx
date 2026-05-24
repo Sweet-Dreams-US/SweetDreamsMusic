@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Search, Copy, Check, ChevronDown, ChevronUp, ArrowUpDown, Phone, Mail, User, FileText, ExternalLink } from 'lucide-react';
-import { formatCents } from '@/lib/utils';
+import { formatCents, formatDuration } from '@/lib/utils';
 
 interface EngineerClient {
   id: string;
@@ -449,7 +449,7 @@ function ClientDetail({ client, engineerName }: { client: EngineerClient; engine
                       <td className="px-2 py-1.5">
                         {b.room === 'studio_a' ? 'Studio A' : b.room === 'studio_b' ? 'Studio B' : b.room || '—'}
                       </td>
-                      <td className="px-2 py-1.5">{b.duration}hr</td>
+                      <td className="px-2 py-1.5">{formatDuration(b.duration)}</td>
                       <td className="px-2 py-1.5">
                         <StatusBadge status={b.status} />
                       </td>

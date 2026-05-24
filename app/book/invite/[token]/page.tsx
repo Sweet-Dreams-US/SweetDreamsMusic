@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { Calendar, Clock, Music, DollarSign, CheckCircle, Loader2, LogIn } from 'lucide-react';
 import { ROOM_LABELS, type Room } from '@/lib/constants';
-import { formatCents } from '@/lib/utils';
+import { formatCents, formatDuration } from '@/lib/utils';
 import { createBrowserClient } from '@supabase/ssr';
 
 type BookingData = {
@@ -215,7 +215,7 @@ export default function InvitePage() {
               </div>
               <div className="flex items-center gap-3">
                 <Clock className="w-4 h-4 text-black/40 shrink-0" />
-                <span>{timeStr} &mdash; {booking.duration} hour{booking.duration > 1 ? 's' : ''}</span>
+                <span>{timeStr} &mdash; {formatDuration(booking.duration)}</span>
               </div>
               <div className="flex items-center gap-3">
                 <Music className="w-4 h-4 text-black/40 shrink-0" />
@@ -260,7 +260,7 @@ export default function InvitePage() {
             </div>
             <div className="flex items-center gap-3">
               <Clock className="w-4 h-4 text-black/40 shrink-0" />
-              <span>{timeStr} &mdash; {booking.duration} hour{booking.duration > 1 ? 's' : ''}</span>
+              <span>{timeStr} &mdash; {formatDuration(booking.duration)}</span>
             </div>
             <div className="flex items-center gap-3">
               <Music className="w-4 h-4 text-black/40 shrink-0" />

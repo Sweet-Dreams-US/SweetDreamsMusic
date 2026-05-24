@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { sendPaymentReminder } from '@/lib/email';
 import { ROOM_LABELS, TIMEZONE, type Room } from '@/lib/constants';
+import { formatDuration } from '@/lib/utils';
 
 export const maxDuration = 30;
 
@@ -64,7 +65,7 @@ export async function GET(request: NextRequest) {
             currency: 'usd',
             product_data: {
               name: `Session Balance — ${sessionDate} · ${roomLabel}`,
-              description: `Remaining balance for your ${booking.duration}hr session`,
+              description: `Remaining balance for your ${formatDuration(booking.duration)} session`,
             },
             unit_amount: booking.remainder_amount,
           },

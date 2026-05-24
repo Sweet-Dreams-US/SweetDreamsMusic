@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Folder, Target, BarChart3, Calendar, Award, ChevronRight, Rocket, Music, TrendingUp, Zap, FileText } from 'lucide-react';
 import { PROJECT_PHASES, METRIC_PLATFORMS, GOAL_CATEGORIES } from '@/lib/hub-constants';
+import { formatDuration } from '@/lib/utils';
 import { ACHIEVEMENTS } from '@/lib/achievements';
 import { SkeletonList } from './LoadingSkeleton';
 import ActivePackages from './ActivePackages';
@@ -293,7 +294,7 @@ export default function HubOverview({ onXpEarned, onNavigate }: HubOverviewProps
                   <div className="min-w-0">
                     <p className="font-mono text-xs">
                       {new Date(s.start_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })}
-                      {' · '}{s.duration}hr
+                      {' · '}{formatDuration(s.duration)}
                       {s.room && ` · ${s.room === 'studio_a' ? 'Studio A' : 'Studio B'}`}
                     </p>
                     {s.engineer_name && (
