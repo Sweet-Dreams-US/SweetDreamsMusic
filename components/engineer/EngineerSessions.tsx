@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { formatCents } from '@/lib/utils';
+import { formatCents, formatDuration } from '@/lib/utils';
 import { ENGINEERS } from '@/lib/constants';
 import CashCorrectionModal from '@/components/booking/CashCorrectionModal';
 
@@ -169,7 +169,7 @@ export default function EngineerSessions({ userEmail }: { userEmail: string }) {
                         </td>
                         <td className="px-3 py-2">
                           {d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })}
-                          {' · '}{b.duration}hr
+                          {' · '}{formatDuration(b.duration)}
                         </td>
                         <td className="px-3 py-2">
                           <span className="font-semibold">{b.customer_name}</span>
@@ -359,7 +359,7 @@ function PendingInviteCard({ booking, onUpdate }: { booking: Booking; onUpdate: 
             {' · '}
             {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })}
             {' · '}
-            {booking.duration}hr
+            {formatDuration(Number(booking.duration))}
             {booking.room && ` · ${booking.room === 'studio_a' ? 'Studio A' : 'Studio B'}`}
           </p>
           <p className="font-mono text-[10px] text-black/60 mt-1">
@@ -416,7 +416,26 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
   const [showReschedule, setShowReschedule] = useState(false);
   const [newDate, setNewDate] = useState('');
   const [newTime, setNewTime] = useState('');
-  const [newDuration, setNewDuration] = useState(booking.duration || 2);
+  const [newDuration, setNewDuration] = useState<number>(booking.duration || 2);
+
+  // Open the time/duration editor pre-filled with the booking's current
+  // values. Engineers most often use this to *correct* a session post-fact
+  // (added 15 min, ran over by an hour, etc.), so making them re-enter
+  // date+time from blank just to bump duration is friction we don't need.
+  // Stored timestamps in this app are Fort Wayne wall-clock tagged with
+  // a +00 suffix — we use UTC getters to round-trip the digits as-is.
+  function openTimeEditor() {
+    const sd = new Date(booking.start_time);
+    const y = sd.getUTCFullYear();
+    const mo = String(sd.getUTCMonth() + 1).padStart(2, '0');
+    const da = String(sd.getUTCDate()).padStart(2, '0');
+    const hh = String(sd.getUTCHours()).padStart(2, '0');
+    const mm = String(sd.getUTCMinutes()).padStart(2, '0');
+    setNewDate(`${y}-${mo}-${da}`);
+    setNewTime(`${hh}:${mm}`);
+    setNewDuration(Number(booking.duration) || 2);
+    setShowReschedule(true);
+  }
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -641,8 +660,27 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
       alert('Select a date and time');
       return;
     }
+    if (!(newDuration > 0)) {
+      alert('Duration must be greater than zero');
+      return;
+    }
     const startTime = `${newDate}T${newTime}:00`;
-    if (!confirm(`Reschedule to ${newDate} at ${newTime}, ${newDuration}hr?`)) return;
+    const label = formatDuration(newDuration);
+    // Detect "this is just a duration change" so the confirm copy reads right
+    // for the common engineer-correction case. Compares against the booking's
+    // current start_time using the same +00-as-FW-wall-clock convention used
+    // for the openTimeEditor() pre-fill.
+    const sd = new Date(booking.start_time);
+    const currentDate = `${sd.getUTCFullYear()}-${String(sd.getUTCMonth() + 1).padStart(2, '0')}-${String(sd.getUTCDate()).padStart(2, '0')}`;
+    const currentTime = `${String(sd.getUTCHours()).padStart(2, '0')}:${String(sd.getUTCMinutes()).padStart(2, '0')}`;
+    const onlyDurationChanged =
+      newDate === currentDate &&
+      newTime === currentTime &&
+      Number(booking.duration) !== newDuration;
+    const msg = onlyDurationChanged
+      ? `Update session length to ${label}? (server will recompute end time)`
+      : `Save ${newDate} at ${newTime}, ${label}?`;
+    if (!confirm(msg)) return;
     updateBooking({ startTime, duration: newDuration }, 'reschedule');
     setShowReschedule(false);
   }
@@ -807,7 +845,7 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
             {' · '}
             {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })}
             {' · '}
-            {booking.duration}hr
+            {formatDuration(Number(booking.duration))}
             {booking.room && ` · ${booking.room === 'studio_a' ? 'Studio A' : 'Studio B'}`}
             {!!booking.setup_minutes_before && booking.setup_minutes_before > 0 && (
               <span className="text-accent font-bold">
@@ -1141,10 +1179,10 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
             </button>
           )}
           <button
-            onClick={() => setShowReschedule(!showReschedule)}
+            onClick={() => (showReschedule ? setShowReschedule(false) : openTimeEditor())}
             className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-black/20 text-black/60 px-4 py-2 hover:bg-black/5 transition-colors"
           >
-            Reschedule
+            Edit Time
           </button>
           <button
             onClick={() => { setShowChangeEngineer(!showChangeEngineer); setSelectedEngineer(booking.engineer_name || ''); }}
@@ -1162,6 +1200,37 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
           <button
             onClick={() => setShowDebug(!showDebug)}
             className="font-mono text-xs uppercase tracking-wider text-black/60 px-3 py-2 hover:text-black/60 transition-colors"
+          >
+            {showDebug ? 'Hide Details' : 'Debug'}
+          </button>
+        </div>
+      )}
+
+      {/* Post-completion action row.
+          Once a session is `completed` the main action bar above is hidden,
+          but engineers still need to correct the recorded time/duration
+          after the fact (the actual session may have run longer than the
+          original booked window). This slim row exposes Edit Time +
+          Change Engineer specifically for that case — kept separate from
+          the active-session controls so we don't accidentally re-enable
+          Charge/Cancel/Mark Complete on already-completed rows. */}
+      {completed && !unclaimed && (
+        <div className="mt-3 pt-3 border-t border-black/10 flex flex-wrap gap-2">
+          <button
+            onClick={() => (showReschedule ? setShowReschedule(false) : openTimeEditor())}
+            className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-black/20 text-black/60 px-4 py-2 hover:bg-black/5 transition-colors"
+          >
+            Edit Time
+          </button>
+          <button
+            onClick={() => { setShowChangeEngineer(!showChangeEngineer); setSelectedEngineer(booking.engineer_name || ''); }}
+            className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-black/20 text-black/60 px-4 py-2 hover:bg-black/5 transition-colors"
+          >
+            Change Engineer
+          </button>
+          <button
+            onClick={() => setShowDebug(!showDebug)}
+            className="font-mono text-xs uppercase tracking-wider text-black/60 px-3 py-2 hover:text-black transition-colors"
           >
             {showDebug ? 'Hide Details' : 'Debug'}
           </button>
@@ -1327,10 +1396,22 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
         </div>
       )}
 
-      {/* Reschedule form */}
+      {/* Edit Time / Duration form
+          - Pre-filled by openTimeEditor() so the engineer can bump duration
+            without re-entering date/time.
+          - Duration accepts quarter-hour granularity (0.25 step) so engineers
+            can record "1h 15m", "1h 30m", "2h 45m", etc. The booking flow
+            itself still operates on half-hour slots — this just lets us
+            record actual elapsed time accurately for analytics + revenue. */}
       {showReschedule && (
         <div className="mt-3 p-3 bg-black/5 border border-black/10 space-y-2">
-          <p className="font-mono text-xs font-semibold uppercase tracking-wider">Reschedule Session</p>
+          <p className="font-mono text-xs font-semibold uppercase tracking-wider">
+            Edit Time / Duration
+          </p>
+          <p className="font-mono text-[10px] text-black/60">
+            Pre-filled with this session&apos;s current values. Bump the duration in 15-min steps
+            if the session ran long; date + time can be changed for an actual reschedule.
+          </p>
           <div className="flex flex-wrap gap-2 items-end">
             <div>
               <label className="font-mono text-[10px] text-black/60 block">Date</label>
@@ -1351,16 +1432,16 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
               />
             </div>
             <div>
-              <label className="font-mono text-[10px] text-black/60 block">Duration</label>
-              <select
+              <label className="font-mono text-[10px] text-black/60 block">Duration (hrs)</label>
+              <input
+                type="number"
+                min={0.25}
+                max={24}
+                step={0.25}
                 value={newDuration}
                 onChange={(e) => setNewDuration(Number(e.target.value))}
-                className="font-mono text-xs border border-black/20 px-2 py-1.5"
-              >
-                {[1,2,3,4,5,6,7,8].map(h => (
-                  <option key={h} value={h}>{h}hr</option>
-                ))}
-              </select>
+                className="font-mono text-xs border border-black/20 px-2 py-1.5 w-24"
+              />
             </div>
             <button
               onClick={handleReschedule}
@@ -1370,6 +1451,11 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
               {actionLoading === 'reschedule' ? 'Saving...' : 'Confirm'}
             </button>
           </div>
+          {newDuration > 0 && (
+            <p className="font-mono text-[10px] text-black/50">
+              New length: {formatDuration(newDuration)}
+            </p>
+          )}
         </div>
       )}
 
