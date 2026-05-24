@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Music, ExternalLink, Settings } from 'lucide-react';
 import { createServiceClient, createClient } from '@/lib/supabase/server';
 import ProfileBeatGrid from '@/components/beats/ProfileBeatGrid';
@@ -342,7 +343,14 @@ export default async function PublicProfilePage({ params }: Props) {
                     className="border border-white/10 overflow-hidden hover:border-accent/50 transition-colors"
                   >
                     {project.cover_image_url && (
-                      <img src={project.cover_image_url} alt={project.project_name} className="w-full aspect-square object-cover" />
+                      <Image
+                        src={project.cover_image_url}
+                        alt={project.project_name}
+                        width={400}
+                        height={400}
+                        sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
+                        className="w-full aspect-square object-cover"
+                      />
                     )}
                     <div className="p-6">
                       <h3 className="text-heading-sm mb-1 text-white">{project.project_name}</h3>

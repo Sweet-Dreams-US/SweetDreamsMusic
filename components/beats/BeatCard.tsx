@@ -2,6 +2,7 @@
 
 import { Play, Pause, Heart, PenLine, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { formatCents } from '@/lib/utils';
 import { useAudioPlayer, type AudioTrack } from '@/components/audio/AudioPlayerContext';
 
@@ -85,7 +86,14 @@ export default function BeatCard({ beat, isSaved, onToggleSave, showWriteButton 
           >
             {beat.cover_image_url ? (
               <>
-                <img src={beat.cover_image_url} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                <Image
+                  src={beat.cover_image_url}
+                  alt=""
+                  fill
+                  sizes="48px"
+                  className="object-cover"
+                  unoptimized={false}
+                />
                 <div className={`absolute inset-0 flex items-center justify-center transition-opacity ${
                   isThisPlaying ? 'bg-accent/80' : 'bg-black/40 hover:bg-accent/70'
                 }`}>

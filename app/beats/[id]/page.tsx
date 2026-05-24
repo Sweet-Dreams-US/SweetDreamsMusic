@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/server';
 import { formatCents } from '@/lib/utils';
 import { BEAT_LICENSES, SITE_URL } from '@/lib/constants';
@@ -70,7 +71,15 @@ export default async function BeatDetailPage({ params }: Props) {
               </Link>
               <div className="flex items-start gap-6 mb-6">
                 {beat.cover_image_url && (
-                  <img src={beat.cover_image_url} alt={beat.title} className="w-32 h-32 sm:w-40 sm:h-40 object-cover flex-shrink-0 border border-white/10" />
+                  <Image
+                    src={beat.cover_image_url}
+                    alt={beat.title}
+                    width={160}
+                    height={160}
+                    sizes="(min-width: 640px) 160px, 128px"
+                    priority
+                    className="w-32 h-32 sm:w-40 sm:h-40 object-cover flex-shrink-0 border border-white/10"
+                  />
                 )}
                 <div>
                   <h1 className="text-display-md mb-3">{beat.title}</h1>

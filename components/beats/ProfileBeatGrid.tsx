@@ -2,6 +2,7 @@
 
 import { Play, Pause } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { formatCents } from '@/lib/utils';
 import { useAudioPlayer, type AudioTrack } from '@/components/audio/AudioPlayerContext';
 
@@ -65,7 +66,13 @@ export default function ProfileBeatGrid({ beats, producerName, producerSlug }: {
                 className="w-20 h-20 flex-shrink-0 relative flex items-center justify-center bg-black/5 overflow-hidden group"
               >
                 {beat.cover_image_url ? (
-                  <img src={beat.cover_image_url} alt="" className="w-full h-full object-cover" />
+                  <Image
+                    src={beat.cover_image_url}
+                    alt=""
+                    fill
+                    sizes="80px"
+                    className="object-cover"
+                  />
                 ) : null}
                 <div className={`absolute inset-0 flex items-center justify-center transition-opacity ${
                   beat.cover_image_url ? 'bg-black/40 opacity-0 group-hover:opacity-100' : ''
