@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import {
   Calendar, Plus, Edit2, Trash2, XCircle, Eye, EyeOff, Users, Send,
   CheckCircle, ArrowLeft, Mail, MapPin, Clock, AlertCircle, Upload, Image as ImageIcon,
+  User as UserIcon, ExternalLink,
 } from 'lucide-react';
 import {
   visibilityLabel,
@@ -1002,52 +1004,107 @@ function RsvpBucket(props: {
         {rsvpStatusLabel(props.status)} · {props.rows.length}
       </h4>
       <div className="divide-y divide-black/10 border border-black/10">
-        {props.rows.map((r) => (
-          <div key={r.id} className="p-3 flex items-start gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="font-mono text-xs font-bold truncate">
-                {r.invited_email || `User ${r.user_id?.slice(0, 8)}`}
-              </p>
-              {r.guest_count > 0 && (
-                <p className="font-mono text-[10px] text-black/60 mt-0.5">+ {r.guest_count} guest{r.guest_count !== 1 ? 's' : ''}</p>
+        {props.rows.map((r) => {
+          // Identity resolution priority:
+          //   1. Joined profile (logged-in user RSVPed) → name + email + photo
+          //   2. invited_email (token-only invite, no account yet) → email
+          //   3. user_id slice (degraded; means the profile lookup missed)
+          //
+          // We deliberately show BOTH name AND email when a profile exists,
+          // because an admin reviewing a 'requested' RSVP needs the email to
+          // contact the person but the name to match against their gut sense
+          // of "who actually shows up to these things".
+          const p = r.profile ?? null;
+          const primaryName = p?.display_name?.trim() || r.invited_email || (r.user_id ? `User ${r.user_id.slice(0, 8)}` : 'Unknown');
+          const secondaryEmail = p?.email && p.email !== primaryName ? p.email : null;
+          const profileSlug = p?.public_profile_slug || null;
+          return (
+            <div key={r.id} className="p-3 flex items-start gap-3">
+              {/* Avatar — uses the user's profile picture when present, falls
+                  back to a generic person icon. Decorative-only (the name
+                  next to it is the accessible identifier). */}
+              {p?.profile_picture_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={p.profile_picture_url}
+                  alt=""
+                  className="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-black/10"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-black/5 flex items-center justify-center flex-shrink-0 border border-black/10">
+                  <UserIcon className="w-3.5 h-3.5 text-black/40" />
+                </div>
               )}
-              {r.message && (
-                <p className="font-mono text-[11px] text-black/70 mt-1 italic line-clamp-3">&ldquo;{r.message}&rdquo;</p>
-              )}
-              <p className="font-mono text-[9px] text-black/40 mt-1">
-                {props.status === 'requested' ? 'Requested' : props.status === 'invited' ? 'Invited' : 'Responded'}{' '}
-                {new Date(r.responded_at || r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-              </p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="font-mono text-xs font-bold truncate" title={primaryName}>
+                    {primaryName}
+                  </p>
+                  {profileSlug && (
+                    <Link
+                      href={`/u/${profileSlug}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-accent hover:underline inline-flex items-center gap-0.5 no-underline"
+                      title="Open public profile"
+                    >
+                      profile <ExternalLink className="w-2.5 h-2.5" />
+                    </Link>
+                  )}
+                </div>
+                {secondaryEmail && (
+                  <p className="font-mono text-[10px] text-black/60 truncate" title={secondaryEmail}>
+                    {secondaryEmail}
+                  </p>
+                )}
+                {!p && r.invited_email && (
+                  // Token-invite case — no profile joined. Mark explicitly so
+                  // admins know this person doesn't have an account yet.
+                  <p className="font-mono text-[10px] text-black/50 italic">
+                    invite-only (no account yet)
+                  </p>
+                )}
+                {r.guest_count > 0 && (
+                  <p className="font-mono text-[10px] text-black/60 mt-0.5">+ {r.guest_count} guest{r.guest_count !== 1 ? 's' : ''}</p>
+                )}
+                {r.message && (
+                  <p className="font-mono text-[11px] text-black/70 mt-1 italic line-clamp-3">&ldquo;{r.message}&rdquo;</p>
+                )}
+                <p className="font-mono text-[9px] text-black/40 mt-1">
+                  {props.status === 'requested' ? 'Requested' : props.status === 'invited' ? 'Invited' : 'Responded'}{' '}
+                  {new Date(r.responded_at || r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                {props.status === 'requested' && (
+                  <>
+                    <button
+                      onClick={() => props.onDecideRequest(r, 'going')}
+                      title="Approve"
+                      className="p-1.5 bg-green-50 hover:bg-green-100 text-green-700"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => props.onDecideRequest(r, 'not_going')}
+                      title="Deny"
+                      className="p-1.5 bg-red-50 hover:bg-red-100 text-red-700"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => props.onDeleteRsvp(r)}
+                  title="Remove"
+                  className="p-1.5 hover:bg-black/5 text-black/40 hover:text-black/70"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-1">
-              {props.status === 'requested' && (
-                <>
-                  <button
-                    onClick={() => props.onDecideRequest(r, 'going')}
-                    title="Approve"
-                    className="p-1.5 bg-green-50 hover:bg-green-100 text-green-700"
-                  >
-                    <CheckCircle className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => props.onDecideRequest(r, 'not_going')}
-                    title="Deny"
-                    className="p-1.5 bg-red-50 hover:bg-red-100 text-red-700"
-                  >
-                    <XCircle className="w-3.5 h-3.5" />
-                  </button>
-                </>
-              )}
-              <button
-                onClick={() => props.onDeleteRsvp(r)}
-                title="Remove"
-                className="p-1.5 hover:bg-black/5 text-black/40 hover:text-black/70"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

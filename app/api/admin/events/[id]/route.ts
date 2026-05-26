@@ -26,7 +26,48 @@ export async function GET(
     .eq('event_id', id)
     .order('created_at', { ascending: false });
 
-  return NextResponse.json({ event, rsvps: rsvps || [] });
+  // Hydrate profile info for any RSVPs that point at a real user. Without
+  // this the admin UI falls back to "User a1b2c3d4" (a UUID slice) for
+  // request-to-attend RSVPs from logged-in visitors — useless when the
+  // admin has to decide who to approve. Token-only invites (user_id null)
+  // already carry `invited_email`, so they're identifiable as-is.
+  //
+  // Single profiles query for all RSVPs combined, then mapped back by
+  // user_id. Avoids N+1 queries per RSVP row. Profile rows may be missing
+  // (e.g. a user who never finished signup) — those just stay null.
+  const rsvpRows = rsvps || [];
+  const userIds = Array.from(
+    new Set(
+      rsvpRows
+        .map((r) => r.user_id)
+        .filter((u): u is string => typeof u === 'string' && u.length > 0),
+    ),
+  );
+
+  let profilesByUserId: Map<string, {
+    user_id: string;
+    display_name: string | null;
+    email: string | null;
+    profile_picture_url: string | null;
+    public_profile_slug: string | null;
+  }> = new Map();
+
+  if (userIds.length > 0) {
+    const { data: profiles } = await service
+      .from('profiles')
+      .select('user_id, display_name, email, profile_picture_url, public_profile_slug')
+      .in('user_id', userIds);
+    profilesByUserId = new Map(
+      (profiles || []).map((p) => [p.user_id, p]),
+    );
+  }
+
+  const enrichedRsvps = rsvpRows.map((r) => ({
+    ...r,
+    profile: r.user_id ? profilesByUserId.get(r.user_id) ?? null : null,
+  }));
+
+  return NextResponse.json({ event, rsvps: enrichedRsvps });
 }
 
 /**

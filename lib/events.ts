@@ -57,6 +57,25 @@ export type EventRsvp = {
   guest_count: number;
   created_at: string;
   responded_at: string | null;
+  /**
+   * Optional profile snapshot for RSVPs with a `user_id`. Populated by the
+   * admin GET handler (/api/admin/events/[id]) so admins reviewing the
+   * roster can see who they're approving/denying without having to click
+   * through to each user's profile separately. Token-only invites
+   * (user_id = null) skip this — `invited_email` is the identity there.
+   *
+   * Optional everywhere else: the dashboard / user-facing RSVP loaders
+   * don't bother filling it, so this field stays `undefined` for them.
+   */
+  profile?: EventRsvpProfile | null;
+};
+
+export type EventRsvpProfile = {
+  user_id: string;
+  display_name: string | null;
+  email: string | null;
+  profile_picture_url: string | null;
+  public_profile_slug: string | null;
 };
 
 /** Event + RSVP joined — used on user dashboards to show "events I'm going to". */
