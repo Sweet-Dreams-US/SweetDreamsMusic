@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Search, ExternalLink, Shield, Wrench, Music, User, Check } from 'lucide-react';
+import { Search, ExternalLink, Shield, Wrench, Music, User, Check, Users as UsersIcon, Eye, EyeOff } from 'lucide-react';
 
 interface Profile {
   id: string;
@@ -17,18 +17,46 @@ interface Profile {
   notes_count: number;
 }
 
+interface Band {
+  id: string;
+  slug: string;
+  display_name: string;
+  profile_picture_url: string | null;
+  genre: string | null;
+  hometown: string | null;
+  is_public: boolean;
+  member_count: number;
+  created_at: string;
+  creator: {
+    user_id: string;
+    display_name: string | null;
+    email: string | null;
+    public_profile_slug: string | null;
+  } | null;
+}
+
 const ROLE_OPTIONS = [
   { value: 'user', label: 'User', icon: User },
   { value: 'engineer', label: 'Engineer', icon: Wrench },
   { value: 'admin', label: 'Admin', icon: Shield },
 ];
 
+type FilterKey = 'all' | 'user' | 'engineer' | 'admin' | 'producer' | 'bands';
+
 export default function UserManager() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<'all' | 'user' | 'engineer' | 'admin' | 'producer'>('all');
+  const [filter, setFilter] = useState<FilterKey>('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // Bands are loaded lazily — only when the admin clicks the Bands tab —
+  // because the user-profile list is the dominant traffic pattern, and
+  // pulling bands + member-count joins on every page mount would add
+  // ~150ms to the common case. Once loaded, we cache them on this
+  // component instance so toggling between tabs is instant.
+  const [bands, setBands] = useState<Band[] | null>(null);
+  const [bandsLoading, setBandsLoading] = useState(false);
 
   useEffect(() => {
     fetch('/api/admin/library/clients')
@@ -36,6 +64,17 @@ export default function UserManager() {
       .then((d) => setProfiles(d.clients || []))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (filter !== 'bands') return;
+    if (bands !== null) return; // already loaded
+    setBandsLoading(true);
+    fetch('/api/admin/bands')
+      .then((r) => r.json())
+      .then((d) => setBands(d.bands || []))
+      .catch(() => setBands([]))
+      .finally(() => setBandsLoading(false));
+  }, [filter, bands]);
 
   async function updateRole(profileId: string, role: string) {
     setUpdatingId(profileId);
@@ -87,12 +126,35 @@ export default function UserManager() {
     engineer: profiles.filter((p) => p.role === 'engineer').length,
     admin: profiles.filter((p) => p.role === 'admin').length,
     producer: profiles.filter((p) => p.is_producer).length,
-  }), [profiles]);
+    // Count uses the eager-loaded value when present; null = "not yet
+    // fetched" so we render '—' rather than 0 to avoid implying empty.
+    bands: bands?.length ?? null,
+  }), [profiles, bands]);
+
+  const filteredBands = useMemo(() => {
+    if (!bands) return [];
+    if (!search.trim()) return bands;
+    const q = search.toLowerCase();
+    return bands.filter((b) =>
+      b.display_name?.toLowerCase().includes(q) ||
+      b.slug?.toLowerCase().includes(q) ||
+      b.genre?.toLowerCase().includes(q) ||
+      b.hometown?.toLowerCase().includes(q) ||
+      b.creator?.display_name?.toLowerCase().includes(q) ||
+      b.creator?.email?.toLowerCase().includes(q),
+    );
+  }, [bands, search]);
+
+  const isBandsTab = filter === 'bands';
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-heading-md">USERS ({profiles.length})</h2>
+        <h2 className="text-heading-md">
+          {isBandsTab
+            ? `BANDS (${counts.bands ?? '—'})`
+            : `USERS (${profiles.length})`}
+        </h2>
       </div>
 
       {/* Filter tabs */}
@@ -103,6 +165,7 @@ export default function UserManager() {
           { key: 'engineer', label: 'Engineers' },
           { key: 'admin', label: 'Admins' },
           { key: 'producer', label: 'Producers' },
+          { key: 'bands', label: 'Bands' },
         ] as const).map((tab) => (
           <button
             key={tab.key}
@@ -113,7 +176,7 @@ export default function UserManager() {
                 : 'border-transparent text-black/40 hover:text-black/70'
             }`}
           >
-            {tab.label} ({counts[tab.key]})
+            {tab.label} ({counts[tab.key] ?? '—'})
           </button>
         ))}
       </div>
@@ -124,12 +187,113 @@ export default function UserManager() {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name, email, or producer name..."
+          placeholder={isBandsTab
+            ? 'Search bands by name, slug, genre, hometown, or creator…'
+            : 'Search by name, email, or producer name…'}
           className="w-full border-2 border-black/20 pl-10 pr-4 py-3 font-mono text-sm focus:border-accent focus:outline-none"
         />
       </div>
 
-      {loading ? (
+      {isBandsTab ? (
+        bandsLoading || bands === null ? (
+          <p className="font-mono text-sm text-black/40">Loading bands…</p>
+        ) : (
+          <div className="space-y-2">
+            {filteredBands.map((band) => (
+              <div key={band.id} className="border border-black/10 p-4 hover:border-black/20 transition-colors">
+                <div className="flex items-center gap-4">
+                  {/* Avatar — band picture or generic users icon */}
+                  <div className="w-10 h-10 bg-black/5 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                    {band.profile_picture_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={band.profile_picture_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <UsersIcon className="w-5 h-5 text-black/30" />
+                    )}
+                  </div>
+
+                  {/* Band info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-mono text-sm font-semibold truncate" title={band.display_name}>
+                        {band.display_name}
+                      </p>
+                      {/* Public/private — visible badge so admins can spot
+                          drafts that haven't been published yet. */}
+                      <span
+                        className={`font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 inline-flex items-center gap-1 ${
+                          band.is_public
+                            ? 'bg-green-50 text-green-700 border border-green-200'
+                            : 'bg-black/5 text-black/60 border border-black/10'
+                        }`}
+                      >
+                        {band.is_public ? (
+                          <>
+                            <Eye className="w-3 h-3" /> Public
+                          </>
+                        ) : (
+                          <>
+                            <EyeOff className="w-3 h-3" /> Private
+                          </>
+                        )}
+                      </span>
+                    </div>
+                    <p className="font-mono text-xs text-black/50 truncate">
+                      {band.member_count} member{band.member_count !== 1 ? 's' : ''}
+                      {band.genre && ` · ${band.genre}`}
+                      {band.hometown && ` · ${band.hometown}`}
+                    </p>
+                    <p className="font-mono text-[10px] text-black/40 truncate mt-0.5">
+                      Created {new Date(band.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      {band.creator && (
+                        <>
+                          {' · by '}
+                          {band.creator.public_profile_slug ? (
+                            <a
+                              href={`/u/${band.creator.public_profile_slug}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-accent hover:underline no-underline"
+                            >
+                              {band.creator.display_name || band.creator.email || 'unknown'}
+                            </a>
+                          ) : (
+                            <span>{band.creator.display_name || band.creator.email || 'unknown'}</span>
+                          )}
+                        </>
+                      )}
+                    </p>
+                  </div>
+
+                  {/* Public band page link — only when public, since the
+                      private/admin route is /dashboard/bands/[id] and that
+                      requires the band owner's session. The public page
+                      at /bands/[slug] returns 404 for private bands so we
+                      hide the link to avoid sending admins to a dead end. */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {band.is_public && band.slug && (
+                      <a
+                        href={`/bands/${band.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-accent hover:underline p-1.5 flex-shrink-0"
+                        title="View public band page"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {filteredBands.length === 0 && (
+              <p className="font-mono text-sm text-black/30 text-center py-8">
+                {bands?.length ? 'No bands match your search.' : 'No bands yet.'}
+              </p>
+            )}
+          </div>
+        )
+      ) : loading ? (
         <p className="font-mono text-sm text-black/40">Loading users...</p>
       ) : (
         <div className="space-y-2">
