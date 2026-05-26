@@ -32,9 +32,13 @@ export async function GET(
   // admin has to decide who to approve. Token-only invites (user_id null)
   // already carry `invited_email`, so they're identifiable as-is.
   //
-  // Single profiles query for all RSVPs combined, then mapped back by
-  // user_id. Avoids N+1 queries per RSVP row. Profile rows may be missing
-  // (e.g. a user who never finished signup) — those just stay null.
+  // Two-stage lookup:
+  //   1. profiles table — the normal case. One query for all RSVP user_ids.
+  //   2. auth.users fallback for any user_id that didn't match a profile.
+  //      Migration 060 hardened the signup trigger so this case should be
+  //      rare going forward, but we keep the fallback as belt-and-suspenders:
+  //      a transient profile-create failure shouldn't leave admins staring
+  //      at "User a1b2c3d4" for that user.
   const rsvpRows = rsvps || [];
   const userIds = Array.from(
     new Set(
@@ -44,22 +48,49 @@ export async function GET(
     ),
   );
 
-  let profilesByUserId: Map<string, {
+  type Snapshot = {
     user_id: string;
     display_name: string | null;
     email: string | null;
     profile_picture_url: string | null;
     public_profile_slug: string | null;
-  }> = new Map();
+  };
+  const profilesByUserId = new Map<string, Snapshot>();
 
   if (userIds.length > 0) {
     const { data: profiles } = await service
       .from('profiles')
       .select('user_id, display_name, email, profile_picture_url, public_profile_slug')
       .in('user_id', userIds);
-    profilesByUserId = new Map(
-      (profiles || []).map((p) => [p.user_id, p]),
-    );
+    for (const p of (profiles || []) as Snapshot[]) {
+      profilesByUserId.set(p.user_id, p);
+    }
+
+    // Belt-and-suspenders: anyone we asked about but didn't find in profiles
+    // gets resolved via the auth admin API instead. This makes the admin
+    // UI robust against orphaned auth users (e.g. signup trigger lagged
+    // or never fired). Each missing user is one getUserById call — fine
+    // for the small numbers (≤ a few per event) we see in practice; if a
+    // single event ever has hundreds of orphans we can switch to a
+    // batched listUsers + filter.
+    const missing = userIds.filter((id) => !profilesByUserId.has(id));
+    for (const id of missing) {
+      try {
+        const { data: authResult } = await service.auth.admin.getUserById(id);
+        const u = authResult?.user;
+        if (u) {
+          profilesByUserId.set(id, {
+            user_id: id,
+            display_name: (u.user_metadata?.display_name as string | undefined) ?? null,
+            email: u.email ?? null,
+            profile_picture_url: null,
+            public_profile_slug: null,
+          });
+        }
+      } catch (err) {
+        console.error('[admin:events:get] auth.admin.getUserById failed for', id, err);
+      }
+    }
   }
 
   const enrichedRsvps = rsvpRows.map((r) => ({
