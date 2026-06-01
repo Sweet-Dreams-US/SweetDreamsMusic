@@ -21,6 +21,7 @@ type BookingData = {
   status: string;
   engineer_name: string | null;
   media_addons: Array<{ type: string; description: string; amount: number }> | null;
+  deposit_method: string;
 };
 
 export default function InvitePage() {
@@ -35,6 +36,8 @@ export default function InvitePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [paying, setPaying] = useState(false);
+  const [choosingCash, setChoosingCash] = useState(false);
+  const [cashChosen, setCashChosen] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [waitingForConfirmation, setWaitingForConfirmation] = useState(false);
   const [authedUser, setAuthedUser] = useState<{ email: string } | null | undefined>(undefined); // undefined = loading
@@ -141,6 +144,30 @@ export default function InvitePage() {
     }
   }
 
+  async function handleChooseCash() {
+    if (!booking) return;
+    setChoosingCash(true);
+    try {
+      const res = await fetch('/api/booking/invite/choose-cash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking.id, token }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCashChosen(true);
+      } else if (data.alreadyConfirmed) {
+        setConfirmed(true);
+      } else {
+        alert(data.error || 'Something went wrong');
+      }
+    } catch {
+      alert('Something went wrong');
+    } finally {
+      setChoosingCash(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -176,7 +203,7 @@ export default function InvitePage() {
     hour: 'numeric', minute: '2-digit', timeZone: 'UTC',
   });
   const roomLabel = ROOM_LABELS[booking.room as Room] || booking.room;
-  const isCash = booking.deposit_amount === 0;
+  const isCash = booking.deposit_method === 'cash';
 
   // Show processing state while waiting for Stripe webhook
   if (waitingForConfirmation) {
@@ -233,6 +260,45 @@ export default function InvitePage() {
               </div>
             </div>
 
+            <a href="/dashboard" className="inline-block mt-6 font-mono text-sm text-accent hover:underline">
+              View your dashboard &rarr;
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Cash chosen — slot is NOT held until the engineer records the cash.
+  if ((cashChosen || isCash) && !confirmed) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center px-4">
+        <div className="max-w-lg w-full">
+          <div className="border-2 border-black p-8 text-center">
+            <DollarSign className="w-12 h-12 text-accent mx-auto mb-4" />
+            <h1 className="text-heading-sm mb-2">PAY CASH AT THE STUDIO</h1>
+            <p className="font-mono text-sm text-black/60 mb-6">
+              Pay your {formatCents(booking.deposit_amount)} deposit in cash to your engineer.
+              Heads up: your time isn&apos;t locked in until we receive it, so bring it as soon as you can.
+            </p>
+            <div className="text-left border-t border-black/10 pt-4 space-y-3 font-mono text-sm">
+              <div className="flex items-center gap-3">
+                <Calendar className="w-4 h-4 text-black/40 shrink-0" />
+                <span>{dateStr}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Clock className="w-4 h-4 text-black/40 shrink-0" />
+                <span>{timeStr} &mdash; {formatDuration(booking.duration)}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Music className="w-4 h-4 text-black/40 shrink-0" />
+                <span>{roomLabel}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <DollarSign className="w-4 h-4 text-black/40 shrink-0" />
+                <span>Deposit due in cash: {formatCents(booking.deposit_amount)}</span>
+              </div>
+            </div>
             <a href="/dashboard" className="inline-block mt-6 font-mono text-sm text-accent hover:underline">
               View your dashboard &rarr;
             </a>
@@ -346,6 +412,13 @@ export default function InvitePage() {
                 className="w-full bg-accent text-black font-mono text-base font-bold uppercase tracking-wider py-4 hover:bg-accent/90 transition-colors disabled:opacity-50"
               >
                 {paying ? 'REDIRECTING TO PAYMENT...' : `PAY ${formatCents(booking.deposit_amount)} DEPOSIT`}
+              </button>
+              <button
+                onClick={handleChooseCash}
+                disabled={paying || choosingCash}
+                className="w-full mt-2 border-2 border-black text-black font-mono text-sm font-bold uppercase tracking-wider py-3 hover:bg-black hover:text-white transition-colors disabled:opacity-50"
+              >
+                {choosingCash ? 'SAVING...' : 'PAY CASH AT STUDIO INSTEAD'}
               </button>
 
               <p className="font-mono text-[10px] text-black/60 text-center mt-3">

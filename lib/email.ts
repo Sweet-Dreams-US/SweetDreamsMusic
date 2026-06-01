@@ -345,6 +345,36 @@ export async function sendRescheduleRequestAlert(details: {
   } catch (e) { console.error('Email error (reschedule request):', e); }
 }
 
+export async function sendCashChosenAlert(to: string, details: {
+  customerName: string; artistName?: string | null;
+  date: string; startTime: string; room: string;
+  depositAmount: number; engineerName: string | null;
+}) {
+  try {
+    const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
+    const depositStr = `$${(details.depositAmount / 100).toFixed(2)}`;
+    await resend.emails.send({
+      from: FROM, to: [to],
+      subject: `Cash Deposit Chosen — ${details.customerName}`,
+      html: wrap(`
+        ${h1('Client Chose to Pay Cash')}
+        ${p(`${details.customerName} chose to pay their deposit in cash for the session below. Their time is NOT held yet — collect the ${depositStr} deposit and record it to lock the slot.`)}
+        ${detailTable(`
+          ${detail('Client', details.customerName)}
+          ${details.artistName ? detail('Artist Name', details.artistName) : ''}
+          ${detail('Date', details.date)}
+          ${detail('Time', details.startTime)}
+          ${detail('Studio', roomLabel)}
+          ${detail('Deposit Due (cash)', depositStr)}
+          ${details.engineerName ? detail('Engineer', details.engineerName) : ''}
+        `)}
+        ${p('Record the cash from your sessions list to confirm the booking.')}
+        ${btn('Open My Sessions', `${SITE_URL}/engineer`)}
+      `),
+    });
+  } catch (e) { console.error('Email error (cash chosen):', e); }
+}
+
 export async function sendEngineerAssigned(to: string, details: {
   customerName: string; engineerName: string; date: string; startTime: string;
 }) {
@@ -632,21 +662,21 @@ export async function sendSessionInvite(to: string, details: {
   await mirrorToThread({
     userEmail: to,
     kind: 'booking_notification',
-    subject: details.isCash ? 'Session Scheduled' : 'Session Invite',
-    body: `${details.engineerName} ${details.isCash ? 'booked a session for you' : 'invited you to a session'} on ${details.date} at ${details.startTime} in ${ROOM_LABELS[details.room as Room] || details.room}. ${details.isCash ? '' : `Pay ${formatMoney(details.deposit)} deposit to confirm.`}`,
+    subject: details.isCash ? 'Cash Deposit Due' : 'Session Invite',
+    body: `${details.engineerName} ${details.isCash ? 'set up a session for you' : 'invited you to a session'} on ${details.date} at ${details.startTime} in ${ROOM_LABELS[details.room as Room] || details.room}. ${details.isCash ? `Pay ${formatMoney(details.deposit)} deposit in cash to lock it in — your time isn't held until we receive it.` : `Pay ${formatMoney(details.deposit)} deposit to confirm.`}`,
     attachments: [{ label: details.isCash ? 'View session' : 'Confirm + pay', url: details.inviteUrl, kind: 'link' as const }],
   });
   try {
     const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
     const subject = details.isCash
-      ? 'Session Scheduled — Sweet Dreams Music'
+      ? 'Cash Deposit Due — Sweet Dreams Music'
       : 'You\'re Invited to a Session — Sweet Dreams Music';
 
     await resend.emails.send({
       from: FROM, to, subject,
       html: wrap(`
-        ${h1(details.isCash ? 'Session Scheduled' : 'Session Invite')}
-        ${p(`Hey ${details.customerName}, ${details.engineerName} has ${details.isCash ? 'booked a session for you' : 'invited you to a session'} at Sweet Dreams Music!`)}
+        ${h1(details.isCash ? 'Cash Deposit Due' : 'Session Invite')}
+        ${p(`Hey ${details.customerName}, ${details.engineerName} has ${details.isCash ? 'set up a session for you' : 'invited you to a session'} at Sweet Dreams Music!`)}
         ${detailTable(`
           ${detail('Date', details.date)}
           ${detail('Time', details.startTime)}
@@ -659,7 +689,7 @@ export async function sendSessionInvite(to: string, details: {
           }
         `)}
         ${details.isCash
-          ? p('Your session is confirmed. See you at the studio!')
+          ? p('Pay your deposit in cash to your engineer. Your time isn\'t locked in until we receive it, so bring it as soon as you can.')
           : p('Click the button below to pay your deposit and confirm your session.')
         }
         ${btn(details.isCash ? 'VIEW SESSION' : 'PAY DEPOSIT & CONFIRM', details.inviteUrl)}

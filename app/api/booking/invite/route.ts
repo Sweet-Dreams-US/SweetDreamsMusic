@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { SITE_URL, ENGINEERS } from '@/lib/constants';
+import { SITE_URL, ENGINEERS, PRICING } from '@/lib/constants';
 import { parseTimeSlot } from '@/lib/utils';
 import { verifyEngineerAccess } from '@/lib/admin-auth';
 import { sendSessionInvite } from '@/lib/email';
@@ -50,7 +50,13 @@ export async function POST(request: NextRequest) {
     const inviteToken = crypto.randomUUID();
 
     if (paymentMethod === 'cash') {
-      // Cash booking — create confirmed immediately, no Stripe needed
+      // Cash invite — created as pending_deposit (NOT auto-confirmed). The slot
+      // is NOT held until the engineer records the cash (which flips it to
+      // 'confirmed' via /api/booking/record-payment). Deposit target is 50%,
+      // mirroring the online flow; the engineer can record any amount.
+      const cashDeposit = depositAmount && depositAmount > 0
+        ? depositAmount
+        : Math.round(totalAmount * PRICING.depositPercent / 100);
       const { data: booking, error } = await serviceClient
         .from('bookings')
         .insert({
@@ -64,12 +70,13 @@ export async function POST(request: NextRequest) {
           engineer_name: engineerName,
           created_by_email: user.email,
           total_amount: totalAmount,
-          deposit_amount: 0,
-          remainder_amount: totalAmount,
+          deposit_amount: cashDeposit,
+          remainder_amount: totalAmount - cashDeposit,
           actual_deposit_paid: 0,
+          deposit_method: 'cash',
           media_addons: mediaAddons || null,
-          status: 'confirmed',
-          admin_notes: `Cash session created by ${user.email}. Token: ${inviteToken}. ${customPrice ? `Custom price: $${(customPrice / 100).toFixed(2)}. ` : ''}${notes || ''}`,
+          status: 'pending_deposit',
+          admin_notes: `Cash invite created by ${user.email}. Token: ${inviteToken}. ${customPrice ? `Custom price: $${(customPrice / 100).toFixed(2)}. ` : ''}${notes || ''}`,
         })
         .select('id')
         .single();
@@ -114,7 +121,7 @@ export async function POST(request: NextRequest) {
             duration,
             room,
             total: totalAmount,
-            deposit: 0,
+            deposit: cashDeposit,
             inviteUrl,
             isCash: true,
           });
@@ -142,6 +149,7 @@ export async function POST(request: NextRequest) {
         total_amount: totalAmount,
         deposit_amount: depositAmount,
         remainder_amount: totalAmount - depositAmount,
+        deposit_method: 'card',
         media_addons: mediaAddons || null,
         status: 'pending_deposit',
         admin_notes: `Invite created by ${user.email}. Token: ${inviteToken}. ${customPrice ? `Custom price: $${(customPrice / 100).toFixed(2)}. ` : ''}${notes || ''}`,

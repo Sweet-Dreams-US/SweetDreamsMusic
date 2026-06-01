@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
   const { data: booking, error } = await supabase
     .from('bookings')
-    .select('id, customer_name, customer_email, artist_name, start_time, duration, room, total_amount, deposit_amount, remainder_amount, status, engineer_name, admin_notes, media_addons')
+    .select('id, customer_name, customer_email, artist_name, start_time, duration, room, total_amount, deposit_amount, remainder_amount, status, engineer_name, admin_notes, media_addons, deposit_method')
     .eq('id', bookingId)
     .single();
 

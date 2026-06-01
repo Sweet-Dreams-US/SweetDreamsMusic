@@ -26,6 +26,7 @@ interface Booking {
   requested_engineer?: string | null;
   priority_expires_at?: string | null;
   reschedule_requested?: boolean;
+  deposit_method?: string;
   stripe_customer_id?: string | null;
   stripe_payment_intent_id?: string | null;
   // Round 4: surfaces from the new band-booking workflow.
@@ -829,6 +830,11 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
           {booking.reschedule_requested && (
             <p className="font-mono text-[10px] text-red-500 font-semibold mt-0.5">
               ⚠ Reschedule Requested
+            </p>
+          )}
+          {booking.status === 'pending_deposit' && booking.deposit_method === 'cash' && (
+            <p className="font-mono text-[10px] text-amber-600 font-semibold mt-0.5">
+              ⏳ Cash pending — record cash to lock the slot
             </p>
           )}
 

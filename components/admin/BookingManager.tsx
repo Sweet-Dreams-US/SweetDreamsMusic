@@ -38,6 +38,7 @@ interface Booking {
   created_at: string;
   claimed_at: string | null;
   reschedule_requested: boolean;
+  deposit_method?: string;
   reschedule_reason: string | null;
   reschedule_requested_at: string | null;
   media_addons: Array<{ type: string; description: string; amount: number; sold_by?: string; filmed_by?: string; edited_by?: string }> | null;
@@ -555,6 +556,11 @@ export default function BookingManager() {
                       {b.reschedule_requested && (
                         <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-200 text-amber-800 animate-pulse">
                           Reschedule Requested
+                        </span>
+                      )}
+                      {b.status === 'pending_deposit' && b.deposit_method === 'cash' && (
+                        <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-100 text-amber-700">
+                          Cash Pending
                         </span>
                       )}
                     </div>

@@ -14,7 +14,7 @@ export async function GET() {
 
   const { data: bookings } = await supabase
     .from('bookings')
-    .select('id, customer_name, artist_name, start_time, end_time, duration, room, engineer_name, status')
+    .select('id, customer_name, artist_name, start_time, end_time, duration, room, engineer_name, status, deposit_method')
     .in('status', ['confirmed', 'pending_deposit'])
     .gte('start_time', todayStart)
     .order('start_time', { ascending: true })

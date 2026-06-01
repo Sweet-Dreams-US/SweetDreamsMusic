@@ -39,7 +39,10 @@ export async function POST(request: NextRequest) {
 
   const inviteToken = tokenMatch[1];
   const inviteUrl = `${SITE_URL}/book/invite/${inviteToken}?booking=${booking.id}`;
-  const isCash = booking.deposit_amount === 0 && booking.status === 'confirmed';
+  // Cash is determined by deposit_method (migration 063), not the old
+  // deposit_amount===0 heuristic — new cash invites carry a real 50% deposit
+  // and sit in pending_deposit until the engineer records the cash.
+  const isCash = booking.deposit_method === 'cash';
 
   const engineerConfig = ENGINEERS.find(e => e.email.toLowerCase() === user.email!.toLowerCase());
   const engineerName = engineerConfig?.displayName || booking.engineer_name || 'Your engineer';
