@@ -682,12 +682,12 @@ function FlyerUploader(props: {
       setError('That doesn\'t look like an image file.');
       return;
     }
-    // 25MB cap. Generous because flyers tend to be larger than typical
-    // profile photos. The browser uploads direct to Supabase, so the Vercel
-    // 4.5MB body limit isn't the constraint here — this cap is just to
-    // keep the bucket from growing wild.
-    if (file.size > 25 * 1024 * 1024) {
-      setError('File is too large. Max 25 MB.');
+    // 100MB cap. Generous because flyers tend to be larger than typical
+    // profile photos (high-res / print-quality art). The browser uploads
+    // direct to Supabase, so the Vercel 4.5MB body limit isn't the constraint
+    // here — this cap is just to keep the bucket from growing wild.
+    if (file.size > 100 * 1024 * 1024) {
+      setError('File is too large. Max 100 MB.');
       return;
     }
 

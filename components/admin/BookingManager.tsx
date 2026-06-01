@@ -1048,7 +1048,7 @@ export default function BookingManager() {
                             )}
                           </div>
                         </div>
-                        {!b.actual_deposit_paid && b.deposit_amount === 0 && (
+                        {!b.actual_deposit_paid && (b.deposit_amount === 0 || b.deposit_method === 'cash') && (
                           <div className="flex items-center gap-2 flex-wrap mt-1">
                             <p className="font-mono text-[10px] text-black/60">Record cash deposit kept:</p>
                             <div className="flex items-center gap-1">
