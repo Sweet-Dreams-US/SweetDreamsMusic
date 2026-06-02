@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 const ENGINEER_PHOTOS: Record<string, string> = {
   'PRVRB': STUDIO_IMAGES.prvrbBoothGlowVert,
   'Iszac Griner': STUDIO_IMAGES.iszacVert,
-  'Zion Tinsley': STUDIO_IMAGES.zStudioBVert,
+  'Zion': STUDIO_IMAGES.zStudioBVert,
   'Jay Val Leo': STUDIO_IMAGES.jayTopStudioBVert,
 };
 

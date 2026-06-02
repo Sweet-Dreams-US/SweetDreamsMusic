@@ -112,7 +112,7 @@ ENGINEERS.forEach(eng => {
   if (emailPrefix) NAME_MAP[emailPrefix] = eng.name;
 });
 // Additional known aliases not derivable from the ENGINEERS constant
-NAME_MAP['zion omari'] = 'Zion Tinsley';
+NAME_MAP['zion omari'] = 'Zion';
 
 function normalizeName(raw: string | null): string | null {
   if (!raw) return null;

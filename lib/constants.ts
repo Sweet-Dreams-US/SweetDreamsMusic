@@ -143,7 +143,7 @@ export const ROOM_RATES_SINGLE: Record<Room, number> = {
 export const ENGINEERS = [
   { name: 'PRVRB', displayName: 'PRVRB', email: 'prvrbsounds@gmail.com', specialties: ['Recording', 'Mixing & Mastering', 'Production'], studios: ['studio_a'] as Room[] },
   { name: 'Iszac Griner', displayName: 'Iszac', email: 'iisszzaacc@gmail.com', specialties: ['Recording', 'Mixing & Mastering', 'Production'], studios: ['studio_a', 'studio_b'] as Room[] },
-  { name: 'Zion Tinsley', displayName: 'Zion', email: 'zionomari@artsaturated.com', specialties: ['Recording', 'Mixing & Mastering', 'Production'], studios: ['studio_b'] as Room[] },
+  { name: 'Zion', displayName: 'Zion', email: 'zionomari@artsaturated.com', specialties: ['Recording', 'Mixing & Mastering', 'Production'], studios: ['studio_b'] as Room[] },
   { name: 'Jay Val Leo', displayName: 'Jay Val Leo', email: 'jayvalleo@sweetdreamsmusic.com', specialties: ['Recording', 'Mixing & Mastering', 'Production'], studios: ['studio_b'] as Room[] },
 ] as const;
 
