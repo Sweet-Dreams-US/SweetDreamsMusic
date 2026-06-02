@@ -94,7 +94,7 @@ export default function AdminDashboard({ user }: { user: SessionUser }) {
 
             {/* Main Content */}
             <div className="flex-1 min-w-0">
-          {tab === 'overview' && <AdminOverview />}
+          {tab === 'overview' && <AdminOverview onNavigate={(t) => setTab(t)} />}
           {tab === 'clients' && <ClientCRM />}
           {tab === 'accounting' && <Accounting />}
           {tab === 'bookings' && <BookingManager />}
