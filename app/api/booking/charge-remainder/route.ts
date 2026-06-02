@@ -24,10 +24,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
   }
 
-  if (!booking.stripe_customer_id) {
-    return NextResponse.json({ error: 'No saved payment method for this booking' }, { status: 400 });
-  }
-
   // Use provided amount or default to the remainder
   const chargeAmount = amount || booking.remainder_amount;
   if (chargeAmount <= 0) {
@@ -35,6 +31,12 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // No saved Stripe customer (e.g. a cash session) — no card to charge, so go
+    // straight to an emailed payment link. Per the "card fails → link" rule,
+    // "no card on file" is just an immediate failure to charge.
+    if (!booking.stripe_customer_id) {
+      return createPaymentLink(booking, chargeAmount);
+    }
     // Get saved payment methods for this customer
     const paymentMethods = await stripe.paymentMethods.list({
       customer: booking.stripe_customer_id,
@@ -93,12 +95,14 @@ export async function POST(request: NextRequest) {
 
 // Create a Stripe Checkout session the client can pay through
 async function createPaymentLink(
-  booking: { id: string; stripe_customer_id: string; customer_email: string; customer_name: string; remainder_amount: number; total_amount: number },
+  booking: { id: string; stripe_customer_id: string | null; customer_email: string; customer_name: string; remainder_amount: number; total_amount: number },
   chargeAmount: number,
 ) {
   try {
     const session = await stripe.checkout.sessions.create({
-      customer: booking.stripe_customer_id,
+      ...(booking.stripe_customer_id
+        ? { customer: booking.stripe_customer_id }
+        : { customer_email: booking.customer_email }),
       mode: 'payment',
       line_items: [
         {

@@ -480,7 +480,12 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
   const [prepLoading, setPrepLoading] = useState(false);
 
   const remainder = booking.remainder_amount || 0;
-  const canCharge = booking.status === 'confirmed' && remainder > 0 && booking.engineer_name;
+  // Charge is offered on confirmed sessions with a balance, AND on completed
+  // sessions (so an engineer can add a fresh charge for extra time/services
+  // after the fact — even if the session was already paid in full). The charge
+  // itself (charge-remainder) tries the card on file first and emails a payment
+  // link only if that fails.
+  const canCharge = ((booking.status === 'confirmed' && remainder > 0) || booking.status === 'completed') && booking.engineer_name;
   const canComplete = booking.status === 'confirmed' && booking.engineer_name;
   const canCancel = ['confirmed', 'pending'].includes(booking.status);
 
@@ -1222,6 +1227,15 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
           >
             Edit Time
           </button>
+          {canCharge && (
+            <button
+              onClick={() => { setShowChargeEdit(true); setChargeAmountInput(remainder > 0 ? (remainder / 100).toFixed(2) : ''); }}
+              title="Add a charge for extra time/services. Charges the card on file first; emails a payment link if that fails."
+              className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-black/20 text-black/60 px-4 py-2 hover:bg-black/5 transition-colors"
+            >
+              {remainder > 0 ? `Charge — ${formatCents(remainder)}` : 'Add Charge'}
+            </button>
+          )}
           <button
             onClick={() => { setShowChangeEngineer(!showChangeEngineer); setSelectedEngineer(booking.engineer_name || ''); }}
             className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-black/20 text-black/60 px-4 py-2 hover:bg-black/5 transition-colors"
@@ -1271,9 +1285,11 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
       {/* Charge edit form */}
       {showChargeEdit && canCharge && (
         <div className="mt-3 p-3 bg-black/5 border border-black/10 space-y-2">
-          <p className="font-mono text-xs font-semibold uppercase tracking-wider">Adjust Charge Amount</p>
+          <p className="font-mono text-xs font-semibold uppercase tracking-wider">{remainder > 0 ? 'Adjust Charge Amount' : 'Add a Charge'}</p>
           <p className="font-mono text-[10px] text-black/70">
-            Default remainder is {formatCents(remainder)}. Change the amount if the session was adjusted (e.g. switched studios).
+            {remainder > 0
+              ? `Current balance is ${formatCents(remainder)}. Adjust if the session ran long or was changed.`
+              : 'Enter the amount to add (e.g. extra time).'} We charge the card on file first; if that fails, a payment link is emailed to the client.
           </p>
           <div className="flex flex-wrap gap-2 items-end">
             <div>
