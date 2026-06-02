@@ -679,7 +679,10 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
       ? `Update session length to ${label}? (server will recompute end time)`
       : `Save ${newDate} at ${newTime}, ${label}?`;
     if (!confirm(msg)) return;
-    updateBooking({ startTime, duration: newDuration }, 'reschedule');
+    // Changing the session time resolves any pending reschedule request — clear
+    // the flag so the booking stops showing "Reschedule Requested" (mirrors the
+    // admin BookingManager reschedule path).
+    updateBooking({ startTime, duration: newDuration, clearReschedule: true }, 'reschedule');
     setShowReschedule(false);
   }
 

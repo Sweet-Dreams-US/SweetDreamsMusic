@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { fmtStampDateTime } from '@/lib/studio-time';
+import { fmtStampDateTime, toStudioInputValue, studioInputToUtcISO } from '@/lib/studio-time';
 import {
   Calendar, Plus, Edit2, Trash2, XCircle, Eye, EyeOff, Users, Send,
   CheckCircle, ArrowLeft, Mail, MapPin, Clock, AlertCircle, Upload, Image as ImageIcon,
@@ -98,8 +98,10 @@ export default function AdminEvents() {
       tagline: event.tagline || '',
       description: event.description || '',
       cover_image_url: event.cover_image_url || '',
-      starts_at: event.starts_at.slice(0, 16), // ISO → datetime-local
-      ends_at: event.ends_at ? event.ends_at.slice(0, 16) : '',
+      // Load the stored true-UTC instant as an Eastern wall-clock value for the
+      // datetime-local input (so the admin sees/edits the real studio time).
+      starts_at: toStudioInputValue(event.starts_at),
+      ends_at: event.ends_at ? toStudioInputValue(event.ends_at) : '',
       location: event.location || '',
       visibility: event.visibility,
       capacity: event.capacity,
@@ -138,8 +140,10 @@ export default function AdminEvents() {
         tagline: form.tagline || null,
         description: form.description || null,
         cover_image_url: form.cover_image_url || null,
-        starts_at: new Date(form.starts_at as string).toISOString(),
-        ends_at: form.ends_at ? new Date(form.ends_at as string).toISOString() : null,
+        // Interpret the datetime-local entry as Eastern wall-clock → UTC for
+        // storage (browser-zone independent; symmetric with toStudioInputValue).
+        starts_at: studioInputToUtcISO(form.starts_at as string),
+        ends_at: form.ends_at ? studioInputToUtcISO(form.ends_at as string) : null,
         location: form.location || null,
         visibility: form.visibility,
         capacity: form.capacity === null || form.capacity === undefined ? null : Number(form.capacity),

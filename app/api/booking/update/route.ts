@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-  const { bookingId, status, startTime, duration, notes, engineerName, customerName, customerEmail, artistName, room } = await request.json();
+  const { bookingId, status, startTime, duration, notes, engineerName, customerName, customerEmail, artistName, room, clearReschedule } = await request.json();
   if (!bookingId) return NextResponse.json({ error: 'bookingId required' }, { status: 400 });
 
   // Build update object — engineers can update status, time, duration, notes, engineer, and client info
@@ -71,6 +71,14 @@ export async function POST(request: NextRequest) {
   }
   if (room !== undefined) {
     updates.room = room;
+  }
+
+  // Resolving a reschedule request (engineer "Edit Time"): clear the flag so the
+  // booking stops showing "Reschedule Requested" once the time is adjusted.
+  if (clearReschedule) {
+    updates.reschedule_requested = false;
+    updates.reschedule_reason = null;
+    updates.reschedule_requested_at = null;
   }
 
   if (Object.keys(updates).length === 0) {

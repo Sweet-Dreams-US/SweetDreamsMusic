@@ -50,3 +50,49 @@ export function fmtStampDate(iso: string | null | undefined, opts?: Intl.DateTim
 export function fmtStampDateTime(iso: string | null | undefined, opts?: Intl.DateTimeFormatOptions): string {
   return build(iso, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }, opts, TIMEZONE);
 }
+
+// ── <input type="datetime-local"> round-trip in studio-local (Eastern) ──
+// datetime-local values are zone-naive "YYYY-MM-DDTHH:MM". To EDIT a stored
+// true-UTC instant (events.starts_at) in studio-local time without shifting it,
+// load the input via toStudioInputValue and save via studioInputToUtcISO.
+// (The old code sliced the raw UTC ISO into the input and re-encoded it as
+// browser-local on save, which shifted the time 4-5h on every edit.)
+
+/** UTC ISO instant → "YYYY-MM-DDTHH:MM" in Eastern, for a datetime-local input. */
+export function toStudioInputValue(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  let hour = get('hour');
+  if (hour === '24') hour = '00'; // some ICU builds emit 24 for midnight
+  return `${get('year')}-${get('month')}-${get('day')}T${hour}:${get('minute')}`;
+}
+
+/** Eastern offset in ms at an instant: (Eastern wall clock as-if-UTC) − (true UTC). */
+function easternOffsetMs(at: Date): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(at);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  let hour = get('hour');
+  if (hour === 24) hour = 0;
+  const asUtc = Date.UTC(get('year'), get('month') - 1, get('day'), hour, get('minute'), get('second'));
+  return asUtc - at.getTime();
+}
+
+/** "YYYY-MM-DDTHH:MM" entered as Eastern wall-clock → true-UTC ISO (DST-aware). */
+export function studioInputToUtcISO(local: string | null | undefined): string | null {
+  if (!local) return null;
+  const m = local.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return null;
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]), h = Number(m[4]), mi = Number(m[5]);
+  const naiveUtcMs = Date.UTC(y, mo - 1, d, h, mi);
+  const offsetMs = easternOffsetMs(new Date(naiveUtcMs));
+  return new Date(naiveUtcMs - offsetMs).toISOString();
+}
