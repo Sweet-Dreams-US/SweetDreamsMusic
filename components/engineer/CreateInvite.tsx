@@ -113,6 +113,14 @@ export default function CreateInvite() {
 
   async function handleCreate() {
     if (!date || !startTime) return;
+    // Past-time guard: warn (don't block) if the session is in the past in Fort
+    // Wayne. Catches an accidental AM/PM mis-pick or wrong-date entry. Back-dating
+    // a walk-in is legitimate, so the engineer can still proceed.
+    const nowFW = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Indiana/Indianapolis' }));
+    const nowDec = nowFW.getHours() + nowFW.getMinutes() / 60;
+    if (date < todayLocal || (date === todayLocal && startHour < nowDec)) {
+      if (!confirm(`Heads up — ${date} at ${formatTime(startTime)} is in the past (Fort Wayne time). Create this session anyway?`)) return;
+    }
     setCreating(true);
 
     try {
