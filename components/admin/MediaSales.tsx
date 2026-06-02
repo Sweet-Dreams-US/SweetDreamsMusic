@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, DollarSign, Video, Pencil, X, Check, Search, UserPlus } from 'lucide-react';
 import { formatCents } from '@/lib/utils';
 import { ENGINEERS } from '@/lib/constants';
+import { fmtStampDate } from '@/lib/studio-time';
 
 interface MediaSale {
   id: string;
@@ -456,7 +457,7 @@ export default function MediaSales() {
                         </div>
                         <div className="font-mono text-xs text-black/50 space-x-3">
                           {sale.client_name && <span>Client: {sale.client_name}</span>}
-                          <span>{new Date(sale.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>
+                          <span>{fmtStampDate(sale.created_at, { month: 'short', day: 'numeric', year: '2-digit' })}</span>
                         </div>
                         <div className="font-mono text-xs text-black/40 mt-1 space-x-3">
                           {sale.sold_by && <span>Sold: <strong className="text-black/70">{sale.sold_by}</strong></span>}

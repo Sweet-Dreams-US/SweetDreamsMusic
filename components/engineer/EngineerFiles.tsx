@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { FileAudio, Download, Search } from 'lucide-react';
+import { fmtStampDate } from '@/lib/studio-time';
 
 interface FileRecord {
   id: string;
@@ -104,7 +105,7 @@ export default function EngineerFiles() {
                   <span>by {file.uploaded_by_name}</span>
                   <span className="uppercase">{file.file_type?.split('/')[1] || 'file'}</span>
                   {file.file_size > 0 && <span>{formatFileSize(file.file_size)}</span>}
-                  <span>{new Date(file.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>
+                  <span>{fmtStampDate(file.created_at, { month: 'short', day: 'numeric', year: '2-digit' })}</span>
                 </div>
               </div>
               <button

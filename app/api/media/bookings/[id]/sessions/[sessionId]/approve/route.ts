@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
+import { fmtStampDateTime } from '@/lib/studio-time';
 
 export async function POST(
   request: NextRequest,
@@ -138,10 +139,7 @@ export async function POST(
   });
 
   // System message in chat.
-  const startLabel = new Date(session.starts_at).toLocaleString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit',
-  });
+  const startLabel = fmtStampDateTime(session.starts_at, { weekday: 'short' });
   const approverName = user.profile?.display_name ?? user.email.split('@')[0];
   await service.from('media_booking_messages').insert({
     booking_id: bookingId,

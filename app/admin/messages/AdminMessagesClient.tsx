@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, MessageSquare, Mail, AlertCircle } from 'lucide-react';
+import { fmtStampDate } from '@/lib/studio-time';
 
 interface SupportRow {
   thread_id: string;
@@ -148,9 +149,7 @@ export default function AdminMessagesClient() {
                   </div>
                   <div className="text-right shrink-0">
                     <p className="font-mono text-[10px] text-black/50">
-                      {new Date(r.last_message_at).toLocaleDateString('en-US', {
-                        month: 'short', day: 'numeric',
-                      })}
+                      {fmtStampDate(r.last_message_at, { month: 'short', day: 'numeric' })}
                     </p>
                     <p className="font-mono text-[10px] text-black/40 inline-flex items-center gap-1 mt-0.5">
                       <MessageSquare className="w-2.5 h-2.5" />

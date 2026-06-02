@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { AlertCircle, Calendar, Clock, MapPin, PartyPopper, Ban } from 'lucide-react';
 import { getRsvpByToken } from '@/lib/events-server';
 import EventTokenActions from '@/components/events/EventTokenActions';
+import { fmtStampDate, fmtStampTime } from '@/lib/studio-time';
 
 export const metadata: Metadata = { title: 'Event Invitation' };
 
@@ -99,18 +100,8 @@ export default async function EventTokenAcceptPage({
   }
 
   // Case 5 — valid, show details + actions.
-  const startsAt = new Date(event.starts_at);
-  const dateStr = startsAt.toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
-  const timeStr = startsAt.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  });
+  const dateStr = fmtStampDate(event.starts_at, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const timeStr = fmtStampTime(event.starts_at, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
 
   return (
     <InviteShell eventTitle={event.title}>

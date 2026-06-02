@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { Music, ExternalLink, Settings } from 'lucide-react';
 import { createServiceClient, createClient } from '@/lib/supabase/server';
 import ProfileBeatGrid from '@/components/beats/ProfileBeatGrid';
+import { fmtStampDate } from '@/lib/studio-time';
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -282,7 +283,7 @@ export default async function PublicProfilePage({ params }: Props) {
                 const title = item.custom_title || deliverable?.display_name || deliverable?.file_name || 'Untitled';
                 const audioPath = item.profile_audio_path || deliverable?.file_path;
                 const recordedDate = deliverable?.created_at
-                  ? new Date(deliverable.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+                  ? fmtStampDate(deliverable.created_at, { month: 'short', day: 'numeric', year: 'numeric' })
                   : null;
 
                 return (

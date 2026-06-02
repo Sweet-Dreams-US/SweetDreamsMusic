@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, ChevronDown, DollarSign, X, Check, Clock, Pencil, Mail, Banknote, CreditCard, Send, Upload, Download, FileAudio, Plus, Edit3 } from 'lucide-react';
 import { formatCents, formatDuration } from '@/lib/utils';
+import { fmtStampDateTime } from '@/lib/studio-time';
 import { ENGINEERS, ROOM_LABELS } from '@/lib/constants';
 import CashCorrectionModal from '@/components/booking/CashCorrectionModal';
 
@@ -728,7 +729,7 @@ export default function BookingManager() {
                             Reschedule Requested
                           </span>
                           <span className="font-mono text-[10px] text-amber-600">
-                            {b.reschedule_requested_at ? new Date(b.reschedule_requested_at).toLocaleString() : ''}
+                            {fmtStampDateTime(b.reschedule_requested_at)}
                           </span>
                         </div>
                         <p className="font-mono text-xs text-amber-800">

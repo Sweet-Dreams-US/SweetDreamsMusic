@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Loader2, ChevronRight, ArrowLeft } from 'lucide-react';
 import type { ThreadWithMeta } from '@/lib/messaging';
+import { fmtStampDate } from '@/lib/studio-time';
 import MessageThreadView from '@/components/messaging/MessageThreadView';
 
 export default function InboxClient() {
@@ -110,9 +111,7 @@ export default function InboxClient() {
             <p className="font-mono text-[10px] uppercase tracking-wider text-black/50">
               {t.kind === 'sweet_dreams' ? 'OFFICIAL' : t.kind === 'media_booking' ? 'BOOKING' : 'DM'}
               {' · '}
-              {new Date(t.last_message_at).toLocaleDateString('en-US', {
-                month: 'short', day: 'numeric',
-              })}
+              {fmtStampDate(t.last_message_at, { month: 'short', day: 'numeric' })}
             </p>
             {t.last_message_preview && (
               <p className="font-mono text-xs text-black/65 truncate mt-1">

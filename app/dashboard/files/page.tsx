@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { FileAudio, Download, ArrowLeft } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth';
+import { fmtStampDate } from '@/lib/studio-time';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import DashboardNav from '@/components/layout/DashboardNav';
 import FileShowcaseToggle from '@/components/dashboard/FileShowcaseToggle';
@@ -56,9 +57,7 @@ export default async function FilesPage() {
   // Group files by date
   const filesByDate: Record<string, typeof filesWithUrls> = {};
   filesWithUrls.forEach(file => {
-    const dateKey = new Date(file.created_at).toLocaleDateString('en-US', {
-      month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
-    });
+    const dateKey = fmtStampDate(file.created_at, { month: 'long', day: 'numeric', year: 'numeric' });
     if (!filesByDate[dateKey]) filesByDate[dateKey] = [];
     filesByDate[dateKey].push(file);
   });
@@ -106,9 +105,7 @@ export default async function FilesPage() {
                 // Group filtered files by date
                 const grouped: Record<string, typeof filtered> = {};
                 filtered.forEach(file => {
-                  const dateKey = new Date(file.created_at).toLocaleDateString('en-US', {
-                    month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
-                  });
+                  const dateKey = fmtStampDate(file.created_at, { month: 'long', day: 'numeric', year: 'numeric' });
                   if (!grouped[dateKey]) grouped[dateKey] = [];
                   grouped[dateKey].push(file);
                 });

@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 import { createServiceClient } from '@/lib/supabase/server';
 import { SITE_URL } from '@/lib/constants';
 import BlogPostCard from '@/components/blog/BlogPostCard';
+import { fmtStampDate } from '@/lib/studio-time';
 
 export const metadata: Metadata = {
   title: 'Blog — Music Education & Industry Knowledge',
@@ -207,7 +208,7 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
                       </p>
                     )}
                     <div className="font-mono text-[10px] text-black/40 uppercase tracking-wider">
-                      {featuredPost.published_at && new Date(featuredPost.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      {featuredPost.published_at && fmtStampDate(featuredPost.published_at, { month: 'short', day: 'numeric', year: 'numeric' })}
                       {featuredPost.read_time_minutes && ` \u00B7 ${featuredPost.read_time_minutes} min read`}
                     </div>
                   </div>

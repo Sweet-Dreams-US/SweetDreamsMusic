@@ -6,6 +6,7 @@ import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import type { BandInvite, Band } from '@/lib/bands';
 import InviteActions from '@/components/bands/InviteActions';
+import { fmtStampDate } from '@/lib/studio-time';
 
 export const metadata: Metadata = { title: 'Band Invite' };
 
@@ -78,7 +79,7 @@ export default async function AcceptInvitePage({
         <Clock className="w-10 h-10 text-black/40 mx-auto mb-4" />
         <p className="font-mono text-body-md font-bold mb-2">INVITE EXPIRED</p>
         <p className="font-mono text-sm text-black/60 max-w-md mx-auto">
-          This invite expired on {new Date(invite.expires_at).toLocaleDateString()}. Ask your bandmate to
+          This invite expired on {fmtStampDate(invite.expires_at)}. Ask your bandmate to
           send a new one.
         </p>
       </InviteShell>
@@ -185,7 +186,7 @@ export default async function AcceptInvitePage({
       <InviteActions token={token} bandName={invite.band.display_name} />
 
       <p className="font-mono text-xs text-black/40 mt-6">
-        Invite expires {new Date(invite.expires_at).toLocaleDateString()}
+        Invite expires {fmtStampDate(invite.expires_at)}
       </p>
     </InviteShell>
   );

@@ -12,6 +12,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { Loader2, AlertCircle, Plus, Inbox, X, Clock as ClockIcon, Music, Film, Package, Check, MessageSquare } from 'lucide-react';
+import { fmtStampDate } from '@/lib/studio-time';
 
 interface AddonRequest {
   id: string;
@@ -172,7 +173,7 @@ export default function PackageAddonRequests() {
                   </div>
                   <div className="text-right shrink-0">
                     <p className="font-mono text-[10px] text-black/55">
-                      {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {fmtStampDate(r.created_at, { month: 'short', day: 'numeric' })}
                     </p>
                   </div>
                 </div>

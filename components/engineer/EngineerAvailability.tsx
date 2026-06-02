@@ -15,6 +15,7 @@
 
 import { useEffect, useState } from 'react';
 import { CalendarOff, Plus, Trash2, Loader2, AlertCircle } from 'lucide-react';
+import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
 
 interface Block {
   id: string;
@@ -215,19 +216,15 @@ export default function EngineerAvailability() {
         ) : (
           <ul className="space-y-2">
             {blocks.map((b) => {
-              const start = new Date(b.start_time);
-              const end = new Date(b.end_time);
               return (
                 <li key={b.id} className="border-2 border-black/10 p-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-bold text-sm">
-                      {start.toLocaleDateString('en-US', {
-                        weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC',
-                      })}
+                      {fmtSessionDate(b.start_time, { weekday: 'short', month: 'short', day: 'numeric' })}
                       {' · '}
-                      {start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })}
+                      {fmtSessionTime(b.start_time, { hour: 'numeric', minute: '2-digit' })}
                       {' – '}
-                      {end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })}
+                      {fmtSessionTime(b.end_time, { hour: 'numeric', minute: '2-digit' })}
                     </p>
                     {b.reason && (
                       <p className="font-mono text-[11px] text-black/60 italic mt-0.5">&ldquo;{b.reason}&rdquo;</p>

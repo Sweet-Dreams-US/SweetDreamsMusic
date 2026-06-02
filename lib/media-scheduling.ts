@@ -7,6 +7,7 @@
 // Server-only DB queries live in `lib/media-scheduling-server.ts`.
 //
 // Spec: SweetDreamsMusicVault/Features/Media-Booking-Hub.md
+import { fmtStampDateTime, fmtStampTime } from '@/lib/studio-time';
 
 // ============================================================
 // Domain types — mirror media_session_bookings in 039_media_hub.sql
@@ -172,25 +173,16 @@ export function validateProposed(
 /**
  * Format a window for the busy-window label. Used by both the conflict-check
  * server and the scheduler's "your existing sessions" sidebar.
+ *
+ * media_session_bookings.starts_at / ends_at are true-UTC instants
+ * (client calls new Date(...).toISOString() before POSTing) — use fmtStamp*.
  */
 export function formatWindowLabel(
   startsAt: string,
   endsAt: string,
   prefix: string,
 ): string {
-  const s = new Date(startsAt);
-  const e = new Date(endsAt);
-  const fmt = (d: Date) =>
-    d.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      timeZone: 'America/Indiana/Indianapolis',
-    });
-  return `${prefix} · ${fmt(s)} – ${e.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: 'America/Indiana/Indianapolis',
-  })}`;
+  const startLabel = fmtStampDateTime(startsAt, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const endLabel = fmtStampTime(endsAt, { hour: 'numeric', minute: '2-digit' });
+  return `${prefix} · ${startLabel} – ${endLabel}`;
 }

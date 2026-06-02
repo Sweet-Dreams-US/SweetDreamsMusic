@@ -5,6 +5,7 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { Calendar, Clock, Music, DollarSign, CheckCircle, Loader2, LogIn } from 'lucide-react';
 import { ROOM_LABELS, type Room } from '@/lib/constants';
 import { formatCents, formatDuration } from '@/lib/utils';
+import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
 import { createBrowserClient } from '@supabase/ssr';
 
 type BookingData = {
@@ -195,13 +196,8 @@ export default function InvitePage() {
 
   if (!booking) return null;
 
-  const startDate = new Date(booking.start_time);
-  const dateStr = startDate.toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC',
-  });
-  const timeStr = startDate.toLocaleTimeString('en-US', {
-    hour: 'numeric', minute: '2-digit', timeZone: 'UTC',
-  });
+  const dateStr = fmtSessionDate(booking.start_time, { weekday: 'long', month: 'long', day: 'numeric' });
+  const timeStr = fmtSessionTime(booking.start_time);
   const roomLabel = ROOM_LABELS[booking.room as Room] || booking.room;
   const isCash = booking.deposit_method === 'cash';
 

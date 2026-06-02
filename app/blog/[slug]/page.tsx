@@ -10,6 +10,7 @@ import TableOfContents from '@/components/blog/TableOfContents';
 import BlogCTA from '@/components/blog/BlogCTA';
 import BlogPostCard from '@/components/blog/BlogPostCard';
 import MobileTOC from '@/components/blog/MobileTOC';
+import { fmtStampDate } from '@/lib/studio-time';
 
 interface BlogPostPageProps {
   params: Promise<{ slug: string }>;
@@ -56,11 +57,7 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  return fmtStampDate(dateStr, { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 export default async function BlogPostPage({ params }: BlogPostPageProps) {

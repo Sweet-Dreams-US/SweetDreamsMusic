@@ -10,6 +10,7 @@ import {
   sendBandSessionNeedsRescheduleAdmin,
 } from '@/lib/email';
 import { ENGINEERS, findEngineerByEmail, isSameEngineer, type Room } from '@/lib/constants';
+import { fmtSessionDate, fmtSessionTime, fmtStampDateTime } from '@/lib/studio-time';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -70,10 +71,9 @@ export async function POST(request: NextRequest) {
     booking.requested_engineer,
   );
 
-  // Format dates for emails
-  const startDate = new Date(booking.start_time);
-  const dateStr = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-  const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+  // Format dates for emails — bookings.start_time is wall-clock-as-UTC → fmtSession*
+  const dateStr = fmtSessionDate(booking.start_time, { weekday: 'long', month: 'long', day: 'numeric' });
+  const timeStr = fmtSessionTime(booking.start_time);
 
   // ---- ACCEPT ----
   if (action === 'accept') {
@@ -118,10 +118,10 @@ export async function POST(request: NextRequest) {
     if (isNonRequestedClaim) {
       // Import and send the non-requested engineer email
       const { sendEngineerAssignedNonRequested } = await import('@/lib/email');
+      // bookings.reschedule_deadline is a true-UTC *_at instant → convert to Eastern (fmtStamp*)
       const rescheduleDeadlineStr = booking.reschedule_deadline
-        ? new Date(booking.reschedule_deadline).toLocaleString('en-US', {
+        ? fmtStampDateTime(booking.reschedule_deadline, {
             weekday: 'short', month: 'short', day: 'numeric',
-            hour: 'numeric', minute: '2-digit', timeZone: 'UTC',
           })
         : '8 hours before your session';
 

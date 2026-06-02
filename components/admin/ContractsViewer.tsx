@@ -5,6 +5,7 @@ import { FileText, Search, ChevronDown, ChevronUp, ShieldCheck, Handshake, Tag }
 import { formatCents } from '@/lib/utils';
 import { BEAT_AGREEMENT_TEXT, BEAT_AGREEMENT_VERSION } from '@/lib/constants';
 import { generateLicenseText } from '@/lib/license-templates';
+import { fmtStampDate } from '@/lib/studio-time';
 
 type SubTab = 'templates' | 'licenses' | 'producer' | 'private';
 
@@ -63,8 +64,7 @@ function StatusBadge({ status }: { status: string | null | undefined }) {
 }
 
 function formatDate(d: string | null | undefined) {
-  if (!d) return '--';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+  return fmtStampDate(d, { month: 'short', day: 'numeric', year: '2-digit' }) || '--';
 }
 
 export default function ContractsViewer() {

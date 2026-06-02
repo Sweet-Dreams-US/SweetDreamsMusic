@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { generateLicenseText } from '@/lib/license-templates';
 import type { BeatLicenseType } from '@/lib/constants';
+import { fmtStampDate } from '@/lib/studio-time';
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
     producerName: beat?.producer || 'Unknown',
     licenseType: purchase.license_type as BeatLicenseType,
     amountPaid: purchase.amount_paid,
-    purchaseDate: new Date(purchase.created_at).toLocaleDateString(),
+    purchaseDate: fmtStampDate(purchase.created_at),
     purchaseId: purchase.id,
   });
 

@@ -6,6 +6,7 @@ import { SITE_URL } from '@/lib/constants';
 import { STUDIO_IMAGES } from '@/lib/images';
 import { getUpcomingListedEvents } from '@/lib/events-server';
 import { allowsDirectRsvp } from '@/lib/events';
+import { fmtStampDate, fmtStampTime } from '@/lib/studio-time';
 
 export const metadata: Metadata = {
   title: 'Events — Sweet Dreams Music',
@@ -92,17 +93,8 @@ export default async function EventsPage() {
         <section className="bg-white text-black py-20 sm:py-28">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10 md:space-y-14">
             {events.map((event) => {
-              const startsAt = new Date(event.starts_at);
-              const dateStr = startsAt.toLocaleDateString('en-US', {
-                weekday: 'short',
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-              });
-              const timeStr = startsAt.toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit',
-              });
+              const dateStr = fmtStampDate(event.starts_at, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+              const timeStr = fmtStampTime(event.starts_at);
               const isPublic = allowsDirectRsvp(event);
 
               return (

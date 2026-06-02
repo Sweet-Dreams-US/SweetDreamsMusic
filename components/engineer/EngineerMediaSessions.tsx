@@ -17,6 +17,7 @@ import { useEffect, useState } from 'react';
 import { Clock, MapPin, FileText, DollarSign, Inbox } from 'lucide-react';
 import { formatCents } from '@/lib/utils';
 import { SESSION_KIND_LABELS, type MediaSessionKind } from '@/lib/media-scheduling';
+import { fmtStampDateTime, fmtStampTime, fmtStampDate } from '@/lib/studio-time';
 
 interface SessionRow {
   id: string;
@@ -198,9 +199,6 @@ function SessionCard({
     buyer?.display_name || buyer?.email || 'Buyer';
   const bandLabel = parent?.band_id ? bandMap.get(parent.band_id)?.display_name : null;
 
-  const start = new Date(session.starts_at);
-  const end = new Date(session.ends_at);
-
   return (
     <li className="border-2 border-black/10 p-4">
       <div className="flex items-center gap-2 mb-2">
@@ -227,12 +225,9 @@ function SessionCard({
       <div className="font-mono text-[11px] text-black/50 space-y-0.5">
         <p className="flex items-center gap-1">
           <Clock className="w-3 h-3" />
-          {start.toLocaleString('en-US', {
-            weekday: 'short', month: 'short', day: 'numeric',
-            hour: 'numeric', minute: '2-digit',
-          })}
+          {fmtStampDateTime(session.starts_at, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
           {' – '}
-          {end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+          {fmtStampTime(session.ends_at, { hour: 'numeric', minute: '2-digit' })}
         </p>
         <p className="flex items-center gap-1">
           <MapPin className="w-3 h-3" />
@@ -261,7 +256,7 @@ function SessionCard({
             Payout: {formatCents(session.engineer_payout_cents)}
             {session.engineer_payout_paid_at && (
               <span className="font-normal text-black/50 ml-1">
-                · recorded {new Date(session.engineer_payout_paid_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                · recorded {fmtStampDate(session.engineer_payout_paid_at, { month: 'short', day: 'numeric' })}
               </span>
             )}
           </p>

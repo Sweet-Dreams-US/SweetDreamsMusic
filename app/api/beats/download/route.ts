@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { fmtStampDate } from '@/lib/studio-time';
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
   // Check if lease has expired
   if (purchase.lease_expires_at && new Date(purchase.lease_expires_at) < new Date()) {
     return NextResponse.json({
-      error: `Your lease expired on ${new Date(purchase.lease_expires_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}. Renew your license to continue downloading.`,
+      error: `Your lease expired on ${fmtStampDate(purchase.lease_expires_at, { month: 'long' })}. Renew your license to continue downloading.`,
       expired: true,
       lease_expires_at: purchase.lease_expires_at,
     }, { status: 403 });

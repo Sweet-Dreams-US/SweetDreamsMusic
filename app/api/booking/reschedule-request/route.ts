@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { sendRescheduleRequestAlert } from '@/lib/email';
 import { canRequestReschedule } from '@/lib/priority';
+import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -59,10 +60,9 @@ export async function POST(request: NextRequest) {
     reschedule_requested_at: new Date().toISOString(),
   }).eq('id', bookingId);
 
-  // Notify admins
-  const startDate = new Date(booking.start_time);
-  const dateStr = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-  const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+  // Notify admins — bookings.start_time is wall-clock-as-UTC → fmtSession*
+  const dateStr = fmtSessionDate(booking.start_time, { weekday: 'long', month: 'long', day: 'numeric' });
+  const timeStr = fmtSessionTime(booking.start_time);
 
   await sendRescheduleRequestAlert({
     customerName: booking.customer_name,

@@ -18,6 +18,7 @@ import {
   XCircle, Clock as ClockIcon, Crown, Users, Calendar, Mail,
 } from 'lucide-react';
 import { formatCents } from '@/lib/packages';
+import { fmtStampDate } from '@/lib/studio-time';
 
 interface QuoteRow {
   id: string;
@@ -229,7 +230,7 @@ export default function PackageQuotes() {
                   )}
                   {q.expires_at && (
                     <p className="font-mono text-[10px] text-black/45 mt-1">
-                      expires {new Date(q.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      expires {fmtStampDate(q.expires_at, { month: 'short', day: 'numeric' })}
                     </p>
                   )}
                 </div>

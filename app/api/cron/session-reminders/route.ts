@@ -8,6 +8,7 @@ import {
 } from '@/lib/email';
 import { ENGINEERS, SUPER_ADMINS, TIMEZONE } from '@/lib/constants';
 import { SESSION_KIND_LABELS, type MediaSessionKind } from '@/lib/media-scheduling';
+import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
 
 export const maxDuration = 30;
 
@@ -62,13 +63,9 @@ export async function GET(request: NextRequest) {
 
   for (const booking of bookings) {
     try {
-      const startDate = new Date(booking.start_time);
-      const dateStr = startDate.toLocaleDateString('en-US', {
-        weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC',
-      });
-      const timeStr = startDate.toLocaleTimeString('en-US', {
-        hour: 'numeric', minute: '2-digit', timeZone: 'UTC',
-      });
+      // bookings.start_time is wall-clock-as-UTC → read as UTC (fmtSession*)
+      const dateStr = fmtSessionDate(booking.start_time, { weekday: 'long', month: 'long', day: 'numeric' });
+      const timeStr = fmtSessionTime(booking.start_time);
 
       // Resolve actual client name — invites may store 'Pending Invite' as fallback
       const displayName = (booking.customer_name && !booking.customer_name.includes('Pending') && !booking.customer_name.includes('Invited:'))

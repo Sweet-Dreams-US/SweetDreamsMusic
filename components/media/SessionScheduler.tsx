@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Calendar, MapPin, Plus, Loader2, AlertCircle, CheckCircle2, ArrowRight, Building2, RotateCcw } from 'lucide-react';
 import { ENGINEERS } from '@/lib/constants';
+import { fmtStampDateTime, fmtStampTime } from '@/lib/studio-time';
 
 interface Session {
   id: string;
@@ -330,15 +331,8 @@ function SessionRow({
   approverEngineerId: string;
   setApproverEngineerId: (v: string) => void;
 }) {
-  const start = new Date(session.starts_at);
-  const end = new Date(session.ends_at);
-  const startLabel = start.toLocaleString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit',
-  });
-  const endLabel = end.toLocaleTimeString('en-US', {
-    hour: 'numeric', minute: '2-digit',
-  });
+  const startLabel = fmtStampDateTime(session.starts_at, { weekday: 'short' });
+  const endLabel = fmtStampTime(session.ends_at);
   const statusColor =
     session.status === 'scheduled'
       ? 'bg-green-100 text-green-900'

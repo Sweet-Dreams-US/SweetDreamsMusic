@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
+import { fmtStampDateTime } from '@/lib/studio-time';
 
 const VALID_KINDS = [
   'planning_call',
@@ -202,10 +203,7 @@ export async function POST(
   });
 
   // Post a system message into the chat so the other side gets a digest.
-  const startLabel = new Date(startsAt).toLocaleString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit',
-  });
+  const startLabel = fmtStampDateTime(startsAt, { weekday: 'short' });
   const proposerName = user.profile?.display_name ?? user.email.split('@')[0];
   const verb = supersedesId ? 'counter-proposed' : 'proposed';
   await service.from('media_booking_messages').insert({

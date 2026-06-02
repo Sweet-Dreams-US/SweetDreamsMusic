@@ -27,6 +27,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { getSessionsForBooking, getEngineerByUserId } from '@/lib/media-scheduling-server';
 import { SESSION_KIND_LABELS } from '@/lib/media-scheduling';
 import { formatCents } from '@/lib/utils';
+import { fmtStampDate, fmtStampDateTime, fmtStampTime } from '@/lib/studio-time';
 import { describeConfig, type ConfiguredComponents } from '@/lib/media-config';
 import DashboardNav from '@/components/layout/DashboardNav';
 import CancelSessionButton from '@/components/media/CancelSessionButton';
@@ -178,9 +179,7 @@ export default async function OrderDetailPage({
           </p>
           <h1 className="text-heading-xl mb-2">{offering.title}</h1>
           <p className="font-mono text-sm text-white/60">
-            Ordered {new Date(booking.created_at).toLocaleDateString('en-US', {
-              month: 'long', day: 'numeric', year: 'numeric',
-            })}
+            Ordered {fmtStampDate(booking.created_at, { month: 'long', day: 'numeric', year: 'numeric' })}
             {' · '}
             {booking.final_price_cents > 0
               ? formatCents(booking.final_price_cents)
@@ -302,15 +301,8 @@ export default async function OrderDetailPage({
               <ul className="space-y-2">
                 {activeSessions.map((s) => {
                   const engineerName = engineerNameMap.get(s.engineer_id) || 'Engineer';
-                  const start = new Date(s.starts_at);
-                  const end = new Date(s.ends_at);
-                  const startLabel = start.toLocaleString('en-US', {
-                    weekday: 'short', month: 'short', day: 'numeric',
-                    hour: 'numeric', minute: '2-digit',
-                  });
-                  const endLabel = end.toLocaleTimeString('en-US', {
-                    hour: 'numeric', minute: '2-digit',
-                  });
+                  const startLabel = fmtStampDateTime(s.starts_at, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+                  const endLabel = fmtStampTime(s.ends_at);
                   return (
                     <li
                       key={s.id}
@@ -369,9 +361,7 @@ export default async function OrderDetailPage({
                     <li key={s.id} className="font-mono text-xs text-black/40 flex items-center gap-2">
                       <XCircle className="w-3 h-3" />
                       {SESSION_KIND_LABELS[s.session_kind]} ·
-                      {' '}{new Date(s.starts_at).toLocaleString('en-US', {
-                        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-                      })}
+                      {' '}{fmtStampDateTime(s.starts_at, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     </li>
                   ))}
                 </ul>
@@ -397,7 +387,7 @@ export default async function OrderDetailPage({
                         <p className="font-mono text-[10px] uppercase tracking-wider text-black/50">
                           {d.kind}
                           {d.added_at && (
-                            <> · added {new Date(d.added_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</>
+                            <> · added {fmtStampDate(d.added_at, { month: 'short', day: 'numeric' })}</>
                           )}
                         </p>
                       )}
@@ -446,7 +436,7 @@ export default async function OrderDetailPage({
                   <ProjectDetailRow
                     label="Target release"
                     value={new Date(booking.project_details.release_date).toLocaleDateString('en-US', {
-                      month: 'long', day: 'numeric', year: 'numeric',
+                      month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
                     })}
                   />
                 )}
@@ -644,9 +634,7 @@ function ProductionStatusPanel({
                     <p className="font-bold text-sm">{slot.label}</p>
                     {isComplete && s.completed_at && (
                       <p className="font-mono text-[11px] text-black/55">
-                        Completed {new Date(s.completed_at).toLocaleDateString('en-US', {
-                          month: 'short', day: 'numeric',
-                        })}
+                        Completed {fmtStampDate(s.completed_at, { month: 'short', day: 'numeric' })}
                       </p>
                     )}
                   </div>

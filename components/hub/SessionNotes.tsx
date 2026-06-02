@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { FileText, Plus, Check, MessageSquare, Music, Eye, EyeOff } from 'lucide-react';
 import { formatDuration } from '@/lib/utils';
+import { fmtSessionDate } from '@/lib/studio-time';
 
 interface SessionNote {
   id: string;
@@ -198,13 +199,7 @@ export default function SessionNotes({ onXpEarned, isEngineer = false }: { onXpE
                   <Music className="w-4 h-4 text-accent" />
                   <div>
                     <p className="font-mono text-sm font-semibold">
-                      {new Date(session.start_time).toLocaleDateString('en-US', {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                        timeZone: 'UTC',
-                      })}
+                      {fmtSessionDate(session.start_time, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
                     </p>
                     <p className="font-mono text-[10px] text-black/40">
                       {session.room === 'studio_a' ? 'Studio A' : session.room === 'studio_b' ? 'Studio B' : session.room || 'Studio'}

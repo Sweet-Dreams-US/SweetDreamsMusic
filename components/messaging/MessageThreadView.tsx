@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Send, Paperclip, X, Loader2, ExternalLink } from 'lucide-react';
 import type { Attachment, AuthorRole, MessageKind, MessageWithAuthor } from '@/lib/messaging';
 import { bubbleStyleFor } from '@/lib/messaging';
+import { fmtStampDateTime } from '@/lib/studio-time';
 
 interface Props {
   threadId: string;
@@ -270,10 +271,7 @@ function MessageBubble({
 }) {
   const isOwn = viewerRole && message.author_role === viewerRole;
   const isSystem = message.author_role === 'system';
-  const date = new Date(message.created_at);
-  const timeStr = date.toLocaleString('en-US', {
-    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-  });
+  const timeStr = fmtStampDateTime(message.created_at);
 
   // System messages render centered as a slim notice (kind=update or kind=booking_notification)
   if (isSystem || message.kind !== 'chat') {

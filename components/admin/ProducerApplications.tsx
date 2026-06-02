@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, Clock, ExternalLink, Music, ChevronDown, ChevronUp } from 'lucide-react';
+import { fmtStampDate } from '@/lib/studio-time';
 
 interface Application {
   id: string;
@@ -129,7 +130,7 @@ export default function ProducerApplications() {
                       </span>
                     )}
                     <span className="font-mono text-[10px] text-black/30">
-                      {new Date(app.created_at).toLocaleDateString()}
+                      {fmtStampDate(app.created_at, { month: 'short', day: 'numeric', year: 'numeric' })}
                     </span>
                     {isExpanded ? <ChevronUp className="w-4 h-4 text-black/30" /> : <ChevronDown className="w-4 h-4 text-black/30" />}
                   </div>

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { ROOM_LABELS, type Room } from '@/lib/constants';
 import { formatCents, formatDuration } from '@/lib/utils';
+import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
 
 type Booking = {
   id: string;
@@ -279,9 +280,9 @@ export default function SessionPrepPage() {
           <h1 className="text-heading-md">PREPARE FOR YOUR SESSION</h1>
           {booking && (
             <p className="font-mono text-sm text-black/60 mt-2">
-              {new Date(booking.start_time).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' })}
+              {fmtSessionDate(booking.start_time, { weekday: 'long', month: 'long', day: 'numeric' })}
               {' · '}
-              {new Date(booking.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })}
+              {fmtSessionTime(booking.start_time)}
               {' · '}
               {formatDuration(booking.duration)}
               {booking.engineer_name && ` · ${booking.engineer_name}`}

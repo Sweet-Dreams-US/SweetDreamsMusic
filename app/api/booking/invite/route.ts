@@ -4,6 +4,7 @@ import { SITE_URL, ENGINEERS, PRICING } from '@/lib/constants';
 import { parseTimeSlot } from '@/lib/utils';
 import { verifyEngineerAccess } from '@/lib/admin-auth';
 import { sendSessionInvite } from '@/lib/email';
+import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
 
 // Engineer creates a session and generates an invite link
 export async function POST(request: NextRequest) {
@@ -109,9 +110,10 @@ export async function POST(request: NextRequest) {
       // Send invite email if client email provided
       if (clientEmail) {
         try {
-          const startDate = new Date(`${date}T${startTime}:00+00:00`);
-          const dateStr = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-          const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+          // bookings.start_time is wall-clock-as-UTC → read as UTC (fmtSession*)
+          const isoStr = `${date}T${startTime}:00+00:00`;
+          const dateStr = fmtSessionDate(isoStr, { weekday: 'long', month: 'long', day: 'numeric' });
+          const timeStr = fmtSessionTime(isoStr);
 
           await sendSessionInvite(clientEmail, {
             customerName: clientName || 'Client',
@@ -167,9 +169,10 @@ export async function POST(request: NextRequest) {
     // Send invite email with payment link if client email provided
     if (clientEmail) {
       try {
-        const startDate = new Date(`${date}T${startTime}:00+00:00`);
-        const dateStr = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-        const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+        // bookings.start_time is wall-clock-as-UTC → read as UTC (fmtSession*)
+        const isoStr2 = `${date}T${startTime}:00+00:00`;
+        const dateStr = fmtSessionDate(isoStr2, { weekday: 'long', month: 'long', day: 'numeric' });
+        const timeStr = fmtSessionTime(isoStr2);
 
         await sendSessionInvite(clientEmail, {
           customerName: clientName || 'Client',

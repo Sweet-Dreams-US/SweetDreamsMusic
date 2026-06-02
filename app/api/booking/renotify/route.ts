@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { verifyEngineerAccess } from '@/lib/admin-auth';
 import { sendBookingConfirmation, sendEngineerNewBookingAlert } from '@/lib/email';
 import { ENGINEERS, ROOM_LABELS, type Room } from '@/lib/constants';
+import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -22,9 +23,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
   }
 
-  const startDate = new Date(booking.start_time);
-  const dateStr = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-  const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+  // bookings.start_time is wall-clock-as-UTC → read as UTC (fmtSession*)
+  const dateStr = fmtSessionDate(booking.start_time, { weekday: 'long', month: 'long', day: 'numeric' });
+  const timeStr = fmtSessionTime(booking.start_time);
 
   if (type === 'engineer_alert') {
     // Resend new booking alert to engineers for this studio

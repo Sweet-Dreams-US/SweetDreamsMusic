@@ -3,6 +3,7 @@ import { stripe } from '@/lib/stripe';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { PRICING, SITE_URL, ROOM_LABELS, type Room } from '@/lib/constants';
 import { formatDuration } from '@/lib/utils';
+import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
 
 // Client pays deposit for an invited booking via Stripe Checkout
 export async function POST(request: NextRequest) {
@@ -48,9 +49,9 @@ export async function POST(request: NextRequest) {
     }
 
     const roomLabel = ROOM_LABELS[booking.room as Room] || booking.room;
-    const startDate = new Date(booking.start_time);
-    const dateStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-    const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+    // bookings.start_time is wall-clock-as-UTC → read as UTC (fmtSession*)
+    const dateStr = fmtSessionDate(booking.start_time, { month: 'short', day: 'numeric' });
+    const timeStr = fmtSessionTime(booking.start_time);
 
     // Link booking to the authenticated user's real account info
     const { data: profile } = await supabase

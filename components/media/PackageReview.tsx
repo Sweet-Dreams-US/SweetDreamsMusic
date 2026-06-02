@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Loader2, MessageCircle, Download, PackageCheck } from 'lucide-react';
 import { formatCents } from '@/lib/utils';
+import { fmtStampDate } from '@/lib/studio-time';
 import {
   type LineItem,
   type Package,
@@ -91,10 +92,7 @@ export default function PackageReview({ bookingId }: Props) {
           <div>
             <p className="font-mono text-[10px] uppercase tracking-wider text-white/60">
               {isFullyApproved ? 'Approved on ' : 'Sent on '}
-              {(pkg.approved_at ?? pkg.proposed_at) &&
-                new Date((pkg.approved_at ?? pkg.proposed_at)!).toLocaleDateString('en-US', {
-                  month: 'short', day: 'numeric', year: 'numeric',
-                })}
+              {fmtStampDate(pkg.approved_at ?? pkg.proposed_at)}
             </p>
             <p className="font-mono text-base font-bold mt-0.5">
               {isFullyApproved ? '✓ Package locked — production unblocked' : `${approvedCount} of ${items.length} approved`}
@@ -147,7 +145,7 @@ export default function PackageReview({ bookingId }: Props) {
                           Delivered
                           {it.completed_at && (
                             <span className="font-normal text-green-700">
-                              {' '}· {new Date(it.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              {' '}· {fmtStampDate(it.completed_at, { year: undefined })}
                             </span>
                           )}
                         </span>

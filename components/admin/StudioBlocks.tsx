@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Clock, Trash2, Plus } from 'lucide-react';
 import { formatTime } from '@/lib/utils';
+import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
 
 interface Block {
   id: string;
@@ -169,11 +170,9 @@ export default function StudioBlocks() {
         ) : (
           <div className="space-y-2">
             {blocks.map((block) => {
-              const start = new Date(block.start_time);
-              const end = new Date(block.end_time);
-              const dateStr = start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
-              const startStr = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
-              const endStr = end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+              const dateStr = fmtSessionDate(block.start_time, { weekday: 'short', month: 'short', day: 'numeric' });
+              const startStr = fmtSessionTime(block.start_time);
+              const endStr = fmtSessionTime(block.end_time);
 
               return (
                 <div key={block.id} className="flex items-center justify-between border border-black/10 px-4 py-3">

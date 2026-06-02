@@ -39,6 +39,7 @@ import {
   Send,
 } from 'lucide-react';
 import { formatCents } from '@/lib/utils';
+import { fmtStampDate, fmtStampDateTime, fmtStampTime } from '@/lib/studio-time';
 import MessageThread from '@/components/media/MessageThread';
 import PackageBuilder from '@/components/media/PackageBuilder';
 import {
@@ -242,9 +243,7 @@ export default function MediaOrders() {
                         </span>
                       </p>
                       <p className="font-mono text-[11px] text-black/50">
-                        {new Date(b.created_at).toLocaleDateString('en-US', {
-                          month: 'short', day: 'numeric', year: 'numeric',
-                        })}
+                        {fmtStampDate(b.created_at, { year: 'numeric' })}
                         {' · '}
                         {b.final_price_cents > 0
                           ? formatCents(b.final_price_cents)
@@ -517,7 +516,7 @@ function BookingPanel({
             <p className="text-lg font-bold tabular-nums text-green-700">{formatCents(paid)}</p>
             {booking.deposit_paid_at && (
               <p className="font-mono text-[9px] text-black/40">
-                deposit {new Date(booking.deposit_paid_at).toLocaleDateString()}
+                deposit {fmtStampDate(booking.deposit_paid_at)}
               </p>
             )}
           </div>
@@ -989,13 +988,13 @@ function ComponentSlotRow({
       <div className="flex items-center gap-3 mt-1">
         {state.completed && state.completed_at && (
           <span className="font-mono text-[10px] text-green-700 uppercase tracking-wider">
-            ✓ {new Date(state.completed_at).toLocaleDateString()}
+            ✓ {fmtStampDate(state.completed_at)}
             {state.completed_by && ` by ${state.completed_by}`}
           </span>
         )}
         {state.notified_at && (
           <span className="font-mono text-[10px] text-blue-700">
-            buyer emailed {new Date(state.notified_at).toLocaleDateString()}
+            buyer emailed {fmtStampDate(state.notified_at)}
           </span>
         )}
         {state.drive_url && (
@@ -2131,10 +2130,7 @@ function AuditHistoryPanel({ bookingId }: { bookingId: string }) {
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-bold">{formatAuditAction(e.action)}</span>
                     <span className="text-black/40 shrink-0">
-                      {new Date(e.created_at).toLocaleString('en-US', {
-                        month: 'short', day: 'numeric',
-                        hour: 'numeric', minute: '2-digit',
-                      })}
+                      {fmtStampDateTime(e.created_at, { minute: '2-digit' })}
                     </span>
                   </div>
                   <div className="text-black/60 truncate">
@@ -2313,9 +2309,6 @@ function SessionRow({
     }
   }
 
-  const start = new Date(session.starts_at);
-  const end = new Date(session.ends_at);
-
   return (
     <li className="flex items-start justify-between gap-3 px-3 py-2 bg-white border border-black/10">
       <div className="min-w-0 flex-1">
@@ -2342,13 +2335,9 @@ function SessionRow({
         </div>
         <p className="font-mono text-[11px] text-black/50">
           <Clock className="w-3 h-3 inline mr-1" />
-          {start.toLocaleString('en-US', {
-            month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-          })}
+          {fmtStampDateTime(session.starts_at, { minute: '2-digit' })}
           {' – '}
-          {end.toLocaleTimeString('en-US', {
-            hour: 'numeric', minute: '2-digit',
-          })}
+          {fmtStampTime(session.ends_at, { minute: '2-digit' })}
           {' · '}
           {session.location === 'studio'
             ? 'Studio'

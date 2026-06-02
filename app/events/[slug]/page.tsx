@@ -6,6 +6,7 @@ import { SITE_URL } from '@/lib/constants';
 import { getEventBySlug, getConfirmedAttendeeCount, getUserRsvp } from '@/lib/events-server';
 import { getSessionUser } from '@/lib/auth';
 import EventRsvpBlock from '@/components/events/EventRsvpBlock';
+import { fmtStampDate, fmtStampTime } from '@/lib/studio-time';
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -64,22 +65,10 @@ export default async function EventDetailPage({ params }: Props) {
   const attendeeCount = await getConfirmedAttendeeCount(event.id);
   const capacityFull = event.capacity != null && attendeeCount >= event.capacity;
 
-  const startsAt = new Date(event.starts_at);
-  const endsAt = event.ends_at ? new Date(event.ends_at) : null;
-
-  const dateStr = startsAt.toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
-  const timeStr = startsAt.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  });
-  const endTimeStr = endsAt
-    ? endsAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  const dateStr = fmtStampDate(event.starts_at, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const timeStr = fmtStampTime(event.starts_at, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+  const endTimeStr = event.ends_at
+    ? fmtStampTime(event.ends_at)
     : null;
 
   return (

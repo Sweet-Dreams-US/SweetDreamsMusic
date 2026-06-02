@@ -18,6 +18,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { Loader2, AlertCircle, ArrowDown, ArrowUp, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { fmtSessionDateTime, fmtStampDateTime } from '@/lib/studio-time';
 
 interface Correction {
   id: string;
@@ -44,13 +45,8 @@ function formatCents(cents: number): string {
   return `${sign}$${(Math.abs(cents) / 100).toFixed(2)}`;
 }
 
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: 'numeric', minute: '2-digit', timeZone: 'UTC',
-  });
-}
+// booking_start_time = wall-clock-as-UTC → fmtSessionDateTime
+// created_at (correction timestamp) = true-UTC → fmtStampDateTime
 
 export default function CashCorrectionsLog() {
   const [corrections, setCorrections] = useState<Correction[] | null>(null);
@@ -145,11 +141,11 @@ export default function CashCorrectionsLog() {
                       )}
                     </div>
                     <p className="font-mono text-[11px] text-black/60">
-                      Session: {formatDate(c.booking_start_time)}
+                      Session: {fmtSessionDateTime(c.booking_start_time, { year: 'numeric', minute: '2-digit' })}
                     </p>
                     <p className="font-mono text-[11px] text-black/55 mt-0.5">
                       Corrected by <strong className="text-black">{c.corrected_by_email}</strong>
-                      {' '}({c.corrected_by_role}) on {formatDate(c.created_at)}
+                      {' '}({c.corrected_by_role}) on {fmtStampDateTime(c.created_at, { year: 'numeric', minute: '2-digit' })}
                     </p>
                     <div className="bg-black/[0.03] border-l-2 border-black/30 px-2.5 py-1.5 mt-2">
                       <p className="font-mono text-[11px] text-black/70 whitespace-pre-wrap">

@@ -21,6 +21,7 @@ import RequestMoreModal from './RequestMoreModal';
 import RedeemSessionModal from './RedeemSessionModal';
 import RedeemBeatModal from './RedeemBeatModal';
 import RedeemMediaModal from './RedeemMediaModal';
+import { fmtStampDate } from '@/lib/studio-time';
 
 interface Balance {
   id: string;
@@ -49,9 +50,6 @@ interface Entitlement {
   balances: Balance[];
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
 
 function balanceLabel(b: Balance): string {
   if (b.kind === 'studio_hours') {
@@ -213,7 +211,7 @@ export default function ActivePackages() {
                   </div>
                   <div className="text-right shrink-0">
                     <p className="font-mono text-[10px] uppercase tracking-wider text-black/50">Expires</p>
-                    <p className="font-mono text-xs font-bold">{formatDate(ent.ends_at)}</p>
+                    <p className="font-mono text-xs font-bold">{fmtStampDate(ent.ends_at, { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                   </div>
                 </div>
 

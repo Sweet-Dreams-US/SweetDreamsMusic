@@ -5,6 +5,7 @@ import { Calendar, Music, FileAudio, Download, Heart, PenLine, ShoppingBag } fro
 import { getSessionUser } from '@/lib/auth';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { formatCents, formatDuration } from '@/lib/utils';
+import { fmtSessionDate, fmtSessionTime, fmtStampDate } from '@/lib/studio-time';
 import DashboardNav from '@/components/layout/DashboardNav';
 import RescheduleButton from '@/components/dashboard/RescheduleButton';
 import XPWidget from '@/components/dashboard/XPWidget';
@@ -147,13 +148,9 @@ export default async function DashboardPage() {
                       <div className="flex justify-between items-start">
                         <div>
                           <p className="font-mono text-sm font-semibold">
-                            {new Date(booking.start_time).toLocaleDateString('en-US', {
-                              weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC'
-                            })}
+                            {fmtSessionDate(booking.start_time, { weekday: 'short', month: 'short', day: 'numeric' })}
                             {' · '}
-                            {new Date(booking.start_time).toLocaleTimeString('en-US', {
-                              hour: 'numeric', minute: '2-digit', timeZone: 'UTC'
-                            })}
+                            {fmtSessionTime(booking.start_time)}
                           </p>
                           <p className="font-mono text-xs text-black/70 mt-1">
                             {formatDuration(booking.duration)} — {formatCents(booking.total_amount)}
@@ -231,7 +228,7 @@ export default async function DashboardPage() {
                             {file.display_name || file.file_name}
                           </p>
                           <p className="font-mono text-xs text-black/70 mt-1">
-                            by {file.uploaded_by_name} — {new Date(file.created_at).toLocaleDateString()}
+                            by {file.uploaded_by_name} — {fmtStampDate(file.created_at)}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
@@ -326,7 +323,7 @@ export default async function DashboardPage() {
                     >
                       <p className="font-mono text-sm font-bold truncate">{beat.title}</p>
                       <p className="font-mono text-xs text-black/70 mt-1">
-                        {beat.producer} · Last edited {new Date(lyric.updated_at).toLocaleDateString()}
+                        {beat.producer} · Last edited {fmtStampDate(lyric.updated_at)}
                       </p>
                     </Link>
                   );

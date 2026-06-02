@@ -14,6 +14,7 @@ import { notFound } from 'next/navigation';
 import { headers } from 'next/headers';
 import { Crown, Users, Clock, Film, Music, Package, Calendar, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import QuoteActions from '@/components/packages/QuoteActions';
+import { fmtStampDate } from '@/lib/studio-time';
 
 interface QuoteLine {
   id: string;
@@ -247,7 +248,7 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
           </p>
           {quote.expires_at && (
             <p className="font-mono text-xs text-black/70">
-              • Quote expires <strong>{new Date(quote.expires_at).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</strong>.
+              • Quote expires <strong>{fmtStampDate(quote.expires_at, { weekday: 'long', month: 'long' })}</strong>.
             </p>
           )}
         </div>

@@ -5,6 +5,7 @@ import { Plus, Trash2, Music, X, Upload, TrendingUp, ShoppingCart, DollarSign, C
 import { formatCents } from '@/lib/utils';
 import { BEAT_LICENSES, BEAT_GENRES } from '@/lib/constants';
 import PrivateSaleModal from '@/components/beats/PrivateSaleModal';
+import { fmtStampDate } from '@/lib/studio-time';
 
 interface Producer {
   id: string;
@@ -623,7 +624,7 @@ export default function BeatManager() {
                       {BEAT_LICENSES[sale.license_type as keyof typeof BEAT_LICENSES]?.name || sale.license_type}
                     </p>
                     <p className="font-mono text-[10px] text-black/30 mt-0.5">
-                      {new Date(sale.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                      {fmtStampDate(sale.created_at, { month: 'short', day: 'numeric', year: '2-digit' })}
                       {sale.payment_method !== 'stripe' && ` · ${sale.payment_method}`}
                     </p>
                   </div>

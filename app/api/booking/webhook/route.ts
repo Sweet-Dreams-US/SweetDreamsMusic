@@ -16,6 +16,7 @@ import { mintEntitlementFromQuote, extendEntitlement } from '@/lib/packages-mint
 import { ENGINEERS, SUPER_ADMINS, SITE_URL, type Room } from '@/lib/constants';
 import { calculatePriorityExpiry, getPriorityHoursLabel, calculateRescheduleDeadline } from '@/lib/priority';
 import { awardXP } from '@/lib/xp-system';
+import { fmtSessionDate, fmtSessionTime, fmtStampDate } from '@/lib/studio-time';
 import type Stripe from 'stripe';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -345,11 +346,9 @@ export async function POST(request: NextRequest) {
           newBooking = row;
         }
 
-        // Send emails — use Fort Wayne timezone since Vercel runs UTC
-        const startDate = new Date(startDateTime);
-        // Times are stored as local Fort Wayne hours in UTC — format as UTC to preserve the intended hour
-        const dateStr = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-        const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+        // Send emails — bookings.start_time is wall-clock-as-UTC → fmtSession*
+        const dateStr = fmtSessionDate(startDateTime, { weekday: 'long', month: 'long', day: 'numeric' });
+        const timeStr = fmtSessionTime(startDateTime);
         const duration = parseFloat(meta.duration_hours);
 
         // Customer confirmation
@@ -498,10 +497,9 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Send confirmation emails
-          const startDate = new Date(existingBooking.start_time);
-          const dateStr = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-          const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+          // Send confirmation emails — bookings.start_time is wall-clock-as-UTC → fmtSession*
+          const dateStr = fmtSessionDate(existingBooking.start_time, { weekday: 'long', month: 'long', day: 'numeric' });
+          const timeStr = fmtSessionTime(existingBooking.start_time);
 
           if (existingBooking.customer_email) {
             await sendBookingConfirmation(existingBooking.customer_email, {
@@ -694,15 +692,16 @@ export async function POST(request: NextRequest) {
                 if (lease.buyer_email) {
                   try {
                     const leaseName = lease.buyer_email.split('@')[0] || 'Customer';
+                    // lease_expires_at + created_at are true-UTC *_at instants → fmtStamp*
                     const expiryDate = lease.lease_expires_at
-                      ? new Date(lease.lease_expires_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                      ? fmtStampDate(lease.lease_expires_at, { month: 'long', day: 'numeric', year: 'numeric' })
                       : 'your license term';
                     await sendLeaseRevokedNotification(lease.buyer_email, {
                       buyerName: leaseName,
                       beatTitle: meta.beat_title || 'Beat',
                       producerName: meta.producer || 'Unknown',
                       licenseType: lease.license_type === 'mp3_lease' ? 'MP3 Lease' : 'Trackout Lease',
-                      purchaseDate: new Date(lease.created_at).toLocaleDateString('en-US'),
+                      purchaseDate: fmtStampDate(lease.created_at),
                     });
                   } catch (emailErr) { console.error(`Failed to send grandfathered email to ${lease.buyer_email}:`, emailErr); }
                 }
@@ -912,7 +911,8 @@ export async function POST(request: NextRequest) {
                         beatTitle: beatInfo?.title || sale.beat_title || 'Beat',
                         producerName: beatInfo?.producer || sale.beat_producer || 'Unknown',
                         licenseType: lease.license_type === 'mp3_lease' ? 'MP3 Lease' : 'Trackout Lease',
-                        purchaseDate: new Date(lease.created_at).toLocaleDateString('en-US'),
+                        // created_at is a true-UTC *_at instant → convert to Eastern (fmtStamp*)
+                        purchaseDate: fmtStampDate(lease.created_at),
                       });
                     } catch (emailErr) { console.error(`Failed to send grandfathered email to ${lease.buyer_email}:`, emailErr); }
                   }
@@ -1607,10 +1607,9 @@ export async function POST(request: NextRequest) {
             );
           }
 
-          // Send all emails
-          const startDate = new Date(startDateTime);
-          const dateStr = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-          const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+          // Send all emails — bookings.start_time is wall-clock-as-UTC → fmtSession*
+          const dateStr = fmtSessionDate(startDateTime, { weekday: 'long', month: 'long', day: 'numeric' });
+          const timeStr = fmtSessionTime(startDateTime);
           const duration = parseFloat(asyncMeta.duration_hours);
 
           await sendBookingConfirmation(asyncMeta.customer_email, {
@@ -1710,9 +1709,9 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          const startDate = new Date(existingBooking.start_time);
-          const dateStr = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-          const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+          // bookings.start_time is wall-clock-as-UTC → fmtSession*
+          const dateStr = fmtSessionDate(existingBooking.start_time, { weekday: 'long', month: 'long', day: 'numeric' });
+          const timeStr = fmtSessionTime(existingBooking.start_time);
 
           if (existingBooking.customer_email) {
             await sendBookingConfirmation(existingBooking.customer_email, {

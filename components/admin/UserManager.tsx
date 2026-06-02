@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Search, ExternalLink, Shield, Wrench, Music, User, Check, Users as UsersIcon, Eye, EyeOff } from 'lucide-react';
+import { fmtStampDate } from '@/lib/studio-time';
 
 interface Profile {
   id: string;
@@ -244,7 +245,7 @@ export default function UserManager() {
                       {band.hometown && ` · ${band.hometown}`}
                     </p>
                     <p className="font-mono text-[10px] text-black/40 truncate mt-0.5">
-                      Created {new Date(band.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      Created {fmtStampDate(band.created_at, { month: 'short', day: 'numeric', year: 'numeric' })}
                       {band.creator && (
                         <>
                           {' · by '}

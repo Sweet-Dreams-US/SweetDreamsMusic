@@ -32,6 +32,7 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
+import { fmtStampDate } from '@/lib/studio-time';
 
 const STUDIO_B_OPEN_HOUR = 8;   // 8:00 AM (inclusive)
 const STUDIO_B_CLOSE_HOUR = 22; // 10:00 PM (sessions must end by this)
@@ -148,7 +149,7 @@ export async function POST(
   // Also: the session can't extend past the entitlement's ends_at.
   if (endDate > new Date(ent.ends_at)) {
     return NextResponse.json(
-      { error: `Session ends after your package expires (${new Date(ent.ends_at).toLocaleDateString()}).` },
+      { error: `Session ends after your package expires (${fmtStampDate(ent.ends_at)}).` },
       { status: 400 },
     );
   }

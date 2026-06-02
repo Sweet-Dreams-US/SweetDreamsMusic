@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Clock, Calendar } from 'lucide-react';
+import { fmtStampDate } from '@/lib/studio-time';
 
 interface BlogPostCardProps {
   slug: string;
@@ -13,11 +14,6 @@ interface BlogPostCardProps {
   readTimeMinutes: number | null;
   publishedAt: string | null;
   authorName: string | null;
-}
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export default function BlogPostCard({
@@ -89,7 +85,7 @@ export default function BlogPostCard({
           {publishedAt && (
             <span className="flex items-center gap-1.5">
               <Calendar className="w-3 h-3" />
-              {formatDate(publishedAt)}
+              {fmtStampDate(publishedAt, { month: 'short', day: 'numeric', year: 'numeric' })}
             </span>
           )}
           {readTimeMinutes && (

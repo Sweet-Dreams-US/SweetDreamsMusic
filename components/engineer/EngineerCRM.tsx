@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Search, Copy, Check, ChevronDown, ChevronUp, ArrowUpDown, Phone, Mail, User, FileText, ExternalLink } from 'lucide-react';
 import { formatCents, formatDuration } from '@/lib/utils';
+import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
 
 interface EngineerClient {
   id: string;
@@ -192,7 +193,7 @@ export default function EngineerCRM({ userEmail }: { userEmail: string }) {
                   <td className="px-3 py-2.5">{c.total_revenue ? formatCents(c.total_revenue) : '—'}</td>
                   <td className="px-3 py-2.5">
                     {c.last_session
-                      ? new Date(c.last_session).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit', timeZone: 'UTC' })
+                      ? fmtSessionDate(c.last_session, { month: 'short', day: 'numeric', year: '2-digit' })
                       : '—'}
                   </td>
                   <td className="px-3 py-2.5">
@@ -250,7 +251,7 @@ export default function EngineerCRM({ userEmail }: { userEmail: string }) {
               <div className="flex flex-wrap gap-3 mt-2 font-mono text-[10px] text-black/50">
                 {c.phone && <span>Phone: {c.phone}</span>}
                 {c.last_session && (
-                  <span>Last: {new Date(c.last_session).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</span>
+                  <span>Last: {fmtSessionDate(c.last_session, { month: 'short', day: 'numeric' })}</span>
                 )}
                 <span>{c.files_count} files, {c.notes_count} notes</span>
               </div>
@@ -437,13 +438,12 @@ function ClientDetail({ client, engineerName }: { client: EngineerClient; engine
               </thead>
               <tbody>
                 {bookings.map((b) => {
-                  const d = new Date(b.start_time);
                   return (
                     <tr key={b.id} className="border-t border-black/5">
                       <td className="px-2 py-1.5">
-                        {d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit', timeZone: 'UTC' })}
+                        {fmtSessionDate(b.start_time, { month: 'short', day: 'numeric', year: '2-digit' })}
                         <span className="text-black/40 ml-1">
-                          {d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })}
+                          {fmtSessionTime(b.start_time, { hour: 'numeric', minute: '2-digit' })}
                         </span>
                       </td>
                       <td className="px-2 py-1.5">

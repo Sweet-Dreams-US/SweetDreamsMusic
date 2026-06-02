@@ -18,6 +18,7 @@ import { getUserBands } from '@/lib/bands-server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { getMediaBookingsForOwner } from '@/lib/media-scheduling-server';
 import { formatCents } from '@/lib/utils';
+import { fmtStampDate } from '@/lib/studio-time';
 import DashboardNav from '@/components/layout/DashboardNav';
 
 export const dynamic = 'force-dynamic';
@@ -142,9 +143,7 @@ export default async function MediaOrdersPage() {
                           </div>
                           <p className="font-mono text-xs text-black/50">
                             <Clock className="w-3 h-3 inline mr-1" />
-                            Ordered {new Date(b.created_at).toLocaleDateString('en-US', {
-                              month: 'short', day: 'numeric', year: 'numeric',
-                            })}
+                            Ordered {fmtStampDate(b.created_at, { month: 'short', day: 'numeric', year: 'numeric' })}
                             {' · '}
                             {b.final_price_cents > 0
                               ? formatCents(b.final_price_cents)

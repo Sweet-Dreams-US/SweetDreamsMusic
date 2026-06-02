@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Trophy, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { ACHIEVEMENTS, TIER_COLORS } from '@/lib/achievements';
 import BadgeIcon from './BadgeIcon';
+import { fmtStampDate } from '@/lib/studio-time';
 import { SkeletonGrid } from './LoadingSkeleton';
 
 // ---------------------------------------------------------------------------
@@ -265,7 +266,7 @@ export default function AchievementBadges({ newUnlocks = [], progress = {}, onDi
                         {/* Unlock date */}
                         {isUnlocked && unlockedData && (
                           <p className="font-mono text-[10px] text-black/30 mt-0.5">
-                            {new Date(unlockedData.unlocked_at).toLocaleDateString()}
+                            {fmtStampDate(unlockedData.unlocked_at)}
                           </p>
                         )}
                       </div>

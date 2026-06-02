@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Target, X, Check, Trash2, Edit3, TrendingUp } from 'lucide-react';
 import { GOAL_CATEGORIES, METRIC_PLATFORMS } from '@/lib/hub-constants';
+import { fmtStampDate } from '@/lib/studio-time';
 import { SkeletonList } from './LoadingSkeleton';
 import EmptyState from './EmptyState';
 
@@ -293,7 +294,7 @@ export default function GoalTracker({ onXpEarned }: { onXpEarned?: () => void })
 
                     {isComplete && goal.completed_at && (
                       <p className="font-mono text-[10px] text-green-600 mt-2 pt-2 border-t border-green-100">
-                        Completed {new Date(goal.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        Completed {fmtStampDate(goal.completed_at, { month: 'short', day: 'numeric', year: 'numeric' })}
                       </p>
                     )}
                   </>

@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Trash2, Save, Send, Loader2, CheckCircle2, AlertCircle, Wand2, PackageCheck, ExternalLink } from 'lucide-react';
+import { fmtStampDate } from '@/lib/studio-time';
 import { formatCents } from '@/lib/utils';
 import {
   type LineItemKind,
@@ -149,7 +150,7 @@ function LineItemCompletion({
         )}
         {item.completed_at && (
           <span className="font-mono text-[9px] text-black/50">
-            done {new Date(item.completed_at).toLocaleDateString()}
+            done {fmtStampDate(item.completed_at)}
           </span>
         )}
         {item.drive_url && (
@@ -404,14 +405,14 @@ export default function PackageBuilder({
 
         {pkg?.status === 'sent' && (
           <p className="font-mono text-[11px] text-black/60">
-            Sent to buyer {pkg.proposed_at && `on ${new Date(pkg.proposed_at).toLocaleDateString()}`}.
+            Sent to buyer {pkg.proposed_at && `on ${fmtStampDate(pkg.proposed_at)}`}.
             {' '}<strong>{approvedCount} of {items.length}</strong> line items approved.
           </p>
         )}
         {pkg?.status === 'approved' && (
           <p className="font-mono text-[11px] text-green-700 flex items-center gap-1">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            Approved {pkg.approved_at && `on ${new Date(pkg.approved_at).toLocaleDateString()}`} — package locked.
+            Approved {pkg.approved_at && `on ${fmtStampDate(pkg.approved_at)}`} — package locked.
           </p>
         )}
 

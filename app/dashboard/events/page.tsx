@@ -6,6 +6,7 @@ import { getSessionUser } from '@/lib/auth';
 import { getEventsForUser, getPendingEventInvitesForEmail } from '@/lib/events-server';
 import DashboardNav from '@/components/layout/DashboardNav';
 import { rsvpStatusLabel } from '@/lib/events';
+import { fmtStampDate, fmtStampTime } from '@/lib/studio-time';
 import type { EventRsvpStatus } from '@/lib/events';
 
 export const metadata: Metadata = { title: 'Events' };
@@ -84,7 +85,6 @@ export default async function DashboardEventsPage() {
               </h2>
               <div className="space-y-3">
                 {dedupedInvites.map((inv) => {
-                  const when = new Date(inv.event.starts_at);
                   return (
                     <div
                       key={inv.id}
@@ -100,16 +100,9 @@ export default async function DashboardEventsPage() {
                           </p>
                           <p className="font-mono text-lg font-bold truncate">{inv.event.title}</p>
                           <p className="font-mono text-xs text-black/70 mt-0.5">
-                            {when.toLocaleDateString('en-US', {
-                              weekday: 'short',
-                              month: 'short',
-                              day: 'numeric',
-                            })}
+                            {fmtStampDate(inv.event.starts_at, { weekday: 'short', month: 'short', day: 'numeric' })}
                             {' at '}
-                            {when.toLocaleTimeString('en-US', {
-                              hour: 'numeric',
-                              minute: '2-digit',
-                            })}
+                            {fmtStampTime(inv.event.starts_at)}
                             {inv.event.location && ` · ${inv.event.location}`}
                           </p>
                         </div>
@@ -211,7 +204,6 @@ function EventCard({
   };
   status: EventRsvpStatus;
 }) {
-  const when = new Date(event.starts_at);
   const statusColor: Record<EventRsvpStatus, string> = {
     going: 'bg-green-100 text-green-800',
     maybe: 'bg-amber-100 text-amber-800',
@@ -265,9 +257,9 @@ function EventCard({
           <div className="flex items-center gap-2 font-mono text-xs text-black/70">
             <Calendar className="w-3 h-3 text-accent shrink-0" />
             <span>
-              {when.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              {fmtStampDate(event.starts_at, { month: 'short', day: 'numeric', year: 'numeric' })}
               {' · '}
-              {when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+              {fmtStampTime(event.starts_at)}
             </span>
           </div>
           {event.location && (

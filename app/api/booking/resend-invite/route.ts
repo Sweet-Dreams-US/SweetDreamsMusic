@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { SITE_URL, ENGINEERS, ROOM_LABELS, type Room } from '@/lib/constants';
 import { verifyEngineerAccess } from '@/lib/admin-auth';
 import { sendSessionInvite } from '@/lib/email';
+import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -47,9 +48,9 @@ export async function POST(request: NextRequest) {
   const engineerConfig = ENGINEERS.find(e => e.email.toLowerCase() === user.email!.toLowerCase());
   const engineerName = engineerConfig?.displayName || booking.engineer_name || 'Your engineer';
 
-  const startDate = new Date(booking.start_time);
-  const dateStr = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-  const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+  // bookings.start_time is wall-clock-as-UTC → read as UTC (fmtSession*)
+  const dateStr = fmtSessionDate(booking.start_time, { weekday: 'long', month: 'long', day: 'numeric' });
+  const timeStr = fmtSessionTime(booking.start_time);
 
   try {
     await sendSessionInvite(booking.customer_email, {

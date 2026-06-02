@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Music, Download, FileText, ChevronDown, ChevronUp, ShoppingBag } from 'lucide-react';
 import { formatCents } from '@/lib/utils';
+import { fmtStampDate } from '@/lib/studio-time';
 import { BEAT_LICENSES } from '@/lib/constants';
 import Link from 'next/link';
 
@@ -181,7 +182,7 @@ export default function PurchasesPage() {
                       Lease Revoked — Exclusive rights purchased
                     </p>
                     <p className="font-mono text-[10px] text-red-600">
-                      Revoked on {new Date(purchase.revoked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}. Downloads are no longer available.
+                      Revoked on {fmtStampDate(purchase.revoked_at, { month: 'short', day: 'numeric', year: 'numeric' })}. Downloads are no longer available.
                     </p>
                   </div>
                 )}
@@ -194,7 +195,7 @@ export default function PurchasesPage() {
                         Lease Expired
                       </p>
                       <p className="font-mono text-[10px] text-amber-600">
-                        Expired {new Date(purchase.lease_expires_at!).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}. {canRenew ? 'Renew to continue using this beat.' : 'Cannot renew — exclusive was purchased.'}
+                        Expired {fmtStampDate(purchase.lease_expires_at, { month: 'short', day: 'numeric', year: 'numeric' })}. {canRenew ? 'Renew to continue using this beat.' : 'Cannot renew — exclusive was purchased.'}
                       </p>
                     </div>
                     {canRenew && (
@@ -210,7 +211,7 @@ export default function PurchasesPage() {
                 {isExpiringSoon && !isRevoked && (
                   <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 flex items-center justify-between">
                     <p className="font-mono text-[10px] text-yellow-700">
-                      Expires {new Date(purchase.lease_expires_at!).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      Expires {fmtStampDate(purchase.lease_expires_at, { month: 'short', day: 'numeric', year: 'numeric' })}
                     </p>
                     {canRenew && (
                       <button onClick={() => handleRenew(purchase.id)} disabled={renewing === purchase.id}
@@ -225,7 +226,7 @@ export default function PurchasesPage() {
                 {purchase.renewal_blocked && !isRevoked && !isExpired && (
                   <div className="bg-blue-50 border-b border-blue-200 px-4 py-2">
                     <p className="font-mono text-[10px] text-blue-700">
-                      Exclusive rights purchased by another buyer. Your lease is valid until {purchase.lease_expires_at ? new Date(purchase.lease_expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'its term'} but cannot be renewed.
+                      Exclusive rights purchased by another buyer. Your lease is valid until {purchase.lease_expires_at ? fmtStampDate(purchase.lease_expires_at, { month: 'short', day: 'numeric', year: 'numeric' }) : 'its term'} but cannot be renewed.
                     </p>
                   </div>
                 )}
@@ -261,7 +262,7 @@ export default function PurchasesPage() {
                         {formatCents(purchase.amount_paid)}
                       </span>
                       <span className="font-mono text-[10px] text-black/60">
-                        {new Date(purchase.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {fmtStampDate(purchase.created_at, { month: 'short', day: 'numeric', year: 'numeric' })}
                       </span>
                       {canDownload && (
                         <span className="font-mono text-[10px] text-black/60">
@@ -270,7 +271,7 @@ export default function PurchasesPage() {
                       )}
                       {purchase.lease_expires_at && !isExpired && !isExpiringSoon && !isRevoked && (
                         <span className="font-mono text-[10px] text-black/40">
-                          Expires {new Date(purchase.lease_expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          Expires {fmtStampDate(purchase.lease_expires_at, { month: 'short', day: 'numeric', year: 'numeric' })}
                         </span>
                       )}
                     </div>

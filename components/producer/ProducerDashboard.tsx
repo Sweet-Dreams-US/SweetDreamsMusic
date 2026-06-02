@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Music, DollarSign, ShoppingCart, TrendingUp, Plus, X, Upload, Trash2, AlertCircle, CheckCircle, FileText, Pencil, MessageSquare } from 'lucide-react';
 import { formatCents } from '@/lib/utils';
 import { PRODUCER_COMMISSION, PLATFORM_COMMISSION, BEAT_LICENSES, BEAT_AGREEMENT_TEXT, BEAT_AGREEMENT_VERSION, BEAT_GENRES } from '@/lib/constants';
+import { fmtStampDate } from '@/lib/studio-time';
 import PrivateSaleModal from '@/components/beats/PrivateSaleModal';
 import ProducerClientSearch from './ProducerClientSearch';
 
@@ -812,7 +813,7 @@ function BeatsTab({ beats, onBeatsChange, isAdmin = false }: { beats: Beat[]; on
                       {BEAT_LICENSES[sale.license_type as keyof typeof BEAT_LICENSES]?.name || sale.license_type}
                     </p>
                     <p className="font-mono text-[10px] text-black/60 mt-0.5">
-                      {new Date(sale.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                      {fmtStampDate(sale.created_at, { year: '2-digit' })}
                       {sale.payment_method !== 'stripe' && ` · ${sale.payment_method}`}
                     </p>
                   </div>
@@ -1117,7 +1118,7 @@ function SalesTab({ sales }: { sales: Sale[] }) {
         return (
           <div key={sale.id} className="grid grid-cols-5 gap-4 px-4 py-3 border-b border-black/5 hover:bg-black/[0.02]">
             <span className="font-mono text-xs text-black/70">
-              {new Date(sale.created_at).toLocaleDateString()}
+              {fmtStampDate(sale.created_at)}
             </span>
             <span className="font-mono text-xs font-semibold truncate">{beatTitle || 'Unknown'}</span>
             <span className="font-mono text-xs text-black/50 truncate">{sale.buyer_email}</span>

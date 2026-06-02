@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import type { BandMember, BandInvite } from '@/lib/bands';
 import { memberHasFlag, isOwner } from '@/lib/bands';
+import { fmtStampDate } from '@/lib/studio-time';
 
 type ProfileLookup = Record<string, { display_name: string | null; public_profile_slug: string | null }>;
 
@@ -349,7 +350,7 @@ export default function MemberManagement({
                     Role: <span className="font-semibold uppercase">{invite.role}</span>
                     {invite.band_role && <> · {invite.band_role}</>}
                     {' · '}
-                    Expires {new Date(invite.expires_at).toLocaleDateString()}
+                    Expires {fmtStampDate(invite.expires_at)}
                   </p>
                 </div>
                 {canManage && (

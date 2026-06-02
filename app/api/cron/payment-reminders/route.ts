@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { sendPaymentReminder } from '@/lib/email';
-import { ROOM_LABELS, TIMEZONE, type Room } from '@/lib/constants';
+import { ROOM_LABELS, type Room } from '@/lib/constants';
+import { fmtSessionDate } from '@/lib/studio-time';
 import { formatDuration } from '@/lib/utils';
 
 export const maxDuration = 30;
@@ -43,12 +44,11 @@ export async function GET(request: NextRequest) {
   for (const booking of unpaidBookings) {
     if (!booking.customer_email) continue;
 
-    // Format session date for the email
-    const sessionDate = new Date(booking.start_time).toLocaleDateString('en-US', {
+    // bookings.start_time is wall-clock-as-UTC → read as UTC (fmtSession*)
+    const sessionDate = fmtSessionDate(booking.start_time, {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
-      timeZone: TIMEZONE,
     });
 
     const amountPaid = booking.total_amount - booking.remainder_amount;

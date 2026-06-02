@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Sparkles, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { fmtStampDate } from '@/lib/studio-time';
 
 interface UpdateEntry {
   id: string;
@@ -77,9 +78,7 @@ export default function UpdatesLog({ userRole, isProducer }: UpdatesLogProps) {
   const grouped = useMemo(() => {
     const map: Record<string, UpdateEntry[]> = {};
     filteredUpdates.forEach(u => {
-      const dateKey = new Date(u.date).toLocaleDateString('en-US', {
-        month: 'long', day: 'numeric', year: 'numeric',
-      });
+      const dateKey = fmtStampDate(u.date, { month: 'long', day: 'numeric', year: 'numeric' });
       if (!map[dateKey]) map[dateKey] = [];
       map[dateKey].push(u);
     });

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { DollarSign, TrendingUp, Calendar, Filter } from 'lucide-react';
 import { formatCents, formatDuration } from '@/lib/utils';
 import { ENGINEER_SESSION_SPLIT, MEDIA_SELLER_COMMISSION } from '@/lib/constants';
+import { fmtSessionDate, fmtStampDate } from '@/lib/studio-time';
 
 const ENGINEER_SPLIT = ENGINEER_SESSION_SPLIT;
 const MEDIA_COMMISSION = MEDIA_SELLER_COMMISSION;
@@ -311,7 +312,7 @@ export default function EngineerAccounting() {
                     <div>
                       <span className="font-semibold">{sale.description}</span>
                       <span className="text-black/60 ml-3">
-                        {new Date(sale.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {fmtStampDate(sale.created_at, { month: 'short', day: 'numeric' })}
                       </span>
                     </div>
                     <div className="text-right">
@@ -341,7 +342,7 @@ export default function EngineerAccounting() {
                         · {s.location}
                       </span>
                       <span className="text-black/60 ml-3">
-                        {new Date(s.starts_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {fmtStampDate(s.starts_at, { month: 'short', day: 'numeric' })}
                       </span>
                     </div>
                     <div className="text-right">
@@ -382,7 +383,7 @@ function SessionTable({ sessions }: { sessions: Booking[] }) {
       {sessions.map((b) => (
         <div key={b.id} className="grid grid-cols-2 md:grid-cols-12 gap-2 font-mono text-xs py-3 px-3 border-b border-black/5 hover:bg-black/[0.02]">
           <div className="col-span-2">
-            {new Date(b.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit', timeZone: 'UTC' })}
+            {fmtSessionDate(b.start_time, { month: 'short', day: 'numeric', year: '2-digit' })}
           </div>
           <div className="col-span-2 font-semibold truncate">{b.customer_name}</div>
           <div className="col-span-1 text-black/60">{ROOM_LABELS[b.room || ''] || '—'}</div>

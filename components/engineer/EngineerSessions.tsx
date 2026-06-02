@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { formatCents, formatDuration } from '@/lib/utils';
 import { ENGINEERS } from '@/lib/constants';
 import CashCorrectionModal from '@/components/booking/CashCorrectionModal';
+import { fmtSessionDate, fmtSessionTime, fmtSessionDateTime, fmtStampDate, fmtStampDateTime } from '@/lib/studio-time';
 
 interface Booking {
   id: string;
@@ -162,14 +163,13 @@ export default function EngineerSessions({ userEmail }: { userEmail: string }) {
                 </thead>
                 <tbody>
                   {allBookings.map((b) => {
-                    const d = new Date(b.start_time);
                     return (
                       <tr key={b.id} className="border-t border-black/5 hover:bg-accent/5 transition-colors">
                         <td className="px-3 py-2">
-                          {d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })}
+                          {fmtSessionDate(b.start_time, { weekday: 'short', month: 'short', day: 'numeric' })}
                         </td>
                         <td className="px-3 py-2">
-                          {d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })}
+                          {fmtSessionTime(b.start_time, { hour: 'numeric', minute: '2-digit' })}
                           {' · '}{formatDuration(b.duration)}
                         </td>
                         <td className="px-3 py-2">
@@ -280,8 +280,6 @@ function PendingInviteCard({ booking, onUpdate }: { booking: Booking; onUpdate: 
   const [copied, setCopied] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
-  const date = new Date(booking.start_time);
-
   // Extract invite URL from admin_notes if stored there
   const tokenMatch = booking.admin_notes?.match(/Token: ([a-f0-9-]+)/);
   const inviteToken = tokenMatch?.[1];
@@ -356,15 +354,15 @@ function PendingInviteCard({ booking, onUpdate }: { booking: Booking; onUpdate: 
             <p className="font-mono text-xs text-black/70">{booking.customer_email}</p>
           )}
           <p className="font-mono text-xs text-black/60 mt-1">
-            {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })}
+            {fmtSessionDate(booking.start_time, { weekday: 'short', month: 'short', day: 'numeric' })}
             {' · '}
-            {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })}
+            {fmtSessionTime(booking.start_time, { hour: 'numeric', minute: '2-digit' })}
             {' · '}
             {formatDuration(Number(booking.duration))}
             {booking.room && ` · ${booking.room === 'studio_a' ? 'Studio A' : 'Studio B'}`}
           </p>
           <p className="font-mono text-[10px] text-black/60 mt-1">
-            Created {new Date(booking.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            Created {fmtStampDate(booking.created_at, { month: 'short', day: 'numeric' })}
             {' · '}Deposit: {formatCents(booking.deposit_amount)} of {formatCents(booking.total_amount)}
           </p>
         </div>
@@ -481,7 +479,6 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
   const [prepData, setPrepData] = useState<any>(null);
   const [prepLoading, setPrepLoading] = useState(false);
 
-  const date = new Date(booking.start_time);
   const remainder = booking.remainder_amount || 0;
   const canCharge = booking.status === 'confirmed' && remainder > 0 && booking.engineer_name;
   const canComplete = booking.status === 'confirmed' && booking.engineer_name;
@@ -721,12 +718,12 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
         formData.append('file_size', String(file.size));
         formData.append('file_type', file.type);
         formData.append('display_name', file.name);
-        formData.append('description', `From session on ${date.toLocaleDateString('en-US', { timeZone: 'UTC' })}`);
+        formData.append('description', `From session on ${fmtSessionDate(booking.start_time)}`);
         formData.append('send_email', isLast ? 'true' : 'false');
         formData.append('customer_email', booking.customer_email);
         formData.append('customer_name', booking.customer_name);
         formData.append('booking_room', booking.room || '');
-        formData.append('booking_date', date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }));
+        formData.append('booking_date', fmtSessionDate(booking.start_time, { weekday: 'long', month: 'long', day: 'numeric' }));
         formData.append('skip_upload', 'true');
         await fetch('/api/admin/library/deliverables', { method: 'POST', body: formData });
       }
@@ -847,9 +844,9 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
           <BandBookingBadges booking={booking} />
 
           <p className="font-mono text-xs text-black/60 mt-1">
-            {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })}
+            {fmtSessionDate(booking.start_time, { weekday: 'short', month: 'short', day: 'numeric' })}
             {' · '}
-            {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })}
+            {fmtSessionTime(booking.start_time, { hour: 'numeric', minute: '2-digit' })}
             {' · '}
             {formatDuration(Number(booking.duration))}
             {booking.room && ` · ${booking.room === 'studio_a' ? 'Studio A' : 'Studio B'}`}
@@ -988,11 +985,7 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
                         a 6:30 PM session reading as "Ends 2:30 PM"), we
                         unpack with timeZone: 'UTC' like the rest of the
                         app does. See lib/booking-completion.ts header. */}
-                    Ends {new Date(completionCheck.details.scheduledEnd).toLocaleString('en-US', {
-                      timeZone: 'UTC',
-                      weekday: 'short', month: 'short', day: 'numeric',
-                      hour: 'numeric', minute: '2-digit', hour12: true,
-                    })}
+                    Ends {fmtSessionDateTime(completionCheck.details.scheduledEnd, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
                     {!completionCheck.details.timeGatePassed && completionCheck.details.minutesUntilAllowed > 0 && (
                       <> — about {completionCheck.details.minutesUntilAllowed} min to go</>
                     )}
@@ -1066,9 +1059,7 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
                   <span className="font-mono text-[10px] text-black/60">
                     Requested: <span className="font-bold text-accent">{booking.requested_engineer}</span>
                     {booking.priority_expires_at && (
-                      <> · Priority until {new Date(booking.priority_expires_at).toLocaleString('en-US', {
-                        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
-                      })}</>
+                      <> · Priority until {fmtStampDateTime(booking.priority_expires_at, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</>
                     )}
                   </span>
                 )}
@@ -1633,7 +1624,7 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
         <div className="mt-3 p-3 bg-black/5 border border-black/10 font-mono text-[10px] text-black/70 space-y-1">
           <p>ID: {booking.id}</p>
           <p>Status: {booking.status}</p>
-          <p>Created: {new Date(booking.created_at).toLocaleString()}</p>
+          <p>Created: {fmtStampDateTime(booking.created_at)}</p>
           <p>Start: {booking.start_time}</p>
           <p>End: {booking.end_time}</p>
           <p>Room: {booking.room || 'none'}</p>

@@ -5,6 +5,7 @@ import { verifyEngineerAccess } from '@/lib/admin-auth';
 import { PRICING, SITE_URL } from '@/lib/constants';
 import { formatDuration } from '@/lib/utils';
 import { sendPaymentLink } from '@/lib/email';
+import { fmtSessionDate } from '@/lib/studio-time';
 
 // POST — create a Stripe payment link and email it to the client
 // Works for ANY booking, even without a saved Stripe customer
@@ -37,9 +38,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const dateStr = new Date(booking.start_time).toLocaleDateString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
-    });
+    // bookings.start_time is wall-clock-as-UTC → read as UTC (fmtSession*)
+    const dateStr = fmtSessionDate(booking.start_time, { month: 'short', day: 'numeric', year: 'numeric' });
 
     // Build checkout session — attach customer if we have one, otherwise just use email
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

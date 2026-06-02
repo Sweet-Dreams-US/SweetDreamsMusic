@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { verifyEngineerAccess } from '@/lib/admin-auth';
 import { sendEngineerAssigned, sendEngineerAssignedNonRequested, sendEngineerClaimConfirmation } from '@/lib/email';
 import { findEngineerByEmail, isSameEngineer, type Room } from '@/lib/constants';
+import { fmtSessionDate, fmtSessionTime, fmtStampDateTime } from '@/lib/studio-time';
 
 // Legacy claim endpoint — now wraps the same logic as /respond accept
 // Kept for backward compatibility
@@ -55,9 +56,9 @@ export async function POST(request: NextRequest) {
       );
 
       if (!isRequestedEngineer) {
-        const expiryStr = priorityExpiry.toLocaleString('en-US', {
+        // priority_expires_at is a true-UTC *_at instant → convert to Eastern (fmtStamp*)
+        const expiryStr = fmtStampDateTime(priorityExpiry.toISOString(), {
           weekday: 'short', month: 'short', day: 'numeric',
-          hour: 'numeric', minute: '2-digit', timeZone: 'UTC'
         });
         return NextResponse.json(
           { error: `This session was requested for ${booking.requested_engineer}. They have priority until ${expiryStr}.` },
@@ -92,9 +93,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Session already claimed by another engineer' }, { status: 409 });
   }
 
-  const startDate = new Date(updated.start_time);
-  const dateStr = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-  const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+  // bookings.start_time is wall-clock-as-UTC → read as UTC (fmtSession*)
+  const dateStr = fmtSessionDate(updated.start_time, { weekday: 'long', month: 'long', day: 'numeric' });
+  const timeStr = fmtSessionTime(updated.start_time);
 
   // Determine if this is a non-requested engineer claiming.
   // Same email-first resolution as the priority-window check above.
@@ -107,10 +108,10 @@ export async function POST(request: NextRequest) {
   const isNonRequestedClaim = booking.requested_engineer && !isRequestedEngineer;
 
   if (isNonRequestedClaim && updated.customer_email) {
+    // bookings.reschedule_deadline is a true-UTC *_at instant → convert to Eastern (fmtStamp*)
     const rescheduleDeadlineStr = booking.reschedule_deadline
-      ? new Date(booking.reschedule_deadline).toLocaleString('en-US', {
+      ? fmtStampDateTime(booking.reschedule_deadline, {
           weekday: 'short', month: 'short', day: 'numeric',
-          hour: 'numeric', minute: '2-digit', timeZone: 'UTC',
         })
       : '8 hours before your session';
 

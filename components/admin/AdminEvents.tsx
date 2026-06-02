@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { fmtStampDateTime } from '@/lib/studio-time';
 import {
   Calendar, Plus, Edit2, Trash2, XCircle, Eye, EyeOff, Users, Send,
   CheckCircle, ArrowLeft, Mail, MapPin, Clock, AlertCircle, Upload, Image as ImageIcon,
@@ -446,7 +447,7 @@ function EventTable(props: {
                 )}
               </div>
               <p className="font-mono text-[11px] text-black/60">
-                {new Date(event.starts_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                {fmtStampDateTime(event.starts_at, { year: 'numeric', minute: '2-digit' })}
                 {event.location ? ` · ${event.location}` : ''}
               </p>
             </button>
@@ -850,7 +851,7 @@ function DetailView(props: {
             <div className="flex items-center gap-4 flex-wrap text-xs font-mono text-black/60">
               <span className="inline-flex items-center gap-1.5">
                 <Clock className="w-3 h-3" />
-                {new Date(event.starts_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                {fmtStampDateTime(event.starts_at, { weekday: 'short', year: 'numeric', minute: '2-digit' })}
               </span>
               {event.location && (
                 <span className="inline-flex items-center gap-1.5">
@@ -1072,7 +1073,7 @@ function RsvpBucket(props: {
                 )}
                 <p className="font-mono text-[9px] text-black/40 mt-1">
                   {props.status === 'requested' ? 'Requested' : props.status === 'invited' ? 'Invited' : 'Responded'}{' '}
-                  {new Date(r.responded_at || r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  {fmtStampDateTime(r.responded_at || r.created_at, { minute: '2-digit' })}
                 </p>
               </div>
               <div className="flex items-center gap-1">

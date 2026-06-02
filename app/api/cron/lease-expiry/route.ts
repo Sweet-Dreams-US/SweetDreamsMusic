@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { sendLeaseExpiryWarning, sendLeaseExpiredNotice } from '@/lib/email';
 import { RENEWAL_DISCOUNT } from '@/lib/constants';
+import { fmtStampDate } from '@/lib/studio-time';
 
 export const maxDuration = 30;
 
@@ -43,7 +44,8 @@ export async function GET(request: NextRequest) {
           beatTitle: (beat as { title: string })?.title || 'Beat',
           producerName: (beat as { producer: string })?.producer || 'Producer',
           licenseType: lease.license_type === 'mp3_lease' ? 'MP3 Lease' : 'Trackout Lease',
-          expiresAt: new Date(lease.lease_expires_at!).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+          // lease_expires_at is a true-UTC *_at instant → convert to Eastern (fmtStamp*)
+          expiresAt: fmtStampDate(lease.lease_expires_at!, { month: 'long', day: 'numeric', year: 'numeric' }),
           renewalPrice: Math.round(lease.amount_paid * RENEWAL_DISCOUNT),
         });
         await supabase.from('beat_purchases').update({ expiry_warning_sent: true }).eq('id', lease.id);

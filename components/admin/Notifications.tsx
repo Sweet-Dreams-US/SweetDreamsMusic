@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Send, Clock, Search, X, ChevronDown, Mail, Users, Mic, Music, CheckCircle, PartyPopper } from 'lucide-react';
 import { isEventListed, type SweetEvent } from '@/lib/events';
+import { fmtStampDate, fmtStampTime, fmtStampDateTime } from '@/lib/studio-time';
 
 // ── Email Templates ──────────────────────────────────────────────────
 interface EmailTemplate {
@@ -31,11 +32,10 @@ function escapeHtml(s: string): string {
  * Styled to match the existing templates (dark bg, accent gold headline).
  */
 function buildEventAnnouncement(event: SweetEvent): { subject: string; body: string } {
-  const startsAt = new Date(event.starts_at);
-  const dateStr = startsAt.toLocaleDateString('en-US', {
+  const dateStr = fmtStampDate(event.starts_at, {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
-  const timeStr = startsAt.toLocaleTimeString('en-US', {
+  const timeStr = fmtStampTime(event.starts_at, {
     hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
   });
 
@@ -432,7 +432,6 @@ export default function Notifications() {
               ) : (
                 <div className="grid gap-2">
                   {upcomingEvents.map((ev) => {
-                    const when = new Date(ev.starts_at);
                     const isSelected = selectedEventId === ev.id;
                     return (
                       <button
@@ -448,8 +447,8 @@ export default function Notifications() {
                         <div className="flex-1 min-w-0">
                           <p className="font-mono text-sm font-bold truncate">{ev.title}</p>
                           <p className="font-mono text-[10px] text-black/60 mt-0.5">
-                            {when.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                            {' · '}{when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                            {fmtStampDate(ev.starts_at, { weekday: 'short', month: 'short', day: 'numeric' })}
+                            {' · '}{fmtStampTime(ev.starts_at, { hour: 'numeric', minute: '2-digit' })}
                             {ev.location && ` · ${ev.location}`}
                           </p>
                         </div>
@@ -662,7 +661,7 @@ export default function Notifications() {
                   <div className="flex-1 min-w-0">
                     <p className="font-mono text-sm font-bold truncate">{b.subject}</p>
                     <p className="font-mono text-[10px] text-black/60">
-                      {new Date(b.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      {fmtStampDateTime(b.created_at, { month: 'short', day: 'numeric', year: 'numeric' })}
                       {' · '}{b.recipient_count} recipient{b.recipient_count !== 1 ? 's' : ''}
                       {b.sent_by && ` · by ${b.sent_by}`}
                       {b.template_key && ` · ${b.template_key}`}

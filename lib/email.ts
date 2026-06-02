@@ -2,6 +2,7 @@ import { Resend } from 'resend';
 import { SUPER_ADMINS, ROOM_LABELS, SITE_URL, type Room } from './constants';
 import { formatDuration } from './utils';
 import { mirrorToThread } from './messaging-mirror';
+import { fmtStampDateTime, fmtStampDate, fmtStampTime } from './studio-time';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = 'Sweet Dreams Music <studio@sweetdreamsmusic.com>';
@@ -1357,9 +1358,10 @@ export async function sendEventInvitation(details: {
   customNote?: string;    // optional personal note from the admin
 }) {
   const acceptUrl = `${SITE_URL}/events/rsvp/${details.token}`;
-  const whenFormatted = new Date(details.eventStartsAt).toLocaleString('en-US', {
+  // events.starts_at is a true-UTC instant → convert to Eastern (fmtStamp*)
+  const whenFormatted = fmtStampDateTime(details.eventStartsAt, {
     weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
-    hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+    timeZoneName: 'short',
   });
   // Mirror to the invitee's Sweet Dreams thread if they're a registered
   // user. If the email doesn't match a profile, the helper logs a warning
@@ -1459,9 +1461,10 @@ export async function sendEventRsvpDecision(details: {
   declineReason?: string;
 }) {
   const eventUrl = `${SITE_URL}/events/${details.eventSlug}`;
-  const whenFormatted = new Date(details.eventStartsAt).toLocaleString('en-US', {
+  // events.starts_at is a true-UTC instant → convert to Eastern (fmtStamp*)
+  const whenFormatted = fmtStampDateTime(details.eventStartsAt, {
     weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
-    hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+    timeZoneName: 'short',
   });
   await mirrorToThread({
     userEmail: details.toEmail,
@@ -1531,9 +1534,10 @@ export async function sendEventCancellation(details: {
   reason: string | null;
 }) {
   if (details.toEmails.length === 0) return;
-  const whenFormatted = new Date(details.eventStartsAt).toLocaleString('en-US', {
+  // events.starts_at is a true-UTC instant → convert to Eastern (fmtStamp*)
+  const whenFormatted = fmtStampDateTime(details.eventStartsAt, {
     weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
-    hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+    timeZoneName: 'short',
   });
   // Mirror cancellation to each recipient's Sweet Dreams thread. The email
   // itself goes BCC (one send) but each user sees the cancellation in their
@@ -1769,13 +1773,12 @@ export async function sendMediaSessionScheduled(to: string, details: {
   engineerName: string;
   bookingId?: string; // routes mirror into the booking thread when present
 }) {
-  const when = new Date(details.startsAt).toLocaleString('en-US', {
+  // media_session_bookings.starts_at/ends_at are true-UTC instants → fmtStamp*
+  const when = fmtStampDateTime(details.startsAt, {
     weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
-    hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+    timeZoneName: 'short',
   });
-  const endTime = new Date(details.endsAt).toLocaleTimeString('en-US', {
-    hour: 'numeric', minute: '2-digit',
-  });
+  const endTime = fmtStampTime(details.endsAt);
   const locationLabel = details.location === 'studio'
     ? 'Sweet Dreams Studio (Fort Wayne)'
     : details.externalLocationText || 'External — details to follow';
@@ -1830,13 +1833,12 @@ export async function sendMediaSessionEngineerAlert(to: string, details: {
   notes: string | null;
 }) {
   try {
-    const when = new Date(details.startsAt).toLocaleString('en-US', {
+    // media_session_bookings.starts_at/ends_at are true-UTC instants → fmtStamp*
+    const when = fmtStampDateTime(details.startsAt, {
       weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
-      hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+      timeZoneName: 'short',
     });
-    const endTime = new Date(details.endsAt).toLocaleTimeString('en-US', {
-      hour: 'numeric', minute: '2-digit',
-    });
+    const endTime = fmtStampTime(details.endsAt);
     const locationLabel = details.location === 'studio'
       ? 'Sweet Dreams Studio'
       : details.externalLocationText || 'External (location TBD)';
@@ -1887,13 +1889,11 @@ export async function sendMediaSessionReminder(to: string, details: {
   engineerName: string;
   bookingId?: string; // routes mirror into the booking thread when present
 }) {
-  const start = new Date(details.startsAt);
-  const end = new Date(details.endsAt);
-  const startLabel = start.toLocaleString('en-US', {
+  // media_session_bookings.starts_at/ends_at are true-UTC instants → fmtStamp*
+  const startLabel = fmtStampDateTime(details.startsAt, {
     weekday: 'short', month: 'long', day: 'numeric',
-    hour: 'numeric', minute: '2-digit',
   });
-  const endLabel = end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const endLabel = fmtStampTime(details.endsAt);
   const locationLabel = details.location === 'studio'
     ? 'Sweet Dreams Studio (Fort Wayne)'
     : details.externalLocationText || 'External — see scheduling notes';
@@ -1938,13 +1938,11 @@ export async function sendMediaSessionReminderToEngineer(to: string, details: {
   externalLocationText: string | null;
 }) {
   try {
-    const start = new Date(details.startsAt);
-    const end = new Date(details.endsAt);
-    const startLabel = start.toLocaleString('en-US', {
+    // media_session_bookings.starts_at/ends_at are true-UTC instants → fmtStamp*
+    const startLabel = fmtStampDateTime(details.startsAt, {
       weekday: 'short', month: 'long', day: 'numeric',
-      hour: 'numeric', minute: '2-digit',
     });
-    const endLabel = end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const endLabel = fmtStampTime(details.endsAt);
     const locationLabel = details.location === 'studio'
       ? 'Sweet Dreams Studio'
       : details.externalLocationText || 'External (see scheduling notes)';
@@ -2329,7 +2327,8 @@ export async function sendPackageQuote(to: string, details: {
     ? Math.round((discountCents / details.retailPriceCents) * 100)
     : 0;
 
-  const expiryFormatted = new Date(details.expiresAt).toLocaleDateString('en-US', {
+  // package_quotes.expires_at is a true-UTC instant → convert to Eastern (fmtStamp*)
+  const expiryFormatted = fmtStampDate(details.expiresAt, {
     weekday: 'short', month: 'long', day: 'numeric',
   });
 

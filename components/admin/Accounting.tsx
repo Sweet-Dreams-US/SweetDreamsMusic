@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { DollarSign, TrendingUp, Calendar, Music, Users, Filter, ChevronDown } from 'lucide-react';
 import { formatCents, formatDuration } from '@/lib/utils';
+import { fmtSessionDate, fmtStampDate } from '@/lib/studio-time';
 import { PRODUCER_COMMISSION, PLATFORM_COMMISSION, ENGINEER_SESSION_SPLIT, BUSINESS_SESSION_SPLIT, MEDIA_SELLER_COMMISSION, MEDIA_BUSINESS_CUT, MEDIA_WORKER_TOTAL, ENGINEERS } from '@/lib/constants';
 import CreditsLiabilityPanel from './CreditsLiabilityPanel';
 import PackageAccounting from './PackageAccounting';
@@ -1587,7 +1588,7 @@ export default function Accounting() {
                                 <div className="space-y-0.5">
                                   {personSessions.map(s => (
                                     <div key={s.id} className="flex justify-between font-mono text-[11px] text-black/60">
-                                      <span>{new Date(s.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {s.customer_name} · {formatDuration(s.duration)}</span>
+                                      <span>{fmtSessionDate(s.start_time)} · {s.customer_name} · {formatDuration(s.duration)}</span>
                                       <span className="text-black/50">{formatCents(s.total_amount)}</span>
                                     </div>
                                   ))}
@@ -1606,7 +1607,7 @@ export default function Accounting() {
                                   {mediaItems.map(m => (
                                     <div key={m.id} className="flex justify-between items-start font-mono text-[11px] py-0.5">
                                       <div className="text-black/60">
-                                        <span>{new Date(m.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {m.description || m.sale_type}</span>
+                                        <span>{fmtStampDate(m.created_at)} · {m.description || m.sale_type}</span>
                                         <span className="text-black/40 ml-1">· {formatCents(m.amount)} × {m.pct}%</span>
                                       </div>
                                       <span className="text-black/80 font-semibold flex-shrink-0 ml-2">{formatCents(m.totalPay)}</span>
@@ -1629,7 +1630,7 @@ export default function Accounting() {
                                   {personPackages.map(pc => (
                                     <div key={pc.id} className="flex justify-between items-start font-mono text-[11px] py-0.5">
                                       <div className="text-black/60">
-                                        <span>{new Date(pc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · Package sale</span>
+                                        <span>{fmtStampDate(pc.created_at)} · Package sale</span>
                                       </div>
                                       <span className="text-black/80 font-semibold flex-shrink-0 ml-2">{formatCents(pc.sales_commission_cents ?? 0)}</span>
                                     </div>
@@ -1654,7 +1655,7 @@ export default function Accounting() {
                                   {personPendingSessions.map(s => (
                                     <div key={s.id} className="flex justify-between font-mono text-[11px] text-black/60">
                                       <span>
-                                        {new Date(s.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {s.customer_name} · {formatDuration(s.duration)}
+                                        {fmtSessionDate(s.start_time)} · {s.customer_name} · {formatDuration(s.duration)}
                                         <span className="ml-2 text-[10px] uppercase text-amber-700/80">{s.status}</span>
                                       </span>
                                       <span className="text-black/50">{formatCents(s.total_amount)}</span>
@@ -1704,7 +1705,7 @@ export default function Accounting() {
                             <div key={p.id || i} className="flex justify-between items-center py-1 border-b border-black/5 last:border-0">
                               <div className="font-mono text-xs">
                                 <span className="text-black/70">
-                                  {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  {fmtStampDate(p.created_at, { year: 'numeric' })}
                                 </span>
                                 <span className="text-black/40 ml-2">via {p.method}</span>
                                 {p.note && <span className="text-black/40 ml-2">— {p.note}</span>}
@@ -1944,7 +1945,7 @@ export default function Accounting() {
                               <div key={entry.id} className="flex justify-between items-center text-xs font-mono border-t border-red-100 pt-1">
                                 <div>
                                   <span className="text-black/70">{entry.client_name}</span>
-                                  <span className="text-black/60 ml-2">{new Date(entry.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                                  <span className="text-black/60 ml-2">{fmtStampDate(entry.created_at)}</span>
                                   {entry.note && <span className="text-black/60 ml-2">— {entry.note}</span>}
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -2247,7 +2248,7 @@ export default function Accounting() {
                 {filteredBookings.map((b) => (
                   <div key={b.id} className="grid grid-cols-2 md:grid-cols-12 gap-2 font-mono text-xs py-3 px-3 border-b border-black/5 hover:bg-black/[0.02]">
                     <div className="col-span-2">
-                      {new Date(b.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit', timeZone: 'UTC' })}
+                      {fmtSessionDate(b.start_time, { year: '2-digit' })}
                     </div>
                     <div className="col-span-2 font-semibold truncate">{b.customer_name}</div>
                     <div className="col-span-2 text-black/60 truncate">{b.engineer_name || '—'}</div>
@@ -2316,7 +2317,7 @@ export default function Accounting() {
                 {filteredPurchases.map((p) => (
                   <div key={p.id} className="grid grid-cols-2 md:grid-cols-12 gap-2 font-mono text-xs py-3 px-3 border-b border-black/5 hover:bg-black/[0.02]">
                     <div className="col-span-2">
-                      {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                      {fmtStampDate(p.created_at, { year: '2-digit' })}
                     </div>
                     <div className="col-span-3 font-semibold truncate">{p.beats?.title || '—'}</div>
                     <div className="col-span-2 text-black/60 truncate">{p.beats?.producer || '—'}</div>
@@ -2411,7 +2412,7 @@ export default function Accounting() {
                           className="grid grid-cols-2 md:grid-cols-12 gap-2 font-mono text-xs py-3 px-3 border-b border-black/5 hover:bg-black/[0.02]"
                         >
                           <div className="col-span-2">
-                            {new Date(b.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                            {fmtStampDate(b.created_at, { year: '2-digit' })}
                           </div>
                           <div className="col-span-3 font-semibold truncate">
                             {mediaOfferingMap[b.offering_id] || '—'}
@@ -2549,7 +2550,7 @@ export default function Accounting() {
                 {mediaSales.map((m) => (
                   <div key={m.id} className="grid grid-cols-2 md:grid-cols-12 gap-2 font-mono text-xs py-3 px-3 border-b border-black/5 hover:bg-black/[0.02]">
                     <div className="col-span-2">
-                      {new Date(m.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                      {fmtStampDate(m.created_at, { year: '2-digit' })}
                     </div>
                     <div className="col-span-3 font-semibold truncate">{m.description}</div>
                     <div className="col-span-1">
@@ -2697,11 +2698,7 @@ export default function Accounting() {
                             />
                           </div>
                           <div className="col-span-2 text-black/70">
-                            {new Date(e.created_at).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: '2-digit',
-                            })}
+                            {fmtStampDate(e.created_at, { year: '2-digit' })}
                           </div>
                           <div className="col-span-3">
                             {normalizeName(e.engineer_name) || e.engineer_name}

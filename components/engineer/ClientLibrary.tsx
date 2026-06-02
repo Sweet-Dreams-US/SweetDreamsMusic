@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Search, Upload, Plus, Trash2, FileAudio, StickyNote, ChevronLeft, Download } from 'lucide-react';
+import { fmtStampDate } from '@/lib/studio-time';
 
 interface Client {
   id: string;
@@ -345,7 +346,7 @@ export default function ClientLibrary() {
                   <div className="min-w-0">
                     <p className="font-mono text-xs font-semibold truncate">{file.display_name || file.file_name}</p>
                     <p className="font-mono text-[10px] text-black/40">
-                      {formatFileSize(file.file_size)} · by {file.uploaded_by_name} · {new Date(file.created_at).toLocaleDateString()}
+                      {formatFileSize(file.file_size)} · by {file.uploaded_by_name} · {fmtStampDate(file.created_at)}
                     </p>
                     {file.description && <p className="font-mono text-[10px] text-black/50 mt-1">{file.description}</p>}
                   </div>
@@ -415,7 +416,7 @@ export default function ClientLibrary() {
                       <span className="font-mono text-[10px] bg-black/5 px-2 py-0.5 uppercase tracking-wider">{note.category}</span>
                       <p className="font-mono text-xs mt-2">{note.note_content}</p>
                       <p className="font-mono text-[10px] text-black/40 mt-1">
-                        {note.admin_name} · {new Date(note.created_at).toLocaleDateString()}
+                        {note.admin_name} · {fmtStampDate(note.created_at)}
                       </p>
                     </div>
                     <button onClick={() => deleteNote(note.id)} className="text-red-400 hover:text-red-600 flex-shrink-0 p-1">

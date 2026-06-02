@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { ENGINEERS, SUPER_ADMINS, type Room } from '@/lib/constants';
 import { sendCashChosenAlert } from '@/lib/email';
+import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
 
 // Client elects to pay their invite deposit in CASH. This does NOT charge or
 // hold the slot — it records the intent (deposit_method='cash'), keeps the
@@ -78,9 +79,9 @@ export async function POST(request: NextRequest) {
       (e) => e.name === booking.engineer_name || e.displayName === booking.engineer_name,
     );
     const alertTo = engineerCfg?.email || SUPER_ADMINS[0];
-    const startDate = new Date(booking.start_time);
-    const dateStr = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-    const timeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+    // bookings.start_time is wall-clock-as-UTC → read as UTC (fmtSession*)
+    const dateStr = fmtSessionDate(booking.start_time, { weekday: 'long', month: 'long', day: 'numeric' });
+    const timeStr = fmtSessionTime(booking.start_time);
 
     await sendCashChosenAlert(alertTo, {
       customerName: realName,
