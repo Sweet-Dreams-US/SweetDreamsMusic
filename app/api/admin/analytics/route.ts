@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifyAdminAccess } from '@/lib/admin-auth';
+import { depositCollectedCents } from '@/lib/deposit';
 
 export async function GET() {
   const supabase = await createClient();
@@ -103,7 +104,7 @@ export async function GET() {
       .gte('created_at', monthStart),
 
     // Booking revenue this month (deposits)
-    sc.from('bookings').select('actual_deposit_paid, deposit_amount')
+    sc.from('bookings').select('actual_deposit_paid, deposit_amount, remainder_amount, stripe_payment_intent_id')
       .gte('created_at', monthStart)
       .in('status', ['confirmed', 'completed', 'pending', 'pending_approval']),
 
@@ -148,8 +149,8 @@ export async function GET() {
 
   // Booking revenue this month
   const bookingRevenueMonth = (bookingRevenueMonthRes.data || []).reduce(
-    (sum: number, b: { actual_deposit_paid: number | null; deposit_amount: number }) =>
-      sum + (b.actual_deposit_paid ?? b.deposit_amount ?? 0), 0
+    (sum: number, b: { actual_deposit_paid: number | null; deposit_amount: number; remainder_amount: number | null; stripe_payment_intent_id: string | null }) =>
+      sum + depositCollectedCents(b), 0
   );
 
   // Top 5 clients by session count

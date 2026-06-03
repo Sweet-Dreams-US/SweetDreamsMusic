@@ -4,6 +4,7 @@ import { verifyEngineerAccess } from '@/lib/admin-auth';
 import { sendBookingConfirmation, sendEngineerNewBookingAlert } from '@/lib/email';
 import { ENGINEERS, ROOM_LABELS, type Room } from '@/lib/constants';
 import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
+import { depositCollectedCents } from '@/lib/deposit';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
       duration: booking.duration,
       room: booking.room || '',
       total: booking.total_amount,
-      deposit: booking.actual_deposit_paid || booking.deposit_amount,
+      deposit: depositCollectedCents(booking),
     });
   }
 

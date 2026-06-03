@@ -6,6 +6,7 @@ import { formatCents, formatDuration } from '@/lib/utils';
 import { fmtStampDateTime } from '@/lib/studio-time';
 import { ENGINEERS, ROOM_LABELS } from '@/lib/constants';
 import CashCorrectionModal from '@/components/booking/CashCorrectionModal';
+import { depositCollectedCents } from '@/lib/deposit';
 
 interface Booking {
   id: string;
@@ -611,7 +612,7 @@ export default function BookingManager() {
                       </div>
                       <div>
                         <p className="text-black/60 uppercase tracking-wider">Deposit Paid</p>
-                        <p className="font-semibold">{formatCents(b.actual_deposit_paid || b.deposit_amount)}</p>
+                        <p className="font-semibold">{formatCents(depositCollectedCents(b))}</p>
                       </div>
                       <div>
                         <p className="text-black/60 uppercase tracking-wider">Remainder</p>

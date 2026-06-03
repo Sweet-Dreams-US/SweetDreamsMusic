@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifyAdminAccess } from '@/lib/admin-auth';
+import { depositCollectedCents } from '@/lib/deposit';
 
 // Fort Wayne timezone boundaries
 function getFortWayneBoundaries() {
@@ -67,7 +68,7 @@ export async function GET() {
     // Today's bookings (confirmed/completed)
     serviceClient
       .from('bookings')
-      .select('id, total_amount, deposit_amount, actual_deposit_paid, status')
+      .select('id, total_amount, deposit_amount, actual_deposit_paid, remainder_amount, stripe_payment_intent_id, status')
       .gte('start_time', todayStart)
       .lt('start_time', todayEnd)
       .in('status', ['confirmed', 'completed', 'pending', 'pending_approval']),
@@ -75,7 +76,7 @@ export async function GET() {
     // This week bookings
     serviceClient
       .from('bookings')
-      .select('id, total_amount, deposit_amount, actual_deposit_paid, status')
+      .select('id, total_amount, deposit_amount, actual_deposit_paid, remainder_amount, stripe_payment_intent_id, status')
       .gte('start_time', weekStart)
       .lt('start_time', todayEnd)
       .in('status', ['confirmed', 'completed', 'pending', 'pending_approval']),
@@ -83,7 +84,7 @@ export async function GET() {
     // This month bookings
     serviceClient
       .from('bookings')
-      .select('id, total_amount, deposit_amount, actual_deposit_paid, status')
+      .select('id, total_amount, deposit_amount, actual_deposit_paid, remainder_amount, stripe_payment_intent_id, status')
       .gte('start_time', monthStart)
       .lt('start_time', todayEnd)
       .in('status', ['confirmed', 'completed', 'pending', 'pending_approval']),
@@ -153,7 +154,7 @@ export async function GET() {
   const calcRevenue = (bookings: any[] | null) => {
     if (!bookings) return 0;
     return bookings.reduce((sum, b) => {
-      const deposit = b.actual_deposit_paid ?? b.deposit_amount ?? 0;
+      const deposit = depositCollectedCents(b);
       return sum + deposit;
     }, 0);
   };

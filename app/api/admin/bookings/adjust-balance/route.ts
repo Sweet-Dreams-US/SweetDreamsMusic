@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { verifyAdminAccess } from '@/lib/admin-auth';
+import { depositCollectedCents } from '@/lib/deposit';
 
 /**
  * POST /api/admin/bookings/adjust-balance
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
   // Fetch the booking so we can validate the ceiling.
   const { data: existing, error: fetchErr } = await supabase
     .from('bookings')
-    .select('id, total_amount, deposit_amount, actual_deposit_paid, remainder_amount, status, customer_email, customer_name')
+    .select('id, total_amount, deposit_amount, actual_deposit_paid, remainder_amount, stripe_payment_intent_id, status, customer_email, customer_name')
     .eq('id', bookingId)
     .maybeSingle();
 
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
   }
 
   const totalAmount = existing.total_amount || 0;
-  const depositPaid = existing.actual_deposit_paid ?? existing.deposit_amount ?? 0;
+  const depositPaid = depositCollectedCents(existing);
   const maxAllowedRemainder = Math.max(0, totalAmount - depositPaid);
 
   if (newRemainderCents > maxAllowedRemainder) {

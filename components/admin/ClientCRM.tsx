@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Search, Copy, Check, ChevronDown, ChevronUp, ArrowUpDown, ExternalLink, Phone, Mail, User, FileText, Pencil, X as XIcon } from 'lucide-react';
 import { formatCents, formatDuration } from '@/lib/utils';
+import { depositCollectedCents } from '@/lib/deposit';
 
 interface Client {
   id: string;
@@ -38,6 +39,7 @@ interface ClientBooking {
   deposit_amount: number;
   remainder_amount: number;
   actual_deposit_paid: number | null;
+  stripe_payment_intent_id: string | null;
   status: string;
   engineer_name: string | null;
   created_at: string;
@@ -379,7 +381,7 @@ function ClientDetail({
     }
     return s;
   }, 0);
-  const depositsCollected = bookings.reduce((s, b) => s + (b.actual_deposit_paid || b.deposit_amount || 0), 0);
+  const depositsCollected = bookings.reduce((s, b) => s + depositCollectedCents(b), 0);
   const outstanding = bookings.reduce((s, b) => s + ((b.remainder_amount || 0) > 0 ? b.remainder_amount : 0), 0);
 
   async function addNote() {
@@ -612,7 +614,7 @@ function BalanceEditor({
   onCancel: () => void;
 }) {
   // Ceiling matches the server-side validation in /api/admin/bookings/adjust-balance
-  const depositPaid = booking.actual_deposit_paid ?? booking.deposit_amount ?? 0;
+  const depositPaid = depositCollectedCents(booking);
   const currentRemainder = booking.remainder_amount || 0;
   const maxCents = Math.max(0, (booking.total_amount || 0) - depositPaid);
   const [dollarsInput, setDollarsInput] = useState(((booking.remainder_amount || 0) / 100).toFixed(2));

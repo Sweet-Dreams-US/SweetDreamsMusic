@@ -8,6 +8,7 @@ import { PRODUCER_COMMISSION, PLATFORM_COMMISSION, ENGINEER_SESSION_SPLIT, BUSIN
 import CreditsLiabilityPanel from './CreditsLiabilityPanel';
 import PackageAccounting from './PackageAccounting';
 import CashCorrectionsLog from './CashCorrectionsLog';
+import { depositCollectedCents } from '@/lib/deposit';
 
 interface Booking {
   id: string;
@@ -609,7 +610,7 @@ export default function Accounting() {
     const total = bandBookings.length;
     const bookedRevenue = bandBookings.reduce((s, b) => s + (b.total_amount || 0), 0);
     const collectedRevenue = bandBookings.reduce(
-      (s, b) => s + (b.actual_deposit_paid ?? b.deposit_amount ?? 0),
+      (s, b) => s + depositCollectedCents(b),
       0,
     );
     const outstanding = bandBookings.reduce((s, b) => s + (b.remainder_amount || 0), 0);
@@ -641,7 +642,7 @@ export default function Accounting() {
       if (!byBand[name]) byBand[name] = { count: 0, booked: 0, collected: 0 };
       byBand[name].count += 1;
       byBand[name].booked += b.total_amount || 0;
-      byBand[name].collected += b.actual_deposit_paid ?? b.deposit_amount ?? 0;
+      byBand[name].collected += depositCollectedCents(b);
     }
 
     return {

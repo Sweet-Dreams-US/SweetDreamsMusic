@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
   const { data: bookings, error } = await supabase
     .from('bookings')
-    .select('id, customer_name, customer_email, customer_phone, artist_name, start_time, end_time, duration, room, total_amount, deposit_amount, remainder_amount, actual_deposit_paid, status, engineer_name, created_at, admin_notes')
+    .select('id, customer_name, customer_email, customer_phone, artist_name, start_time, end_time, duration, room, total_amount, deposit_amount, remainder_amount, actual_deposit_paid, stripe_payment_intent_id, status, engineer_name, created_at, admin_notes')
     .eq('customer_email', email)
     .order('start_time', { ascending: false });
 
