@@ -112,8 +112,22 @@ ENGINEERS.forEach(eng => {
   const emailPrefix = eng.email.split('@')[0].toLowerCase();
   if (emailPrefix) NAME_MAP[emailPrefix] = eng.name;
 });
-// Additional known aliases not derivable from the ENGINEERS constant
-NAME_MAP['zion omari'] = 'Zion';
+// Additional known aliases not derivable from the ENGINEERS constant.
+//
+// HISTORICAL NAMES MUST STAY HERE FOREVER. When an engineer is renamed in
+// the ENGINEERS constant, their OLD name lives on in already-written rows
+// (payroll_payouts.person_name, cash_ledger.engineer_name, media_sales.*,
+// beat producer, etc.). Payroll buckets every row by normalizeName(), so a
+// historical name with no alias becomes its OWN bucket — and past payouts
+// recorded under the old name stop netting against the new name's earned
+// total, inflating "owed". That is exactly what happened when "Zion Tinsley"
+// → "Zion": his 5 prior payouts ($1182) stranded under the old name and his
+// owed balance read $1182 instead of $0 (fixed 2026-06-03, data + this map).
+//
+// Rule of thumb: renaming an engineer = ADD their prior name(s) below, never
+// just replace the ENGINEERS entry.
+NAME_MAP['zion omari'] = 'Zion';     // email-derived / legacy display
+NAME_MAP['zion tinsley'] = 'Zion';   // prior roster name (renamed 2026-06-02)
 
 function normalizeName(raw: string | null): string | null {
   if (!raw) return null;
