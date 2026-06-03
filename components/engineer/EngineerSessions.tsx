@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { Eye } from 'lucide-react';
 import { formatCents, formatDuration } from '@/lib/utils';
 import { ENGINEERS } from '@/lib/constants';
 import CashCorrectionModal from '@/components/booking/CashCorrectionModal';
@@ -70,11 +71,19 @@ export default function EngineerSessions({ userEmail }: { userEmail: string }) {
   const [loading, setLoading] = useState(true);
   const [claiming, setClaiming] = useState<string | null>(null);
   const [showAllBookings, setShowAllBookings] = useState(false);
+  // Super-engineer (god-mode) view: when the signed-in user is a super-admin
+  // (e.g. cole@sweetdreams.us), the accounting endpoint returns EVERY
+  // engineer's sessions in response to ?all=1. The server is authoritative —
+  // it sets `superView` true only for super-admins — so we trust its flag
+  // rather than re-deriving it client-side.
+  const [superView, setSuperView] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
       const [myRes, unclaimedRes, allRes] = await Promise.all([
-        fetch('/api/engineer/accounting'),
+        // ?all=1 — the server ignores it for non-admins, so a regular
+        // engineer still gets only their own sessions here.
+        fetch('/api/engineer/accounting?all=1'),
         fetch('/api/booking/unclaimed'),
         fetch('/api/booking/all'),
       ]);
@@ -82,6 +91,7 @@ export default function EngineerSessions({ userEmail }: { userEmail: string }) {
       const unclaimedData = await unclaimedRes.json();
       const allData = await allRes.json();
       setMySessions(myData.bookings || []);
+      setSuperView(myData.superView === true);
       setUnclaimed(unclaimedData.bookings || []);
       setAllBookings(allData.bookings || []);
     } catch {
@@ -124,8 +134,13 @@ export default function EngineerSessions({ userEmail }: { userEmail: string }) {
 
   if (loading) return <p className="font-mono text-sm text-black/70">Loading sessions...</p>;
 
+  // In super view, pending invites may (in theory) lack an engineer — show
+  // them anyway so nothing is hidden from the owner. Assigned active sessions
+  // bucket to "My Sessions"; engineer-less confirmed/pending sessions surface
+  // under "Available Sessions" (the unclaimed endpoint), so keeping the
+  // engineer_name gate on myActive avoids double-listing them.
   const pendingInvites = mySessions.filter((b) =>
-    b.status === 'pending_deposit' && b.engineer_name
+    b.status === 'pending_deposit' && (superView || b.engineer_name)
   );
   const myActive = mySessions.filter((b) =>
     ['confirmed', 'pending', 'approved'].includes(b.status) && b.engineer_name
@@ -134,6 +149,21 @@ export default function EngineerSessions({ userEmail }: { userEmail: string }) {
 
   return (
     <div className="space-y-10">
+      {/* God-mode banner — only the owner/dev (super-admin) sees this. Makes it
+          unmistakable that the lists below span EVERY engineer, not just them. */}
+      {superView && (
+        <div className="border-2 border-black bg-yellow-300 px-4 py-3 flex items-start gap-2">
+          <Eye className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-mono text-xs font-bold uppercase tracking-wider">Owner view — all engineers</p>
+            <p className="font-mono text-[11px] text-black/70 mt-0.5">
+              You&apos;re seeing every engineer&apos;s sessions. Each card shows whose session it is.
+              Actions (charge, complete, reschedule) work on any session.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* All Studio Bookings — for availability reference */}
       <div>
         <button
@@ -203,11 +233,11 @@ export default function EngineerSessions({ userEmail }: { userEmail: string }) {
       {pendingInvites.length > 0 && (
         <div>
           <h3 className="font-mono text-sm font-semibold uppercase tracking-wider mb-4">
-            Pending Invites ({pendingInvites.length})
+            {superView ? 'Pending Invites — all engineers' : 'Pending Invites'} ({pendingInvites.length})
           </h3>
           <div className="space-y-3">
             {pendingInvites.map((b) => (
-              <PendingInviteCard key={b.id} booking={b} onUpdate={loadData} />
+              <PendingInviteCard key={b.id} booking={b} onUpdate={loadData} superView={superView} />
             ))}
           </div>
         </div>
@@ -243,14 +273,14 @@ export default function EngineerSessions({ userEmail }: { userEmail: string }) {
       {/* My Active Sessions */}
       <div>
         <h3 className="font-mono text-sm font-semibold uppercase tracking-wider mb-4">
-          My Sessions ({myActive.length})
+          {superView ? 'Active Sessions — all engineers' : 'My Sessions'} ({myActive.length})
         </h3>
         {myActive.length === 0 ? (
           <p className="font-mono text-xs text-black/60 border border-black/10 p-6 text-center">No active sessions</p>
         ) : (
           <div className="space-y-3">
             {myActive.map((b) => (
-              <BookingCard key={b.id} booking={b} onUpdate={loadData} />
+              <BookingCard key={b.id} booking={b} onUpdate={loadData} superView={superView} />
             ))}
           </div>
         )}
@@ -259,14 +289,14 @@ export default function EngineerSessions({ userEmail }: { userEmail: string }) {
       {/* Completed */}
       <div>
         <h3 className="font-mono text-sm font-semibold uppercase tracking-wider mb-4">
-          Completed ({myCompleted.length})
+          {superView ? 'Completed — all engineers' : 'Completed'} ({myCompleted.length})
         </h3>
         {myCompleted.length === 0 ? (
           <p className="font-mono text-xs text-black/60 border border-black/10 p-6 text-center">No completed sessions</p>
         ) : (
           <div className="space-y-3">
             {myCompleted.map((b) => (
-              <BookingCard key={b.id} booking={b} onUpdate={loadData} completed />
+              <BookingCard key={b.id} booking={b} onUpdate={loadData} completed superView={superView} />
             ))}
           </div>
         )}
@@ -275,10 +305,66 @@ export default function EngineerSessions({ userEmail }: { userEmail: string }) {
   );
 }
 
-function PendingInviteCard({ booking, onUpdate }: { booking: Booking; onUpdate: () => void }) {
+function PendingInviteCard({ booking, onUpdate, superView }: { booking: Booking; onUpdate: () => void; superView?: boolean }) {
   const [resending, setResending] = useState(false);
   const [copied, setCopied] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+
+  // ── Reschedule (edit time/duration) for an UNPAID invite ────────────
+  // Previously the only way to change a pending invite's time was to
+  // cancel + recreate it (which voided the invite link and made the
+  // client re-do everything). This edits the existing row in place via
+  // /api/booking/update, which recomputes end_time server-side. The
+  // invite token/link is unchanged, so a client who already has the
+  // link still pays toward the corrected time.
+  const [showEdit, setShowEdit] = useState(false);
+  const [newDate, setNewDate] = useState('');
+  const [newTime, setNewTime] = useState('');
+  const [newDuration, setNewDuration] = useState<number>(booking.duration || 2);
+  const [saving, setSaving] = useState(false);
+
+  // Pre-fill from the booking's current values. bookings.start_time is
+  // Fort Wayne wall-clock tagged +00 (studio-local-as-UTC), so we read
+  // the digits back with UTC getters — same convention as BookingCard's
+  // openTimeEditor and the studio-time helpers.
+  function openEditor() {
+    const sd = new Date(booking.start_time);
+    const y = sd.getUTCFullYear();
+    const mo = String(sd.getUTCMonth() + 1).padStart(2, '0');
+    const da = String(sd.getUTCDate()).padStart(2, '0');
+    const hh = String(sd.getUTCHours()).padStart(2, '0');
+    const mm = String(sd.getUTCMinutes()).padStart(2, '0');
+    setNewDate(`${y}-${mo}-${da}`);
+    setNewTime(`${hh}:${mm}`);
+    setNewDuration(Number(booking.duration) || 2);
+    setShowEdit(true);
+  }
+
+  async function saveEdit() {
+    if (!newDate || !newTime) { alert('Pick a date and time'); return; }
+    if (!(newDuration > 0)) { alert('Duration must be greater than zero'); return; }
+    // Send the wall-clock digits unshifted (no zone suffix) — matches the
+    // invite-creation + BookingCard reschedule convention. Server recomputes
+    // end_time from start + duration.
+    const startTime = `${newDate}T${newTime}:00`;
+    if (!confirm(`Reschedule ${booking.customer_name}'s invite to ${newDate} at ${newTime}, ${formatDuration(newDuration)}?\n\nThe invite link stays the same — the client still pays the deposit through it.`)) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/booking/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking.id, startTime, duration: newDuration }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || 'Failed to reschedule'); return; }
+      setShowEdit(false);
+      onUpdate();
+    } catch {
+      alert('Network error');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   // Extract invite URL from admin_notes if stored there
   const tokenMatch = booking.admin_notes?.match(/Token: ([a-f0-9-]+)/);
@@ -349,6 +435,12 @@ function PendingInviteCard({ booking, onUpdate }: { booking: Booking; onUpdate: 
             <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-2 py-0.5">
               Awaiting Payment
             </span>
+            {/* In owner view, surface whose invite this is. */}
+            {superView && booking.engineer_name && (
+              <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-black text-white px-2 py-0.5">
+                {booking.engineer_name}
+              </span>
+            )}
           </div>
           {booking.customer_email && (
             <p className="font-mono text-xs text-black/70">{booking.customer_email}</p>
@@ -390,6 +482,12 @@ function PendingInviteCard({ booking, onUpdate }: { booking: Booking; onUpdate: 
           </button>
         )}
         <button
+          onClick={() => (showEdit ? setShowEdit(false) : openEditor())}
+          className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-black/20 text-black/60 px-4 py-2 hover:bg-black/5 transition-colors"
+        >
+          {showEdit ? 'Close' : 'Reschedule'}
+        </button>
+        <button
           onClick={cancelInvite}
           disabled={cancelling}
           className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-red-300 text-red-500 px-4 py-2 hover:bg-red-50 disabled:opacity-50 transition-colors"
@@ -397,14 +495,68 @@ function PendingInviteCard({ booking, onUpdate }: { booking: Booking; onUpdate: 
           {cancelling ? 'Cancelling...' : 'Cancel'}
         </button>
       </div>
+
+      {/* Reschedule form — edits the existing invite in place (no cancel+recreate). */}
+      {showEdit && (
+        <div className="mt-3 p-3 bg-white border border-amber-200 space-y-2">
+          <p className="font-mono text-xs font-semibold uppercase tracking-wider">Reschedule Invite</p>
+          <p className="font-mono text-[10px] text-black/60">
+            Updates this invite&apos;s date, time, and length. The invite link and the deposit owed stay the same.
+          </p>
+          <div className="flex flex-wrap gap-2 items-end">
+            <div>
+              <label className="font-mono text-[10px] text-black/60 block">Date</label>
+              <input
+                type="date"
+                value={newDate}
+                onChange={(e) => setNewDate(e.target.value)}
+                className="font-mono text-xs border border-black/20 px-2 py-1.5"
+              />
+            </div>
+            <div>
+              <label className="font-mono text-[10px] text-black/60 block">Time</label>
+              <input
+                type="time"
+                value={newTime}
+                onChange={(e) => setNewTime(e.target.value)}
+                className="font-mono text-xs border border-black/20 px-2 py-1.5"
+              />
+            </div>
+            <div>
+              <label className="font-mono text-[10px] text-black/60 block">Duration (hrs)</label>
+              <input
+                type="number"
+                min={0.25}
+                max={24}
+                step={0.25}
+                value={newDuration}
+                onChange={(e) => setNewDuration(Number(e.target.value))}
+                className="font-mono text-xs border border-black/20 px-2 py-1.5 w-24"
+              />
+            </div>
+            <button
+              onClick={saveEdit}
+              disabled={saving}
+              className="font-mono text-xs font-bold uppercase tracking-wider bg-[#F4C430] text-black px-4 py-2 hover:bg-[#F4C430]/80 disabled:opacity-50 transition-colors"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+          {newDuration > 0 && (
+            <p className="font-mono text-[10px] text-black/50">
+              New length: {formatDuration(newDuration)}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass, claimLoading, userEmail }: {
+function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass, claimLoading, userEmail, superView }: {
   booking: Booking; onUpdate?: () => void; completed?: boolean;
   unclaimed?: boolean; onClaim?: () => void; onPass?: () => void;
-  claimLoading?: boolean; userEmail?: string;
+  claimLoading?: boolean; userEmail?: string; superView?: boolean;
 }) {
   const [charging, setCharging] = useState(false);
   const [chargeError, setChargeError] = useState('');
@@ -807,6 +959,13 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
           <p className="font-mono text-sm font-bold">
             {booking.customer_name}
             {booking.artist_name && <span className="font-normal text-black/60 ml-1">({booking.artist_name})</span>}
+            {/* Owner view: show which engineer owns this session. (In normal
+                mode every card is the viewer's own session, so this is noise.) */}
+            {superView && booking.engineer_name && (
+              <span className="ml-2 font-mono text-[10px] font-bold uppercase tracking-wider bg-black text-white px-2 py-0.5 align-middle">
+                {booking.engineer_name}
+              </span>
+            )}
           </p>
           {(booking.customer_email || booking.customer_phone) && (
             <p className="font-mono text-xs text-black/70">
