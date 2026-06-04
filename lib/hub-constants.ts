@@ -138,6 +138,9 @@ export const HUB_TABS = [
   { key: 'goals', label: 'Goals' },
   { key: 'metrics', label: 'Metrics' },
   { key: 'calendar', label: 'Calendar' },
+  { key: 'media', label: 'Media' },
+  { key: 'events', label: 'Events' },
+  { key: 'bands', label: 'Bands' },
   { key: 'achievements', label: 'Achievements' },
   { key: 'roadmap', label: 'Roadmap' },
 ] as const;

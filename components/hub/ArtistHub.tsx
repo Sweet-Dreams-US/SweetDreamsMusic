@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { LayoutDashboard, Folder, Target, BarChart3, CalendarDays, Award, BookOpen, FileText } from 'lucide-react';
+import { LayoutDashboard, Folder, Target, BarChart3, CalendarDays, Award, BookOpen, FileText, Film, PartyPopper, Users } from 'lucide-react';
 import { HUB_TABS, type HubTab } from '@/lib/hub-constants';
 import { calculateLevel, getLevelTitle, getLevelColor } from '@/lib/xp-system';
 import XPBar from './XPBar';
@@ -13,6 +13,37 @@ import ContentCalendar from './ContentCalendar';
 import AchievementBadges from './AchievementBadges';
 import ArtistRoadmap from './ArtistRoadmap';
 import SessionNotes from './SessionNotes';
+import HubMedia from './HubMedia';
+import HubEvents from './HubEvents';
+import HubBands from './HubBands';
+import type { MediaOffering } from '@/lib/media';
+import type { MediaCreditBalance } from '@/lib/media-credits';
+import type { BandMembership, BandInvite, Band } from '@/lib/bands';
+import type { EventWithRsvp, EventRsvp, SweetEvent } from '@/lib/events';
+
+// Server-fetched data for the relocated Media / Events / Bands tabs. Plain
+// serializable objects passed down from app/dashboard/hub/page.tsx so the
+// tabs render without a client waterfall (and without new API routes).
+export interface HubRelocatedData {
+  media: {
+    packages: MediaOffering[];
+    services: MediaOffering[];
+    profilePhone: string | null;
+    isAdmin: boolean;
+    credits: MediaCreditBalance[];
+    studioHours: { hoursRemaining: number; costBasisCents: number };
+    orderCount: number;
+  };
+  events: {
+    myEvents: EventWithRsvp[];
+    pendingInvites: (EventRsvp & { event: SweetEvent })[];
+  };
+  bands: {
+    memberships: BandMembership[];
+    pendingInvites: (BandInvite & { band: Band })[];
+    hasProfile: boolean;
+  };
+}
 
 const TAB_ICONS: Record<string, typeof LayoutDashboard> = {
   overview: LayoutDashboard,
@@ -20,6 +51,9 @@ const TAB_ICONS: Record<string, typeof LayoutDashboard> = {
   goals: Target,
   metrics: BarChart3,
   calendar: CalendarDays,
+  media: Film,
+  events: PartyPopper,
+  bands: Users,
   achievements: Award,
   roadmap: BookOpen,
   notes: FileText,
@@ -51,7 +85,7 @@ interface XpData {
   xpHistory: XpHistoryItem[];
 }
 
-export default function ArtistHub({ userId }: { userId: string }) {
+export default function ArtistHub({ userId, relocated }: { userId: string; relocated: HubRelocatedData }) {
   const [tab, setTab] = useState<ExtendedTab>('overview');
   const [xpData, setXpData] = useState<XpData | null>(null);
   const [newAchievements, setNewAchievements] = useState<string[]>([]);
@@ -188,6 +222,27 @@ export default function ArtistHub({ userId }: { userId: string }) {
               {tab === 'goals' && <GoalTracker onXpEarned={onXpEarned} />}
               {tab === 'metrics' && <MetricsDashboard onXpEarned={onXpEarned} />}
               {tab === 'calendar' && <ContentCalendar onXpEarned={onXpEarned} />}
+              {tab === 'media' && (
+                <HubMedia
+                  packages={relocated.media.packages}
+                  services={relocated.media.services}
+                  profilePhone={relocated.media.profilePhone}
+                  isAdmin={relocated.media.isAdmin}
+                  mediaCredits={relocated.media.credits}
+                  studioHours={relocated.media.studioHours}
+                  orderCount={relocated.media.orderCount}
+                />
+              )}
+              {tab === 'events' && (
+                <HubEvents myEvents={relocated.events.myEvents} pendingInvites={relocated.events.pendingInvites} />
+              )}
+              {tab === 'bands' && (
+                <HubBands
+                  memberships={relocated.bands.memberships}
+                  pendingInvites={relocated.bands.pendingInvites}
+                  hasProfile={relocated.bands.hasProfile}
+                />
+              )}
               {tab === 'achievements' && <AchievementBadges newUnlocks={newAchievements} progress={achievementProgress} onDismiss={() => setNewAchievements([])} />}
               {tab === 'roadmap' && <ArtistRoadmap />}
               {tab === 'notes' && <SessionNotes onXpEarned={onXpEarned} />}
