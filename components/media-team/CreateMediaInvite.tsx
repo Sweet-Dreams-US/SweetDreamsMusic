@@ -9,6 +9,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Search, X, Check, Film } from 'lucide-react';
 import { SESSION_KIND_LABELS, type MediaSessionKind } from '@/lib/media-scheduling';
+import DateTimePicker from '@/components/ui/DateTimePicker';
 
 interface Client {
   id: string;
@@ -171,16 +172,16 @@ export default function CreateMediaInvite({ onCreated }: { onCreated?: () => voi
         </select>
       </div>
 
-      {/* Date & time / duration */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="col-span-2">
-          <label className="font-mono text-[10px] text-black/60 uppercase tracking-wider block mb-1">Date &amp; time</label>
-          <input type="datetime-local" value={dt} step={900} onChange={(e) => setDt(e.target.value)} className="w-full border-2 border-black/20 px-2 py-2.5 font-mono text-xs focus:border-accent focus:outline-none" />
-        </div>
-        <div>
-          <label className="font-mono text-[10px] text-black/60 uppercase tracking-wider block mb-1">Hours</label>
-          <input type="number" min={0.5} max={12} step={0.5} value={duration} onChange={(e) => setDuration(Number(e.target.value))} className="w-full border-2 border-black/20 px-2 py-2.5 font-mono text-xs focus:border-accent focus:outline-none" />
-        </div>
+      {/* Date & time */}
+      <div>
+        <label className="font-mono text-[10px] text-black/60 uppercase tracking-wider block mb-1">Date &amp; time <span className="text-black/40">· Eastern</span></label>
+        <DateTimePicker value={dt} onChange={setDt} />
+      </div>
+
+      {/* Duration */}
+      <div>
+        <label className="font-mono text-[10px] text-black/60 uppercase tracking-wider block mb-1">Duration (hours)</label>
+        <input type="number" min={0.5} max={12} step={0.5} value={duration} onChange={(e) => setDuration(Number(e.target.value))} className="w-32 border-2 border-black/20 px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none" />
       </div>
 
       {/* Location */}

@@ -13,6 +13,7 @@ import { X, Sparkles, AlertTriangle } from 'lucide-react';
 import { CREDIT_KIND_LABELS, defaultDurationHoursForCreditKind, type CreditKind } from '@/lib/media-credits';
 import { violates48hLead } from '@/lib/media-scheduling';
 import { studioInputToUtcISO, toStudioInputValue } from '@/lib/studio-time';
+import DateTimePicker from '@/components/ui/DateTimePicker';
 
 interface SchedulableCredit {
   id: string;
@@ -57,11 +58,10 @@ export default function MediaScheduleModal({
 
   async function submit() {
     setError('');
-    if (!dt) { setError('Pick a date and time.'); return; }
+    const [d, t] = dt.split('T');
+    if (!d || !t) { setError('Pick a date and a time.'); return; }
     if (tooSoon) { setError('Media shoots must be at least 48 hours out.'); return; }
     if (vision.trim().length < 3) { setError('Tell the team your vision (a sentence is fine).'); return; }
-    // datetime-local is "YYYY-MM-DDTHH:MM" — split for the API (date + start_time).
-    const [date, time] = dt.split('T');
     setSaving(true);
     try {
       const res = await fetch('/api/media/credits/schedule-request', {
@@ -69,8 +69,8 @@ export default function MediaScheduleModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           credit_id: credit.id,
-          date,
-          start_time: time,
+          date: d,
+          start_time: t,
           vision: vision.trim(),
           location,
           external_location_text: location === 'external' ? externalText.trim() : null,
@@ -114,17 +114,9 @@ export default function MediaScheduleModal({
 
           <div>
             <label className="font-mono text-[10px] text-black/60 uppercase tracking-wider block mb-1">
-              Date &amp; time
+              Date &amp; time <span className="text-black/40">· Fort Wayne (Eastern)</span>
             </label>
-            <input
-              type="datetime-local"
-              value={dt}
-              min={minStudio}
-              step={900}
-              onChange={(e) => setDt(e.target.value)}
-              className="w-full border-2 border-black/20 px-3 py-3 font-mono text-sm focus:border-accent focus:outline-none"
-            />
-            <p className="font-mono text-[10px] text-black/45 mt-1">Fort Wayne (Eastern) time.</p>
+            <DateTimePicker value={dt} onChange={setDt} minISO={minStudio} />
           </div>
 
           {tooSoon && (
