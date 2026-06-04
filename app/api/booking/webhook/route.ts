@@ -17,6 +17,9 @@ import { ENGINEERS, SUPER_ADMINS, SITE_URL, type Room } from '@/lib/constants';
 import { calculatePriorityExpiry, getPriorityHoursLabel, calculateRescheduleDeadline } from '@/lib/priority';
 import { awardXP } from '@/lib/xp-system';
 import { fmtSessionDate, fmtSessionTime, fmtStampDate } from '@/lib/studio-time';
+import { creditGrantsFromOffering } from '@/lib/media-credits';
+import type { MediaOffering } from '@/lib/media';
+import type { ConfiguredComponents } from '@/lib/media-config';
 import type Stripe from 'stripe';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -1091,8 +1094,57 @@ export async function POST(request: NextRequest) {
               bookingErr,
             );
           } else if (row) {
-            createdBookingIds.push((row as { id: string }).id);
-            if (!primaryBookingId) primaryBookingId = (row as { id: string }).id;
+            const bookingRowId = (row as { id: string }).id;
+            createdBookingIds.push(bookingRowId);
+            if (!primaryBookingId) primaryBookingId = bookingRowId;
+
+            // Grant per-deliverable media credits for this item (Phase 2 — the
+            // "balance on your account" model). The cart snapshot lacks the
+            // offering's base components, so fetch them, then map slots →
+            // credits honoring the buyer's skip/tier choices. studio_hours are
+            // NOT granted here (studio_credits owns hours — avoids double-grant).
+            // A failed grant is logged + admin-alerted but never fatal: the
+            // booking + payment are valid and a missed credit is backfillable.
+            try {
+              const { data: off } = await supabase
+                .from('media_offerings')
+                .select('kind, slug, title, components')
+                .eq('id', item.offering_id)
+                .maybeSingle();
+              if (off) {
+                const grants = creditGrantsFromOffering(
+                  off as Pick<MediaOffering, 'kind' | 'slug' | 'title' | 'components'>,
+                  (item.configured_components as ConfiguredComponents | null) ?? null,
+                );
+                const creditOwner = bandId
+                  ? { band_id: bandId, user_id: null }
+                  : { user_id: buyerId, band_id: null };
+                for (const g of grants) {
+                  const { error: gErr } = await supabase.from('media_credits').insert({
+                    ...creditOwner,
+                    credit_kind: g.credit_kind,
+                    quantity_granted: g.quantity,
+                    quantity_redeemed: 0,
+                    tier: g.tier ?? null,
+                    source_booking_id: bookingRowId,
+                    notes: g.label,
+                  });
+                  if (gErr) {
+                    console.error('[webhook] media_credits grant failed:', gErr.message, g);
+                    await alertAdminOfWebhookFailure({
+                      eventId: event.id,
+                      eventType: event.type,
+                      reason: `media_credits grant failed for booking ${bookingRowId}: ${gErr.message}`,
+                      metadata: meta,
+                      paymentIntent: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+                      amount: session.amount_total,
+                    });
+                  }
+                }
+              }
+            } catch (ge) {
+              console.error('[webhook] media_credits grant threw:', ge);
+            }
           }
 
           totalStudioHours += Number(item.studio_hours_included) || 0;
