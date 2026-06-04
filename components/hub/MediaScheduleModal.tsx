@@ -30,28 +30,38 @@ export default function MediaScheduleModal({
   onClose: () => void;
   onScheduled: () => void;
 }) {
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
+  // Earliest selectable slot = the first clean hour at least 48h out, in
+  // studio-local terms. Rounding up to the hour keeps the picker tidy and
+  // guarantees the value is ≥48h (never rounds below the threshold).
+  const minStudio = (() => {
+    const d = new Date(Date.now() + 48 * 60 * 60 * 1000);
+    if (d.getMinutes() !== 0 || d.getSeconds() !== 0) d.setHours(d.getHours() + 1);
+    d.setMinutes(0, 0, 0);
+    return toStudioInputValue(d.toISOString()); // "YYYY-MM-DDTHH:MM" Eastern
+  })();
+
+  // Single datetime-local control (was two clunky native pickers that let you
+  // half-fill and blocked submit). Prefilled to the earliest valid slot.
+  const [dt, setDt] = useState(minStudio);
   const [vision, setVision] = useState('');
   const [location, setLocation] = useState<'studio' | 'external'>('studio');
   const [externalText, setExternalText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Earliest selectable date = now + 48h, in studio-local terms.
-  const minStudio = toStudioInputValue(new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString());
-  const minDate = minStudio.slice(0, 10);
   const durationHours = defaultDurationHoursForCreditKind(credit.credit_kind);
 
-  // Live 48h check on the chosen date/time.
-  const chosenUtc = date && time ? studioInputToUtcISO(`${date}T${time}`) : null;
+  // Live 48h check on the chosen datetime.
+  const chosenUtc = dt ? studioInputToUtcISO(dt) : null;
   const tooSoon = chosenUtc ? violates48hLead(chosenUtc) : false;
 
   async function submit() {
     setError('');
-    if (!date || !time) { setError('Pick a date and time.'); return; }
+    if (!dt) { setError('Pick a date and time.'); return; }
     if (tooSoon) { setError('Media shoots must be at least 48 hours out.'); return; }
     if (vision.trim().length < 3) { setError('Tell the team your vision (a sentence is fine).'); return; }
+    // datetime-local is "YYYY-MM-DDTHH:MM" — split for the API (date + start_time).
+    const [date, time] = dt.split('T');
     setSaving(true);
     try {
       const res = await fetch('/api/media/credits/schedule-request', {
@@ -100,29 +110,21 @@ export default function MediaScheduleModal({
           {/* 48h helper — always visible */}
           <div className="bg-accent/10 border border-accent/30 px-3 py-2 font-mono text-[11px] text-black/70">
             Shoots are booked at least <strong>48 hours</strong> in advance so the team can plan.
-            Earliest date: {minDate}.
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="font-mono text-[10px] text-black/60 uppercase tracking-wider block mb-1">Date</label>
-              <input
-                type="date"
-                value={date}
-                min={minDate}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full border-2 border-black/20 px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="font-mono text-[10px] text-black/60 uppercase tracking-wider block mb-1">Time</label>
-              <input
-                type="time"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                className="w-full border-2 border-black/20 px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none"
-              />
-            </div>
+          <div>
+            <label className="font-mono text-[10px] text-black/60 uppercase tracking-wider block mb-1">
+              Date &amp; time
+            </label>
+            <input
+              type="datetime-local"
+              value={dt}
+              min={minStudio}
+              step={900}
+              onChange={(e) => setDt(e.target.value)}
+              className="w-full border-2 border-black/20 px-3 py-3 font-mono text-sm focus:border-accent focus:outline-none"
+            />
+            <p className="font-mono text-[10px] text-black/45 mt-1">Fort Wayne (Eastern) time.</p>
           </div>
 
           {tooSoon && (

@@ -27,8 +27,7 @@ export default function CreateMediaInvite({ onCreated }: { onCreated?: () => voi
   const [selected, setSelected] = useState<Client | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
 
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('11:00');
+  const [dt, setDt] = useState('');
   const [duration, setDuration] = useState(2);
   const [kind, setKind] = useState<MediaSessionKind>('video');
   const [location, setLocation] = useState<'studio' | 'external'>('studio');
@@ -61,7 +60,8 @@ export default function CreateMediaInvite({ onCreated }: { onCreated?: () => voi
   async function submit() {
     setError('');
     if (!selected) { setError('Pick a client.'); return; }
-    if (!date || !time) { setError('Pick a date and time.'); return; }
+    if (!dt) { setError('Pick a date and time.'); return; }
+    const [date, time] = dt.split('T');
     setSaving(true);
     try {
       const res = await fetch('/api/media/team/create-session', {
@@ -101,7 +101,7 @@ export default function CreateMediaInvite({ onCreated }: { onCreated?: () => voi
           {selected?.display_name} has been scheduled and emailed. It now shows in your jobs queue.
         </p>
         <button
-          onClick={() => { setDone(false); setSelected(null); setSearch(''); setVision(''); setDate(''); }}
+          onClick={() => { setDone(false); setSelected(null); setSearch(''); setVision(''); setDt(''); }}
           className="font-mono text-xs font-bold uppercase tracking-wider bg-black text-white px-4 py-2 hover:bg-black/80"
         >
           Book another
@@ -171,15 +171,11 @@ export default function CreateMediaInvite({ onCreated }: { onCreated?: () => voi
         </select>
       </div>
 
-      {/* Date / time / duration */}
+      {/* Date & time / duration */}
       <div className="grid grid-cols-3 gap-3">
-        <div>
-          <label className="font-mono text-[10px] text-black/60 uppercase tracking-wider block mb-1">Date</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full border-2 border-black/20 px-2 py-2.5 font-mono text-xs focus:border-accent focus:outline-none" />
-        </div>
-        <div>
-          <label className="font-mono text-[10px] text-black/60 uppercase tracking-wider block mb-1">Time</label>
-          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-full border-2 border-black/20 px-2 py-2.5 font-mono text-xs focus:border-accent focus:outline-none" />
+        <div className="col-span-2">
+          <label className="font-mono text-[10px] text-black/60 uppercase tracking-wider block mb-1">Date &amp; time</label>
+          <input type="datetime-local" value={dt} step={900} onChange={(e) => setDt(e.target.value)} className="w-full border-2 border-black/20 px-2 py-2.5 font-mono text-xs focus:border-accent focus:outline-none" />
         </div>
         <div>
           <label className="font-mono text-[10px] text-black/60 uppercase tracking-wider block mb-1">Hours</label>
