@@ -28,6 +28,19 @@ export async function verifyEngineerAccess(supabase: any): Promise<boolean> {
   return profile?.role === 'engineer';
 }
 
+// Media managers run the media booking side (video/photo/storyboard shoots),
+// mirroring verifyEngineerAccess for the studio side. Admins always pass.
+// DB-driven (profiles.role), not a hardcoded roster — see getUserRole.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function verifyMediaManagerAccess(supabase: any): Promise<boolean> {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) return false;
+  if (isAdmin(user.email)) return true;
+  if (!user.id) return false;
+  const { data: profile } = await supabase.from('profiles').select('role').eq('user_id', user.id).single();
+  return profile?.role === 'media_manager';
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function verifyProducerAccess(supabase: any): Promise<{ isProducer: boolean; profileId: string | null }> {
   const { data: { user }, error } = await supabase.auth.getUser();

@@ -223,6 +223,10 @@ export function getUserRole(email: string | undefined, profileRole?: string): Us
   if (!email) return 'user';
   if (SUPER_ADMINS.includes(email.toLowerCase() as typeof SUPER_ADMINS[number])) return 'admin';
   if (profileRole === 'engineer') return 'engineer';
+  // Media managers run the media/video/photo booking side (mirrors engineers
+  // for the studio side). DB-driven role — assigned via Admin → Users — not a
+  // hardcoded roster, so the media crew can change without a deploy.
+  if (profileRole === 'media_manager') return 'media_manager';
   return 'user';
 }
 
