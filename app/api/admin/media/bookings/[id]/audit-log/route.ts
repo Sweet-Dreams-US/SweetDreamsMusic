@@ -25,7 +25,7 @@ export async function GET(
 ) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Login required' }, { status: 401 });
-  if (user.role !== 'admin') {
+  if (user.role !== 'admin' && user.role !== 'media_manager') {
     return NextResponse.json({ error: 'Admin only' }, { status: 403 });
   }
 

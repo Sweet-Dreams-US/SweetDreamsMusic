@@ -105,6 +105,14 @@ interface ProfileRow {
   display_name: string | null;
 }
 
+interface MediaRequestRow {
+  id: string;
+  session_kind: string | null;
+  starts_at: string | null;
+  requested_by: string | null;
+  vision: string | null;
+}
+
 interface TemplateRow {
   id: string;
   name: string | null;
@@ -201,6 +209,17 @@ async function fetchTemplateNames(
   return map;
 }
 
+// media_session_bookings.starts_at is a TRUE-UTC instant (unlike bookings,
+// which store Fort Wayne wall-clock-as-UTC) — so we CONVERT to studio-local
+// for display, and compare against real Date.now() for the 72h flag.
+function formatMediaWhen(iso: string | null): string {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', timeZone: TIMEZONE,
+  });
+}
+
 // --- Category builders ---------------------------------------------------
 
 async function buildPendingBookings(service: SupabaseClient): Promise<AttentionCategoryData> {
@@ -258,6 +277,45 @@ async function buildNoEngineer(service: SupabaseClient, nowISO: string): Promise
     };
   } catch (err) {
     console.error('[admin/attention] no_engineer failed:', err);
+    return empty;
+  }
+}
+
+async function buildUnclaimedMediaRequests(service: SupabaseClient): Promise<AttentionCategoryData> {
+  const empty: AttentionCategoryData = {
+    key: 'unclaimed_media', label: 'Media requests awaiting the team', tab: 'bookings', total: 0, items: [],
+  };
+  try {
+    const { data, error, count } = await service
+      .from('media_session_bookings')
+      .select('id, session_kind, starts_at, requested_by, vision', { count: 'exact' })
+      .eq('status', 'requested')
+      .is('media_manager_id', null)
+      .order('starts_at', { ascending: true })
+      .limit(CATEGORY_CAP);
+    if (error) throw error;
+    const rows = (data ?? []) as MediaRequestRow[];
+    if (rows.length === 0) return empty;
+
+    const nameByUser = await fetchUserNames(service, uniqueIds(rows.map((r) => r.requested_by)));
+    // Flag requests whose shoot is within 72h (real-UTC comparison).
+    const soonMs = Date.now() + 72 * 60 * 60 * 1000;
+
+    return {
+      ...empty,
+      total: count ?? rows.length,
+      items: rows.map((r): AttentionItem => ({
+        id: r.id,
+        primary: nameFrom(nameByUser, r.requested_by) || 'Unknown artist',
+        secondary: joinParts(
+          (r.session_kind || 'shoot').replace('-', ' '),
+          formatMediaWhen(r.starts_at),
+        ),
+        flagged: !!r.starts_at && new Date(r.starts_at).getTime() <= soonMs,
+      })),
+    };
+  } catch (err) {
+    console.error('[admin/attention] unclaimed_media failed:', err);
     return empty;
   }
 }
@@ -572,7 +630,7 @@ export async function GET() {
   const in30ISO = toPlainISO(in30);
 
   const [
-    pendingBookings, noEngineer, reschedule,
+    pendingBookings, noEngineer, reschedule, unclaimedMedia,
     unpaidPast, pastDueMemberships, cashCollected,
     addonRequests, expiringCredits,
     producerApplications, beatsPending,
@@ -580,6 +638,7 @@ export async function GET() {
     buildPendingBookings(service),
     buildNoEngineer(service, nowISO),
     buildReschedule(service),
+    buildUnclaimedMediaRequests(service),
     buildUnpaidPast(service, nowISO),
     buildPastDueMemberships(service),
     buildCashCollected(service),
@@ -595,7 +654,7 @@ export async function GET() {
   };
 
   const groups: AttentionGroupData[] = [
-    groupOf('scheduling', 'Scheduling', [pendingBookings, noEngineer, reschedule]),
+    groupOf('scheduling', 'Scheduling', [pendingBookings, noEngineer, reschedule, unclaimedMedia]),
     groupOf('money', 'Money to Chase', [unpaidPast, pastDueMemberships, cashCollected]),
     groupOf('sales', 'Sales & Upsells', [addonRequests, expiringCredits]),
     groupOf('people', 'People & Content', [producerApplications, beatsPending]),

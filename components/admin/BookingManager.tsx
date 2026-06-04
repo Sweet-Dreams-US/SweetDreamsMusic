@@ -6,6 +6,7 @@ import { formatCents, formatDuration } from '@/lib/utils';
 import { fmtStampDateTime } from '@/lib/studio-time';
 import { ENGINEERS, ROOM_LABELS } from '@/lib/constants';
 import CashCorrectionModal from '@/components/booking/CashCorrectionModal';
+import AdminMediaSessionsPanel from '@/components/admin/AdminMediaSessionsPanel';
 import { depositCollectedCents } from '@/lib/deposit';
 
 interface Booking {
@@ -495,6 +496,9 @@ export default function BookingManager() {
           </div>
         ))}
       </div>
+
+      {/* Media requests & sessions — admin oversight (Phase 6). */}
+      <AdminMediaSessionsPanel />
 
       {/* Filter & Refresh */}
       <div className="flex items-center gap-3 mb-6">

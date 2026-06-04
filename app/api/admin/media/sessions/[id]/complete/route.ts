@@ -25,7 +25,7 @@ export async function POST(
 ) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Login required' }, { status: 401 });
-  if (user.role !== 'admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 });
+  if (user.role !== 'admin' && user.role !== 'media_manager') return NextResponse.json({ error: 'Admin only' }, { status: 403 });
 
   const { id } = await params;
 
