@@ -85,8 +85,13 @@ interface XpData {
   xpHistory: XpHistoryItem[];
 }
 
-export default function ArtistHub({ userId, relocated }: { userId: string; relocated: HubRelocatedData }) {
-  const [tab, setTab] = useState<ExtendedTab>('overview');
+export default function ArtistHub({ userId, relocated, initialTab }: { userId: string; relocated: HubRelocatedData; initialTab?: string }) {
+  // Honor ?tab= deep links (e.g. /dashboard/hub?tab=media) when it names a
+  // real tab; otherwise default to overview.
+  const validInitial = EXTENDED_TABS.some((t) => t.key === initialTab)
+    ? (initialTab as ExtendedTab)
+    : 'overview';
+  const [tab, setTab] = useState<ExtendedTab>(validInitial);
   const [xpData, setXpData] = useState<XpData | null>(null);
   const [newAchievements, setNewAchievements] = useState<string[]>([]);
   const [achievementProgress, setAchievementProgress] = useState<Record<string, { current: number; target: number }>>({});

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Shield, Wrench, User, Music, Rocket, Bell, Users, PartyPopper, Film, Inbox } from 'lucide-react';
+import { LayoutDashboard, Shield, Wrench, User, Music, Rocket, Bell, Inbox } from 'lucide-react';
 import type { UserRole } from '@/lib/constants';
 import SignOutButton from '@/components/auth/SignOutButton';
 import UnreadBell from '@/components/messaging/UnreadBell';
@@ -26,13 +26,9 @@ export default function DashboardNav({ role, isProducer, displayName, email, pro
     // surface. Hidden from regular users — show: engineer || admin.
     { href: '/engineer', label: 'Engineer', icon: Wrench, show: role === 'engineer' || role === 'admin' },
     { href: '/dashboard/inbox', label: 'Inbox', icon: Inbox, show: true },
-    { href: '/dashboard/bands', label: 'Bands', icon: Users, show: true },
-    { href: '/dashboard/events', label: 'Events', icon: PartyPopper, show: true },
-    // Media Hub — visible to every logged-in user. Visibility filtering
-    // (solo doesn't see band-only offerings) happens *inside* the page,
-    // not at the tab level. Rule per Cole: tab is universal, catalog
-    // adapts.
-    { href: '/dashboard/media', label: 'Media', icon: Film, show: true },
+    // Media / Events / Bands now live INSIDE the Artist Hub as sub-tabs
+    // (Phase 4). The standalone /dashboard/media|events|bands routes still
+    // resolve by URL for deep links, but they're no longer top-level nav.
     { href: '/producer', label: 'Producer', icon: Music, show: isProducer === true },
     { href: '/admin', label: 'Admin', icon: Shield, show: role === 'admin' },
   ].filter((t) => t.show);

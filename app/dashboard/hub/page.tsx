@@ -18,9 +18,18 @@ export const metadata: Metadata = { title: 'Artist Hub' };
 // indexed; force-dynamic keeps balances/orders fresh after a purchase.
 export const dynamic = 'force-dynamic';
 
-export default async function ArtistHubPage() {
+export default async function ArtistHubPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const user = await getSessionUser();
   if (!user) redirect('/login');
+
+  // ?tab=media|events|bands|… deep-links straight to a Hub sub-tab (used by
+  // cross-links + old /dashboard/{media,events,bands} bookmarks once the nav
+  // flips). Validated against the tab list inside ArtistHub.
+  const { tab: initialTab } = await searchParams;
 
   // Band memberships first — they gate media viewer-eligibility + feed the
   // Bands tab. Then fan out everything else in parallel.
@@ -77,7 +86,7 @@ export default async function ArtistHubPage() {
         profileSlug={user.profile?.public_profile_slug}
       />
       <PendingInvitesBanner invites={bandInvites} />
-      <ArtistHub userId={user.id} relocated={relocated} />
+      <ArtistHub userId={user.id} relocated={relocated} initialTab={initialTab} />
     </>
   );
 }
