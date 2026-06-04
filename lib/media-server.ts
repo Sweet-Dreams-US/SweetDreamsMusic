@@ -12,7 +12,7 @@ import { createServiceClient } from './supabase/server';
 import type { MediaOffering, ViewerEligibility } from './media';
 import { isOfferingVisibleTo } from './media';
 import type { CreditKind, MediaCreditBalance } from './media-credits';
-import { CREDIT_KIND_LABELS } from './media-credits';
+import { CREDIT_KIND_LABELS, SCHEDULABLE_CREDIT_KINDS } from './media-credits';
 
 // ============================================================
 // Catalog reads
@@ -219,6 +219,43 @@ export async function getMediaCreditsForOwner(
       remaining: v.remaining,
       granted: v.granted,
     }));
+}
+
+/**
+ * Individual schedulable media-credit ROWS (with ids) for the owner — used by
+ * the Artist Hub schedule picker. Unlike getMediaCreditsForOwner (which
+ * aggregates by kind for the balance view), this returns each credit row so we
+ * can POST a specific credit_id to the schedule-request endpoint. Only rows
+ * with remaining > 0 and a schedulable kind are returned.
+ */
+export async function getSchedulableMediaCredits(
+  opts: { userId?: string | null; bandIds?: string[] },
+  client?: SupabaseClient,
+): Promise<Array<{ id: string; credit_kind: CreditKind; tier: string | null; remaining: number; band_id: string | null }>> {
+  const supabase = client || createServiceClient();
+  const bandIds = opts.bandIds ?? [];
+  if (!opts.userId && bandIds.length === 0) return [];
+  const orParts: string[] = [];
+  if (opts.userId) orParts.push(`user_id.eq.${opts.userId}`);
+  for (const b of bandIds) orParts.push(`band_id.eq.${b}`);
+
+  const { data, error } = await supabase
+    .from('media_credits')
+    .select('id, credit_kind, tier, quantity_granted, quantity_redeemed, band_id')
+    .or(orParts.join(','));
+  if (error || !data) {
+    if (error) console.error('[media] getSchedulableMediaCredits error:', error);
+    return [];
+  }
+  return (data as Array<{ id: string; credit_kind: CreditKind; tier: string | null; quantity_granted: number; quantity_redeemed: number; band_id: string | null }>)
+    .map((r) => ({
+      id: r.id,
+      credit_kind: r.credit_kind,
+      tier: r.tier,
+      remaining: Number(r.quantity_granted) - Number(r.quantity_redeemed),
+      band_id: r.band_id,
+    }))
+    .filter((r) => r.remaining > 0 && SCHEDULABLE_CREDIT_KINDS.includes(r.credit_kind));
 }
 
 /**

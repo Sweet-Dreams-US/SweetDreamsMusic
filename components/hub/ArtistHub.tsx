@@ -17,7 +17,7 @@ import HubMedia from './HubMedia';
 import HubEvents from './HubEvents';
 import HubBands from './HubBands';
 import type { MediaOffering } from '@/lib/media';
-import type { MediaCreditBalance } from '@/lib/media-credits';
+import type { MediaCreditBalance, CreditKind } from '@/lib/media-credits';
 import type { BandMembership, BandInvite, Band } from '@/lib/bands';
 import type { EventWithRsvp, EventRsvp, SweetEvent } from '@/lib/events';
 
@@ -31,6 +31,7 @@ export interface HubRelocatedData {
     profilePhone: string | null;
     isAdmin: boolean;
     credits: MediaCreditBalance[];
+    schedulableCredits: { id: string; credit_kind: CreditKind; tier: string | null; remaining: number }[];
     studioHours: { hoursRemaining: number; costBasisCents: number };
     orderCount: number;
   };
@@ -234,6 +235,7 @@ export default function ArtistHub({ userId, relocated, initialTab }: { userId: s
                   profilePhone={relocated.media.profilePhone}
                   isAdmin={relocated.media.isAdmin}
                   mediaCredits={relocated.media.credits}
+                  schedulableCredits={relocated.media.schedulableCredits}
                   studioHours={relocated.media.studioHours}
                   orderCount={relocated.media.orderCount}
                 />

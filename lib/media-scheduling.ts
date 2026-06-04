@@ -20,15 +20,19 @@ export type MediaSessionKind =
   | 'mixing'
   | 'storyboard'
   | 'marketing-meeting'
+  | 'planning_call'
   | 'other';
 
 export type MediaSessionLocation = 'studio' | 'external';
 
 export type MediaSessionStatus =
+  | 'requested' // Phase 5: artist asked, awaiting media-team confirm
+  | 'proposed'
   | 'scheduled'
   | 'in_progress'
   | 'completed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'superseded';
 
 /** Display labels for the kind selector. */
 export const SESSION_KIND_LABELS: Record<MediaSessionKind, string> = {
@@ -38,8 +42,26 @@ export const SESSION_KIND_LABELS: Record<MediaSessionKind, string> = {
   mixing: 'Mixing session',
   storyboard: 'Storyboard / planning',
   'marketing-meeting': 'Marketing meeting',
+  planning_call: 'Planning call',
   other: 'Other',
 };
+
+// ============================================================
+// 48-hour minimum lead time for media shoot requests (Phase 5)
+// ============================================================
+// Cole's rule: no media shoot can be booked less than two days out — the
+// team needs lead time to plan. media_session_bookings.starts_at is a true
+// UTC instant, so a plain Date.now() comparison is correct (no studio-local
+// gymnastics needed for the math; display still goes through fmtStamp*).
+
+export const MEDIA_MIN_LEAD_MS = 48 * 60 * 60 * 1000;
+
+/** True if `startsAt` is sooner than 48h from now (i.e. should be rejected). */
+export function violates48hLead(startsAt: string | Date, now: Date = new Date()): boolean {
+  const start = typeof startsAt === 'string' ? new Date(startsAt) : startsAt;
+  if (Number.isNaN(start.getTime())) return true; // unparseable → reject
+  return start.getTime() - now.getTime() < MEDIA_MIN_LEAD_MS;
+}
 
 /** Full row shape from `media_session_bookings`. */
 export interface MediaSessionBooking {

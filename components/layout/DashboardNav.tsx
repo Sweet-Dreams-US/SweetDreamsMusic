@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Shield, Wrench, User, Music, Rocket, Bell, Inbox } from 'lucide-react';
+import { LayoutDashboard, Shield, Wrench, User, Music, Rocket, Bell, Inbox, Film } from 'lucide-react';
 import type { UserRole } from '@/lib/constants';
 import SignOutButton from '@/components/auth/SignOutButton';
 import UnreadBell from '@/components/messaging/UnreadBell';
@@ -25,6 +25,9 @@ export default function DashboardNav({ role, isProducer, displayName, email, pro
     // actually log in most often) have one-click access to their work
     // surface. Hidden from regular users — show: engineer || admin.
     { href: '/engineer', label: 'Engineer', icon: Wrench, show: role === 'engineer' || role === 'admin' },
+    // Media Team — the media analog of the Engineer surface. Visible to media
+    // managers + admins (Phase 5).
+    { href: '/media-team', label: 'Media Team', icon: Film, show: role === 'media_manager' || role === 'admin' },
     { href: '/dashboard/inbox', label: 'Inbox', icon: Inbox, show: true },
     // Media / Events / Bands now live INSIDE the Artist Hub as sub-tabs
     // (Phase 4). The standalone /dashboard/media|events|bands routes still

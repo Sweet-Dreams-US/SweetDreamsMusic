@@ -11,6 +11,7 @@
 
 import type { MediaOffering } from './media';
 import type { ConfiguredComponents } from './media-config';
+import type { MediaSessionKind } from './media-scheduling';
 
 export const CREDIT_KINDS = [
   'short_video',
@@ -143,4 +144,43 @@ export interface MediaCreditBalance {
   label: string;
   remaining: number;
   granted: number;
+}
+
+/**
+ * Map a deliverable credit kind to the media_session_bookings.session_kind it
+ * schedules as (Phase 5 request flow). Both short and music video are 'video'
+ * shoots; everything else maps to its natural kind. Non-schedulable kinds
+ * (cover_art, studio_hours) fall through to 'other' but are excluded from the
+ * schedule picker via SCHEDULABLE_CREDIT_KINDS anyway.
+ */
+export function sessionKindForCreditKind(kind: CreditKind): MediaSessionKind {
+  switch (kind) {
+    case 'short_video':
+    case 'music_video':
+      return 'video';
+    case 'photo_session':
+      return 'photo';
+    case 'marketing_session':
+      return 'marketing-meeting';
+    case 'planning_call':
+      return 'planning_call';
+    default:
+      return 'other';
+  }
+}
+
+/** Default shoot length (hours) per credit kind — seeds the request's end_time. */
+export function defaultDurationHoursForCreditKind(kind: CreditKind): number {
+  switch (kind) {
+    case 'music_video':
+      return 4;
+    case 'short_video':
+    case 'photo_session':
+      return 2;
+    case 'marketing_session':
+    case 'planning_call':
+      return 1;
+    default:
+      return 2;
+  }
 }

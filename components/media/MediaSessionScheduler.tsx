@@ -38,6 +38,7 @@ const KIND_DEFAULT_DURATION_HOURS: Record<MediaSessionKind, number> = {
   mixing: 2,
   storyboard: 1,
   'marketing-meeting': 1,
+  planning_call: 1,
   other: 1,
 };
 

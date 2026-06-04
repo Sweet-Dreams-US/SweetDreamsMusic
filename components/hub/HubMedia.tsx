@@ -7,12 +7,22 @@
 // checkout happen inline via the catalog; scheduling owned credits arrives
 // in Phase 5. Deep order management links out to /dashboard/media/orders.
 
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowRight, Wallet, Calendar, Film } from 'lucide-react';
+import { ArrowRight, Wallet, Calendar, Film, CalendarPlus } from 'lucide-react';
 import MediaCatalogClient from '@/components/media/MediaCatalogClient';
+import MediaScheduleModal from '@/components/hub/MediaScheduleModal';
 import { formatCents } from '@/lib/utils';
+import { CREDIT_KIND_LABELS, type CreditKind, type MediaCreditBalance } from '@/lib/media-credits';
 import type { MediaOffering } from '@/lib/media';
-import type { MediaCreditBalance } from '@/lib/media-credits';
+
+interface SchedulableCredit {
+  id: string;
+  credit_kind: CreditKind;
+  tier: string | null;
+  remaining: number;
+}
 
 export default function HubMedia({
   packages,
@@ -20,6 +30,7 @@ export default function HubMedia({
   profilePhone,
   isAdmin,
   mediaCredits,
+  schedulableCredits,
   studioHours,
   orderCount,
 }: {
@@ -28,9 +39,13 @@ export default function HubMedia({
   profilePhone: string | null;
   isAdmin: boolean;
   mediaCredits: MediaCreditBalance[];
+  schedulableCredits: SchedulableCredit[];
   studioHours: { hoursRemaining: number; costBasisCents: number };
   orderCount: number;
 }) {
+  const router = useRouter();
+  const [scheduling, setScheduling] = useState<SchedulableCredit | null>(null);
+
   return (
     <div className="space-y-8">
       <div>
@@ -118,6 +133,50 @@ export default function HubMedia({
           </span>
         </Link>
       </div>
+
+      {/* Schedule a shoot — owned, schedulable credits become dated requests. */}
+      {schedulableCredits.length > 0 && (
+        <div className="border-2 border-accent/40 bg-accent/5 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarPlus className="w-5 h-5 text-accent" />
+            <h3 className="font-mono text-sm font-bold uppercase tracking-wider">Schedule a shoot</h3>
+          </div>
+          <p className="font-mono text-xs text-black/60 mb-4">
+            You have media credits ready to book. Pick a date + time (48h+ out) and tell the team your
+            vision — they&apos;ll confirm and reach out to plan.
+          </p>
+          <div className="space-y-2">
+            {schedulableCredits.map((c) => (
+              <div key={c.id} className="flex items-center justify-between gap-3 bg-white border border-black/10 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="font-mono text-sm font-bold truncate">
+                    {CREDIT_KIND_LABELS[c.credit_kind]}
+                    {c.tier && <span className="font-normal text-black/50"> · {c.tier}</span>}
+                  </p>
+                  <p className="font-mono text-[10px] text-black/50">{c.remaining} available</p>
+                </div>
+                <button
+                  onClick={() => setScheduling(c)}
+                  className="font-mono text-xs font-bold uppercase tracking-wider bg-black text-white px-4 py-2 hover:bg-accent hover:text-black transition-colors shrink-0"
+                >
+                  Schedule
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {scheduling && (
+        <MediaScheduleModal
+          credit={scheduling}
+          onClose={() => setScheduling(null)}
+          onScheduled={() => {
+            setScheduling(null);
+            router.refresh(); // re-pull balances + schedulable credits server-side
+          }}
+        />
+      )}
 
       {/* Catalog — the existing cart-pattern client component, inline. */}
       {packages.length > 0 || services.length > 0 ? (

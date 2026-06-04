@@ -205,6 +205,70 @@ export async function checkMediaSessionConflict(
 }
 
 // ============================================================
+// Media-manager conflict check (Phase 5)
+// ============================================================
+
+/**
+ * Busy windows for a MEDIA MANAGER (not an engineer). A media manager's
+ * commitments are entirely within media_session_bookings (they don't appear
+ * on the studio `bookings` table), so this only queries their assigned media
+ * sessions. Used to prevent a manager double-booking themselves when they
+ * Accept an incoming request.
+ */
+export async function getMediaManagerBusyWindows(
+  args: { managerId: string; from: string; to: string },
+  client?: SupabaseClient,
+): Promise<BusyWindow[]> {
+  const supabase = client || createServiceClient();
+  const out: BusyWindow[] = [];
+
+  const { data: rows, error } = await supabase
+    .from('media_session_bookings')
+    .select('starts_at, ends_at, session_kind, location, status')
+    .eq('media_manager_id', args.managerId)
+    .lt('starts_at', args.to)
+    .gt('ends_at', args.from)
+    .not('status', 'in', '(cancelled,superseded)');
+  if (error) {
+    console.error('[media-scheduling] manager busy query error:', error);
+    return out;
+  }
+  for (const row of (rows || []) as Array<{
+    starts_at: string;
+    ends_at: string;
+    session_kind: string;
+    location: string;
+  }>) {
+    out.push({
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+      source: 'media_session',
+      label: formatWindowLabel(row.starts_at, row.ends_at, `${row.session_kind} (${row.location})`),
+    });
+  }
+  return out;
+}
+
+/** First conflicting window for a manager taking on a proposed slot, or null. */
+export async function checkMediaManagerConflict(
+  args: { managerId: string; startsAt: string; endsAt: string },
+  client?: SupabaseClient,
+): Promise<BusyWindow | null> {
+  const start = new Date(args.startsAt);
+  const end = new Date(args.endsAt);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const busy = await getMediaManagerBusyWindows(
+    {
+      managerId: args.managerId,
+      from: new Date(start.getTime() - dayMs).toISOString(),
+      to: new Date(end.getTime() + dayMs).toISOString(),
+    },
+    client,
+  );
+  return findOverlap({ startsAt: args.startsAt, endsAt: args.endsAt }, busy);
+}
+
+// ============================================================
 // Reads for the UI
 // ============================================================
 
