@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { verifyEngineerAccess, isAdmin } from '@/lib/admin-auth';
+import { verifyEngineerAccess, verifyMediaManagerAccess, isAdmin } from '@/lib/admin-auth';
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
-  const hasAccess = await verifyEngineerAccess(supabase);
+  // Engineers, admins, AND media managers can browse the client directory —
+  // media managers need it for the team-initiated media session flow (Phase 7).
+  const hasAccess = (await verifyEngineerAccess(supabase)) || (await verifyMediaManagerAccess(supabase));
   if (!hasAccess) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   // Balance-edit UI should only render for super-admins. Engineers see the
