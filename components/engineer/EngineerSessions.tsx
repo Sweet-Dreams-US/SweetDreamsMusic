@@ -5,7 +5,7 @@ import { Eye } from 'lucide-react';
 import { formatCents, formatDuration } from '@/lib/utils';
 import { ENGINEERS } from '@/lib/constants';
 import CashCorrectionModal from '@/components/booking/CashCorrectionModal';
-import { fmtSessionDate, fmtSessionTime, fmtSessionDateTime, fmtStampDate, fmtStampDateTime } from '@/lib/studio-time';
+import { fmtSessionDate, fmtSessionTime, fmtSessionDateTime, fmtStampDateTime } from '@/lib/studio-time';
 
 interface Booking {
   id: string;
@@ -236,8 +236,14 @@ export default function EngineerSessions({ userEmail }: { userEmail: string }) {
             {superView ? 'Pending Invites — all engineers' : 'Pending Invites'} ({pendingInvites.length})
           </h3>
           <div className="space-y-3">
+            {/* Pending-deposit invites now render with the FULL BookingCard
+                (same card as confirmed sessions) so engineers get the complete
+                action set — Record Cash Deposit (confirms + holds the slot),
+                Send Payment Link, Resend Invite, Reschedule, Cancel — matching
+                the admin card. Previously these used a stripped card with no
+                money actions, which left cash invites stuck (Jay/kamronford). */}
             {pendingInvites.map((b) => (
-              <PendingInviteCard key={b.id} booking={b} onUpdate={loadData} superView={superView} />
+              <BookingCard key={b.id} booking={b} onUpdate={loadData} userEmail={userEmail} superView={superView} />
             ))}
           </div>
         </div>
@@ -301,254 +307,6 @@ export default function EngineerSessions({ userEmail }: { userEmail: string }) {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function PendingInviteCard({ booking, onUpdate, superView }: { booking: Booking; onUpdate: () => void; superView?: boolean }) {
-  const [resending, setResending] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
-
-  // ── Reschedule (edit time/duration) for an UNPAID invite ────────────
-  // Previously the only way to change a pending invite's time was to
-  // cancel + recreate it (which voided the invite link and made the
-  // client re-do everything). This edits the existing row in place via
-  // /api/booking/update, which recomputes end_time server-side. The
-  // invite token/link is unchanged, so a client who already has the
-  // link still pays toward the corrected time.
-  const [showEdit, setShowEdit] = useState(false);
-  const [newDate, setNewDate] = useState('');
-  const [newTime, setNewTime] = useState('');
-  const [newDuration, setNewDuration] = useState<number>(booking.duration || 2);
-  const [saving, setSaving] = useState(false);
-
-  // Pre-fill from the booking's current values. bookings.start_time is
-  // Fort Wayne wall-clock tagged +00 (studio-local-as-UTC), so we read
-  // the digits back with UTC getters — same convention as BookingCard's
-  // openTimeEditor and the studio-time helpers.
-  function openEditor() {
-    const sd = new Date(booking.start_time);
-    const y = sd.getUTCFullYear();
-    const mo = String(sd.getUTCMonth() + 1).padStart(2, '0');
-    const da = String(sd.getUTCDate()).padStart(2, '0');
-    const hh = String(sd.getUTCHours()).padStart(2, '0');
-    const mm = String(sd.getUTCMinutes()).padStart(2, '0');
-    setNewDate(`${y}-${mo}-${da}`);
-    setNewTime(`${hh}:${mm}`);
-    setNewDuration(Number(booking.duration) || 2);
-    setShowEdit(true);
-  }
-
-  async function saveEdit() {
-    if (!newDate || !newTime) { alert('Pick a date and time'); return; }
-    if (!(newDuration > 0)) { alert('Duration must be greater than zero'); return; }
-    // Send the wall-clock digits unshifted (no zone suffix) — matches the
-    // invite-creation + BookingCard reschedule convention. Server recomputes
-    // end_time from start + duration.
-    const startTime = `${newDate}T${newTime}:00`;
-    if (!confirm(`Reschedule ${booking.customer_name}'s invite to ${newDate} at ${newTime}, ${formatDuration(newDuration)}?\n\nThe invite link stays the same — the client still pays the deposit through it.`)) return;
-    setSaving(true);
-    try {
-      const res = await fetch('/api/booking/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId: booking.id, startTime, duration: newDuration }),
-      });
-      const data = await res.json();
-      if (!res.ok) { alert(data.error || 'Failed to reschedule'); return; }
-      setShowEdit(false);
-      onUpdate();
-    } catch {
-      alert('Network error');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // Extract invite URL from admin_notes if stored there
-  const tokenMatch = booking.admin_notes?.match(/Token: ([a-f0-9-]+)/);
-  const inviteToken = tokenMatch?.[1];
-  const inviteUrl = inviteToken
-    ? `https://sweetdreamsmusic.com/book/invite/${inviteToken}?booking=${booking.id}`
-    : null;
-
-  async function resendInvite() {
-    if (!booking.customer_email) {
-      alert('No email on file for this client');
-      return;
-    }
-    setResending(true);
-    try {
-      const res = await fetch('/api/booking/resend-invite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId: booking.id }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        alert(`Invite resent to ${booking.customer_email}`);
-      } else {
-        alert(data.error || 'Failed to resend');
-      }
-    } catch {
-      alert('Network error');
-    } finally {
-      setResending(false);
-    }
-  }
-
-  function copyLink() {
-    if (!inviteUrl) return;
-    navigator.clipboard.writeText(inviteUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  async function cancelInvite() {
-    if (!confirm(`Cancel invite for ${booking.customer_name}?`)) return;
-    setCancelling(true);
-    try {
-      const res = await fetch('/api/booking/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId: booking.id, status: 'cancelled' }),
-      });
-      if (res.ok) onUpdate();
-      else alert('Failed to cancel');
-    } catch {
-      alert('Network error');
-    } finally {
-      setCancelling(false);
-    }
-  }
-
-  return (
-    <div className="border-2 border-amber-300/50 bg-amber-50/30 p-4 sm:p-5">
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <p className="font-mono text-sm font-bold">{booking.customer_name}</p>
-            {booking.artist_name && (
-              <span className="font-mono text-xs text-black/60">({booking.artist_name})</span>
-            )}
-            <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-2 py-0.5">
-              Awaiting Payment
-            </span>
-            {/* In owner view, surface whose invite this is. */}
-            {superView && booking.engineer_name && (
-              <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-black text-white px-2 py-0.5">
-                {booking.engineer_name}
-              </span>
-            )}
-          </div>
-          {booking.customer_email && (
-            <p className="font-mono text-xs text-black/70">{booking.customer_email}</p>
-          )}
-          <p className="font-mono text-xs text-black/60 mt-1">
-            {fmtSessionDate(booking.start_time, { weekday: 'short', month: 'short', day: 'numeric' })}
-            {' · '}
-            {fmtSessionTime(booking.start_time, { hour: 'numeric', minute: '2-digit' })}
-            {' · '}
-            {formatDuration(Number(booking.duration))}
-            {booking.room && ` · ${booking.room === 'studio_a' ? 'Studio A' : 'Studio B'}`}
-          </p>
-          <p className="font-mono text-[10px] text-black/60 mt-1">
-            Created {fmtStampDate(booking.created_at, { month: 'short', day: 'numeric' })}
-            {' · '}Deposit: {formatCents(booking.deposit_amount)} of {formatCents(booking.total_amount)}
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="font-mono text-sm font-semibold">{formatCents(booking.total_amount)}</p>
-        </div>
-      </div>
-
-      <div className="mt-3 pt-3 border-t border-amber-200/50 flex flex-wrap gap-2">
-        {booking.customer_email && (
-          <button
-            onClick={resendInvite}
-            disabled={resending}
-            className="font-mono text-xs font-bold uppercase tracking-wider bg-accent text-black px-4 py-2 hover:bg-accent/90 disabled:opacity-50 transition-colors"
-          >
-            {resending ? 'Sending...' : 'Resend Invite'}
-          </button>
-        )}
-        {inviteUrl && (
-          <button
-            onClick={copyLink}
-            className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-black/20 text-black/60 px-4 py-2 hover:bg-black/5 transition-colors"
-          >
-            {copied ? 'Copied!' : 'Copy Link'}
-          </button>
-        )}
-        <button
-          onClick={() => (showEdit ? setShowEdit(false) : openEditor())}
-          className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-black/20 text-black/60 px-4 py-2 hover:bg-black/5 transition-colors"
-        >
-          {showEdit ? 'Close' : 'Reschedule'}
-        </button>
-        <button
-          onClick={cancelInvite}
-          disabled={cancelling}
-          className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-red-300 text-red-500 px-4 py-2 hover:bg-red-50 disabled:opacity-50 transition-colors"
-        >
-          {cancelling ? 'Cancelling...' : 'Cancel'}
-        </button>
-      </div>
-
-      {/* Reschedule form — edits the existing invite in place (no cancel+recreate). */}
-      {showEdit && (
-        <div className="mt-3 p-3 bg-white border border-amber-200 space-y-2">
-          <p className="font-mono text-xs font-semibold uppercase tracking-wider">Reschedule Invite</p>
-          <p className="font-mono text-[10px] text-black/60">
-            Updates this invite&apos;s date, time, and length. The invite link and the deposit owed stay the same.
-          </p>
-          <div className="flex flex-wrap gap-2 items-end">
-            <div>
-              <label className="font-mono text-[10px] text-black/60 block">Date</label>
-              <input
-                type="date"
-                value={newDate}
-                onChange={(e) => setNewDate(e.target.value)}
-                className="font-mono text-xs border border-black/20 px-2 py-1.5"
-              />
-            </div>
-            <div>
-              <label className="font-mono text-[10px] text-black/60 block">Time</label>
-              <input
-                type="time"
-                value={newTime}
-                onChange={(e) => setNewTime(e.target.value)}
-                className="font-mono text-xs border border-black/20 px-2 py-1.5"
-              />
-            </div>
-            <div>
-              <label className="font-mono text-[10px] text-black/60 block">Duration (hrs)</label>
-              <input
-                type="number"
-                min={0.25}
-                max={24}
-                step={0.25}
-                value={newDuration}
-                onChange={(e) => setNewDuration(Number(e.target.value))}
-                className="font-mono text-xs border border-black/20 px-2 py-1.5 w-24"
-              />
-            </div>
-            <button
-              onClick={saveEdit}
-              disabled={saving}
-              className="font-mono text-xs font-bold uppercase tracking-wider bg-[#F4C430] text-black px-4 py-2 hover:bg-[#F4C430]/80 disabled:opacity-50 transition-colors"
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-          {newDuration > 0 && (
-            <p className="font-mono text-[10px] text-black/50">
-              New length: {formatDuration(newDuration)}
-            </p>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -630,8 +388,20 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [prepData, setPrepData] = useState<any>(null);
   const [prepLoading, setPrepLoading] = useState(false);
+  // Parity actions (match the admin card): payment link, manual stripe,
+  // mark-paid, extend, and the invite resend/copy for pending-deposit cards.
+  const [showPaymentLink, setShowPaymentLink] = useState(false);
+  const [paymentLinkAmount, setPaymentLinkAmount] = useState('');
+  const [showExtend, setShowExtend] = useState(false);
+  const [extendAmount, setExtendAmount] = useState('');
+  const [extendNote, setExtendNote] = useState('');
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   const remainder = booking.remainder_amount || 0;
+  // pending_deposit = an unpaid invite (engineer-created). Recording the cash
+  // deposit (or a payment) confirms it + holds the slot — server-side in
+  // /api/booking/record-payment.
+  const isPending = booking.status === 'pending_deposit';
   // Charge is offered on confirmed sessions with a balance, AND on completed
   // sessions (so an engineer can add a fresh charge for extra time/services
   // after the fact — even if the session was already paid in full). The charge
@@ -639,7 +409,13 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
   // link only if that fails.
   const canCharge = ((booking.status === 'confirmed' && remainder > 0) || booking.status === 'completed') && booking.engineer_name;
   const canComplete = booking.status === 'confirmed' && booking.engineer_name;
-  const canCancel = ['confirmed', 'pending'].includes(booking.status);
+  const canCancel = ['confirmed', 'pending', 'pending_deposit'].includes(booking.status);
+
+  // Invite link (pending-deposit cards) — token lives in admin_notes.
+  const inviteToken = booking.admin_notes?.match(/Token: ([a-f0-9-]+)/)?.[1];
+  const inviteUrl = inviteToken
+    ? `https://sweetdreamsmusic.com/book/invite/${inviteToken}?booking=${booking.id}`
+    : null;
 
   async function chargeRemainder(customAmount?: number) {
     const amountToCharge = customAmount || remainder;
@@ -952,6 +728,108 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
     }
   }
 
+  // ── Parity actions (mirror the admin booking card) ──────────────────
+
+  // Record a manual Stripe payment toward the remainder (e.g. paid via a
+  // Stripe link out-of-band). Same endpoint as cash; method differs so the
+  // ledger/audit reflect it. On a pending_deposit invite this also confirms.
+  async function recordStripe(amount: number) {
+    if (!(amount > 0)) return;
+    setActionLoading('stripe');
+    try {
+      const res = await fetch('/api/booking/record-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking.id, amount, method: 'stripe_manual', note: 'Stripe payment recorded by engineer' }),
+      });
+      const data = await res.json();
+      if (data.success) { onUpdate?.(); } else { alert(`Failed: ${data.error}`); }
+    } catch { alert('Error recording payment'); } finally { setActionLoading(null); }
+  }
+
+  // Email the client a Stripe Checkout link for a chosen amount (default the
+  // remainder). Uses the same endpoint the admin card uses.
+  async function sendPaymentLink() {
+    const amount = Math.round(parseFloat(paymentLinkAmount) * 100);
+    if (isNaN(amount) || amount <= 0) { alert('Enter a valid amount'); return; }
+    setActionLoading('link');
+    try {
+      const res = await fetch('/api/booking/send-payment-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking.id, amount }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`Payment link for $${(amount / 100).toFixed(2)} emailed to the client.`);
+        setShowPaymentLink(false);
+        setPaymentLinkAmount('');
+        onUpdate?.();
+      } else { alert(`Failed: ${data.error}`); }
+    } catch { alert('Error sending payment link'); } finally { setActionLoading(null); }
+  }
+
+  // Mark paid in full — sets the remainder to $0 via the engineer-accessible
+  // adjust-balance endpoint (the admin card uses the admin update route; this
+  // reaches the same end state within the engineer's own session).
+  async function markPaidInFull() {
+    if (!confirm('Mark this booking as paid in full? This sets the remainder to $0.')) return;
+    setActionLoading('paidfull');
+    try {
+      const res = await fetch('/api/booking/adjust-balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking.id, newRemainderCents: 0 }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || 'Failed'); return; }
+      onUpdate?.();
+    } catch { alert('Network error'); } finally { setActionLoading(null); }
+  }
+
+  // Extend the session — RAISES total by $X AND records $X cash received for
+  // that added time (single atomic call). Same semantics + guard as the admin
+  // "Extend Session" (prevents the duplicate-cash bug).
+  async function extendSession() {
+    const amt = parseFloat(extendAmount);
+    if (isNaN(amt) || amt <= 0) { alert('Enter a valid amount'); return; }
+    if (!confirm(`Extend this session?\n\nTotal: ${formatCents(booking.total_amount)} → ${formatCents(booking.total_amount + Math.round(amt * 100))}\nCash received: $${amt.toFixed(2)}`)) return;
+    setActionLoading('extend');
+    try {
+      const res = await fetch('/api/booking/record-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking.id, amount: amt, method: 'cash', note: extendNote || `Extended session by $${amt.toFixed(2)}`, addToTotal: true }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowExtend(false); setExtendAmount(''); setExtendNote(''); onUpdate?.();
+      } else { alert(`Failed: ${data.error}`); }
+    } catch { alert('Error extending session'); } finally { setActionLoading(null); }
+  }
+
+  // Resend the invite email (pending-deposit cards).
+  async function resendInvite() {
+    if (!booking.customer_email) { alert('No email on file for this client'); return; }
+    setNotifying(true);
+    try {
+      const res = await fetch('/api/booking/resend-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking.id }),
+      });
+      const data = await res.json();
+      alert(res.ok ? `Invite resent to ${booking.customer_email}` : (data.error || 'Failed to resend'));
+    } catch { alert('Network error'); } finally { setNotifying(false); }
+  }
+
+  function copyInviteLink() {
+    if (!inviteUrl) return;
+    navigator.clipboard.writeText(inviteUrl);
+    setInviteCopied(true);
+    setTimeout(() => setInviteCopied(false), 2000);
+  }
+
   return (
     <div className={`border-2 p-4 sm:p-5 ${unclaimed ? 'border-[#F4C430]/40 bg-[#F4C430]/5' : 'border-black/10'}`}>
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
@@ -1257,13 +1135,74 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
               </button>
             </div>
           )}
+          {/* Pending-deposit cash invite — confirm it by recording the cash.
+              This is THE action that was missing (Jay's stuck session): the
+              server promotes pending_deposit → confirmed + holds the slot. */}
           {remainder > 0 && (
             <button
-              onClick={() => { setShowCashPayment(!showCashPayment); setCashAmount((remainder / 100).toFixed(2)); setCashNote(''); }}
-              title="Record cash paid toward the existing remainder"
+              onClick={() => { setShowCashPayment(!showCashPayment); setCashAmount(((isPending ? (booking.deposit_amount || remainder) : remainder) / 100).toFixed(2)); setCashNote(''); }}
+              title={isPending ? 'Record the cash deposit (or full payment) — confirms the session and holds the slot.' : 'Record cash paid toward the existing remainder.'}
+              className={`font-mono text-xs font-bold uppercase tracking-wider px-4 py-2 transition-colors ${isPending ? 'bg-[#F4C430] text-black hover:bg-[#F4C430]/80' : 'border-2 border-black/20 text-black/60 hover:bg-black/5'}`}
+            >
+              {isPending ? 'Record Cash Deposit' : 'Record Cash'}
+            </button>
+          )}
+          {/* Record a manual Stripe payment (e.g. paid via a link out-of-band). */}
+          {remainder > 0 && (
+            <button
+              onClick={() => recordStripe(remainder)}
+              disabled={actionLoading === 'stripe'}
+              title="Record a Stripe payment already collected toward the balance."
+              className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-black/20 text-black/60 px-4 py-2 hover:bg-black/5 disabled:opacity-50 transition-colors"
+            >
+              {actionLoading === 'stripe' ? 'Recording…' : 'Record Stripe'}
+            </button>
+          )}
+          {/* Email the client a Stripe payment link. */}
+          {remainder > 0 && (
+            <button
+              onClick={() => { setShowPaymentLink(!showPaymentLink); setPaymentLinkAmount((remainder / 100).toFixed(2)); }}
               className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-black/20 text-black/60 px-4 py-2 hover:bg-black/5 transition-colors"
             >
-              Record Cash
+              Send Payment Link
+            </button>
+          )}
+          {/* Mark paid in full (remainder → $0). */}
+          {remainder > 0 && booking.status !== 'pending_deposit' && (
+            <button
+              onClick={markPaidInFull}
+              disabled={actionLoading === 'paidfull'}
+              className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-green-600 text-green-700 px-4 py-2 hover:bg-green-50 disabled:opacity-50 transition-colors"
+            >
+              {actionLoading === 'paidfull' ? 'Saving…' : 'Mark Paid in Full'}
+            </button>
+          )}
+          {/* Extend session — raises total AND records the extra cash. Confirmed only. */}
+          {booking.status === 'confirmed' && (
+            <button
+              onClick={() => { setShowExtend(!showExtend); setExtendAmount(''); setExtendNote(''); }}
+              title="Client added time/services during the session: raises the total AND records the cash for it."
+              className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-orange-500 text-orange-700 bg-orange-50 px-4 py-2 hover:bg-orange-100 transition-colors"
+            >
+              Extend Session +$
+            </button>
+          )}
+          {/* Invite controls for an unpaid cash/online invite. */}
+          {isPending && booking.customer_email && (
+            <button
+              onClick={resendInvite}
+              disabled={notifying}
+              className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-black/20 text-black/60 px-4 py-2 hover:bg-black/5 disabled:opacity-50 transition-colors"
+            >
+              {notifying ? 'Sending…' : 'Resend Invite'}
+            </button>
+          )}
+          {isPending && inviteUrl && (
+            <button
+              onClick={copyInviteLink}
+              className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-black/20 text-black/60 px-4 py-2 hover:bg-black/5 transition-colors"
+            >
+              {inviteCopied ? 'Copied!' : 'Copy Link'}
             </button>
           )}
           {remainder === 0 && booking.status !== 'cancelled' && (
@@ -1354,13 +1293,19 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
           >
             Change Engineer
           </button>
-          <button
-            onClick={() => resendEmail('confirmation')}
-            disabled={notifying}
-            className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-black/20 text-black/60 px-4 py-2 hover:bg-black/5 disabled:opacity-50 transition-colors"
-          >
-            {notifying ? 'Sending...' : 'Resend Email'}
-          </button>
+          {/* Generic confirmation re-send — only for already-confirmed
+              sessions. On a pending_deposit invite this would email a
+              "confirmed" notice for a session that isn't confirmed yet;
+              "Resend Invite" (above) is the correct action there. */}
+          {!isPending && (
+            <button
+              onClick={() => resendEmail('confirmation')}
+              disabled={notifying}
+              className="font-mono text-xs font-bold uppercase tracking-wider border-2 border-black/20 text-black/60 px-4 py-2 hover:bg-black/5 disabled:opacity-50 transition-colors"
+            >
+              {notifying ? 'Sending...' : 'Resend Email'}
+            </button>
+          )}
           <button
             onClick={() => setShowDebug(!showDebug)}
             className="font-mono text-xs uppercase tracking-wider text-black/60 px-3 py-2 hover:text-black/60 transition-colors"
@@ -1537,7 +1482,15 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
       {/* Cash payment form */}
       {showCashPayment && (
         <div className="mt-3 p-3 bg-black/5 border border-black/10 space-y-2">
-          <p className="font-mono text-xs font-semibold uppercase tracking-wider">Record Cash Payment</p>
+          <p className="font-mono text-xs font-semibold uppercase tracking-wider">
+            {isPending ? 'Record Cash Deposit — confirms the session' : 'Record Cash Payment'}
+          </p>
+          {isPending && (
+            <p className="font-mono text-[10px] text-amber-700">
+              Recording this cash confirms the booking and locks the time slot. Enter what you collected
+              ({formatCents(booking.deposit_amount || 0)} deposit, or the full {formatCents(booking.total_amount)}).
+            </p>
+          )}
           <div className="flex flex-wrap gap-2 items-end">
             <div>
               <label className="font-mono text-[10px] text-black/60 block">Amount ($)</label>
@@ -1568,6 +1521,51 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
               {actionLoading === 'cash' ? 'Recording...' : `Record $${cashAmount || '0.00'}`}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Send Payment Link form */}
+      {showPaymentLink && (
+        <div className="mt-3 p-3 bg-black/5 border border-black/10 space-y-2">
+          <p className="font-mono text-xs font-semibold uppercase tracking-wider">Send Payment Link</p>
+          <p className="font-mono text-[10px] text-black/60">Emails the client a Stripe checkout link for this amount.</p>
+          <div className="flex flex-wrap gap-2 items-end">
+            <div>
+              <label className="font-mono text-[10px] text-black/60 block">Amount ($)</label>
+              <input type="number" step="0.01" min="0.50" value={paymentLinkAmount} onChange={(e) => setPaymentLinkAmount(e.target.value)} className="font-mono text-sm border border-black/20 px-3 py-1.5 w-28" />
+            </div>
+            <button onClick={sendPaymentLink} disabled={actionLoading === 'link'} className="font-mono text-xs font-bold uppercase tracking-wider bg-black text-white px-4 py-2 hover:bg-black/80 disabled:opacity-50 transition-colors">
+              {actionLoading === 'link' ? 'Sending…' : `Send $${paymentLinkAmount || '0.00'}`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Extend Session form — raises total AND records the cash for the add-on. */}
+      {showExtend && (
+        <div className="mt-3 p-3 bg-orange-50 border-2 border-orange-200 space-y-2">
+          <p className="font-mono text-[10px] text-orange-700 uppercase tracking-wider font-bold">⚠ Extend Session — raises the charged total</p>
+          <p className="font-mono text-[11px] text-orange-900 leading-snug">
+            Use only if the client added time/services <em>during</em> the session. Increases the total by $X AND records $X cash received. To just record cash toward the balance, use <b>Record Cash</b>.
+          </p>
+          <div className="flex flex-wrap gap-2 items-end">
+            <div>
+              <label className="font-mono text-[9px] text-orange-700 uppercase tracking-wider block">Amount paid for the extension</label>
+              <input type="number" step="0.01" min="0.01" value={extendAmount} onChange={(e) => setExtendAmount(e.target.value)} className="font-mono text-sm border border-orange-400 px-3 py-1.5 w-28" placeholder="0.00" />
+            </div>
+            <div className="flex-1 min-w-[120px]">
+              <label className="font-mono text-[9px] text-orange-700 uppercase tracking-wider block">Note</label>
+              <input type="text" value={extendNote} onChange={(e) => setExtendNote(e.target.value)} className="font-mono text-xs border border-orange-300 px-3 py-1.5 w-full" placeholder="e.g. added 1 hour at $50" />
+            </div>
+            <button onClick={extendSession} disabled={actionLoading === 'extend'} className="font-mono text-xs font-bold uppercase tracking-wider bg-orange-600 text-white px-4 py-2 hover:bg-orange-700 disabled:opacity-50 transition-colors">
+              {actionLoading === 'extend' ? 'Extending…' : 'Extend Session'}
+            </button>
+          </div>
+          {extendAmount && parseFloat(extendAmount) > 0 && (
+            <p className="font-mono text-[11px] text-orange-900">
+              Total: {formatCents(booking.total_amount)} → {formatCents(booking.total_amount + Math.round(parseFloat(extendAmount) * 100))}
+            </p>
+          )}
         </div>
       )}
 
