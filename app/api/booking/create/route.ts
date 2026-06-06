@@ -7,6 +7,7 @@ import { calculateSessionTotal, calculateBandSessionTotal, isSelfServeBandHours,
 import { memberHasFlag } from '@/lib/bands';
 import { getMembership } from '@/lib/bands-server';
 import { isEngineerBlocked } from '@/lib/engineer-blocks';
+import { bestStudioDiscountForOwner } from '@/lib/rewards-issue';
 
 export async function POST(request: NextRequest) {
   try {
@@ -204,6 +205,22 @@ export async function POST(request: NextRequest) {
       ? calculateBandSessionTotal(Number(duration) as 4 | 8 | 24, sweetSpotAddon)
       : calculateSessionTotal(room as Room, duration, startHour, sameDayBooking, guestCount);
 
+    // Reward discount (best-of, never stacked). Gated to the LOGGED-IN user so an
+    // email can't be spoofed to grab someone's discount; solo sessions only for now
+    // (band rewards are their own track). No-op when nothing applies, so band/normal
+    // bookings are unchanged. The full value (pricing.total) is preserved as
+    // service_value_cents so the engineer is still paid on the FULL session.
+    let discountCents = 0;
+    let appliedGrantId = '';
+    if (!isBandBooking && sessionUser?.id) {
+      try {
+        const best = await bestStudioDiscountForOwner(createServiceClient(), sessionUser.id, null);
+        if (best) { discountCents = Math.floor((pricing.total * best.pct) / 100); appliedGrantId = best.grantId; }
+      } catch (e) { console.error('[BOOKING CREATE] discount lookup failed (non-fatal):', e); }
+    }
+    const chargedTotal = Math.max(0, pricing.total - discountCents);
+    const chargedDeposit = Math.round(chargedTotal * (PRICING.depositPercent / 100));
+
     const endDec = (startHour + duration) % 24;
     const endTime = `${Math.floor(endDec)}:${endDec % 1 >= 0.5 ? '30' : '00'}`;
     const roomLabel = ROOM_LABELS[room as Room] || room;
@@ -257,7 +274,7 @@ export async function POST(request: NextRequest) {
               name: lineItemName,
               description: lineItemDescription,
             },
-            unit_amount: pricing.deposit,
+            unit_amount: chargedDeposit,
           },
           quantity: 1,
         },
@@ -286,9 +303,14 @@ export async function POST(request: NextRequest) {
         room,
         engineer: requestedEngineer,
         notes: notes || '',
-        total_amount: String(pricing.total),
-        deposit_amount: String(pricing.deposit),
-        remainder_amount: String(pricing.total - pricing.deposit),
+        total_amount: String(chargedTotal),
+        deposit_amount: String(chargedDeposit),
+        remainder_amount: String(chargedTotal - chargedDeposit),
+        // Reward fields (no-op when no discount): full value for payroll + the grant
+        // to mark redeemed when the webhook confirms the paid booking.
+        discount_amount: String(discountCents),
+        service_value_cents: String(pricing.total),
+        applied_discount_grant_id: appliedGrantId,
         night_fees: String(pricing.nightFees),
         same_day: String(sameDayBooking),
         same_day_fee: String(pricing.sameDayFee),

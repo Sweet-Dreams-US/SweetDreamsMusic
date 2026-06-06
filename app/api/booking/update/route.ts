@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifyEngineerAccess } from '@/lib/admin-auth';
+import { restoreRewardsOnCancel } from '@/lib/rewards-issue';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -93,6 +94,12 @@ export async function POST(request: NextRequest) {
   if (error) {
     console.error('[BOOKING UPDATE] Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // On cancel, give back any reward/credit the booking consumed (idempotent, service-role).
+  if (updates.status === 'cancelled') {
+    try { await restoreRewardsOnCancel(createServiceClient(), bookingId); }
+    catch (e) { console.error('[BOOKING UPDATE] reward restore failed (non-fatal):', e); }
   }
 
   return NextResponse.json({ success: true });

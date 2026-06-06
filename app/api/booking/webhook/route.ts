@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { Resend } from 'resend';
 import { stripe } from '@/lib/stripe';
 import { createServiceClient } from '@/lib/supabase/server';
+import { markGrantRedeemed } from '@/lib/rewards-issue';
 import {
   sendBookingConfirmation,
   sendAdminBookingAlert,
@@ -319,6 +320,11 @@ export async function POST(request: NextRequest) {
             deposit_amount: parseInt(meta.deposit_amount),
             remainder_amount: parseInt(meta.remainder_amount),
             actual_deposit_paid: session.amount_total,
+            // Rewards banking: full session value (staff paid on this even when a
+            // discount lowered total_amount) + the discount grant that funded it.
+            // Fallback to total_amount keeps non-reward bookings identical.
+            service_value_cents: parseInt(meta.service_value_cents || meta.total_amount),
+            reward_grant_id: meta.applied_discount_grant_id || null,
             night_fees_amount: parseInt(meta.night_fees || '0'),
             same_day_fee: meta.same_day === 'true',
             same_day_fee_amount: parseInt(meta.same_day_fee || '0'),
@@ -347,6 +353,11 @@ export async function POST(request: NextRequest) {
             );
           }
           newBooking = row;
+          // Single-use: mark the discount grant redeemed now it's a paid booking.
+          if (meta.applied_discount_grant_id && row?.id) {
+            try { await markGrantRedeemed(supabase, meta.applied_discount_grant_id, row.id); }
+            catch (e) { console.error('[webhook] mark grant redeemed failed (non-fatal):', e); }
+          }
         }
 
         // Send emails — bookings.start_time is wall-clock-as-UTC → fmtSession*

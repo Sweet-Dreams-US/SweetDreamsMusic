@@ -245,6 +245,14 @@ export async function POST(request: NextRequest) {
   let serviceValueCents = 0;
   try { serviceValueCents = calculateSessionTotal(room, durationHours, startHour, false, 1).total; } catch { serviceValueCents = 0; }
 
+  // If this credit was ISSUED by a reward, tag the booking with that grant so the
+  // per-booking accounting + Business view tie out (and a cancel can restore it).
+  let rewardGrantId: string | null = null;
+  try {
+    const { data: srcGrant } = await service.from('reward_grants').select('id').eq('issued_ref', `studio_credits:${creditRow.id}`).maybeSingle();
+    rewardGrantId = (srcGrant as { id: string } | null)?.id ?? null;
+  } catch { rewardGrantId = null; }
+
   // ── Insert booking row ──────────────────────────────────────────────
   const { data: newBooking, error: bookErr } = await service
     .from('bookings')
@@ -267,6 +275,7 @@ export async function POST(request: NextRequest) {
       // Format mirrors the convention used elsewhere for system-generated tags.
       admin_notes: `credit_redemption:${creditRow.id}${customerNote ? ` · ${customerNote}` : ''}`,
       band_id: creditRow.band_id ?? null,
+      reward_grant_id: rewardGrantId,
     })
     .select('id')
     .single();

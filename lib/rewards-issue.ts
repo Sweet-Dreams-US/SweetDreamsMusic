@@ -119,3 +119,79 @@ export async function activeDiscountsForOwner(
   const creditCents = live.filter((g: any) => g.reward_type === 'account_credit_cents').reduce((s: number, g: any) => s + (Number(g.value_cents) || 0), 0);
   return { spendPct: max('spend_discount_pct'), mvPct: max('mv_discount_pct'), referralPct: max('referral_discount_pct'), creditCents };
 }
+
+/**
+ * The single best STUDIO-session discount grant for an owner to apply to a booking,
+ * with the grant id (so it can be marked redeemed / restored). Best-of, never stacked:
+ * the highest spend/referral percent. (MV discounts apply to music videos, not studio
+ * sessions, so they're excluded here.) Returns null when nothing applies.
+ */
+export async function bestStudioDiscountForOwner(
+  db: Client, ownerUserId: string | null, ownerBandId: string | null,
+): Promise<{ grantId: string; pct: number; rule_key: string } | null> {
+  let q = db.from('reward_grants')
+    .select('id,reward_type,reward_value,status,expires_at,rule_key')
+    .in('status', ['approved', 'issued'])
+    .in('reward_type', ['spend_discount_pct', 'referral_discount_pct']);
+  if (ownerBandId) q = q.eq('owner_band_id', ownerBandId);
+  else q = q.eq('owner_user_id', ownerUserId);
+  const { data } = await q;
+  const now = Date.now();
+  const live = (data ?? []).filter((g: any) => !g.expires_at || new Date(g.expires_at).getTime() > now);
+  if (!live.length) return null;
+  const best = live.reduce((hi: any, g: any) => ((Number(g.reward_value) || 0) > (Number(hi.reward_value) || 0) ? g : hi), live[0]);
+  const pct = Number(best.reward_value) || 0;
+  return pct > 0 ? { grantId: best.id, pct, rule_key: best.rule_key } : null;
+}
+
+/** Mark a discount grant redeemed (single-use) once a booking actually uses it. */
+export async function markGrantRedeemed(db: Client, grantId: string, bookingId?: string): Promise<void> {
+  await db.from('reward_grants').update({
+    status: 'redeemed', redeemed_at: new Date().toISOString(),
+    metadata: bookingId ? { redeemed_booking_id: bookingId } : {},
+  }).eq('id', grantId).in('status', ['approved', 'issued']);
+}
+
+/**
+ * Restore rewards when a booking is cancelled (idempotent). Two cases:
+ *  • credit-funded (admin_notes 'credit_redemption:<id>' + a studio_credit_redemptions
+ *    row): give the hours back (decrement hours_used) and delete the redemption — the
+ *    customer keeps their prepaid/free hours.
+ *  • discount-funded (bookings.reward_grant_id set): put the discount grant back to
+ *    'issued' so the customer can use it on another booking (cancelling shouldn't burn it).
+ * Returns a summary of what was restored.
+ */
+export async function restoreRewardsOnCancel(db: Client, bookingId: string): Promise<{ hoursRestored: number; grantRestored: boolean }> {
+  let hoursRestored = 0; let grantRestored = false;
+  const { data: booking } = await db.from('bookings').select('id,admin_notes,reward_grant_id').eq('id', bookingId).maybeSingle();
+  if (!booking) return { hoursRestored, grantRestored };
+  const b = booking as any;
+
+  // Credit-funded: restore hours if a redemption row still exists.
+  const m = String(b.admin_notes || '').match(/credit_redemption:([a-f0-9-]+)/);
+  if (m) {
+    const creditId = m[1];
+    const { data: redemption } = await db.from('studio_credit_redemptions')
+      .select('id,hours_redeemed').eq('studio_booking_id', bookingId).maybeSingle();
+    if (redemption) {
+      const hrs = Number((redemption as any).hours_redeemed) || 0;
+      const { data: credit } = await db.from('studio_credits').select('hours_used').eq('id', creditId).maybeSingle();
+      if (credit) {
+        const newUsed = Math.max(0, (Number((credit as any).hours_used) || 0) - hrs);
+        await db.from('studio_credits').update({ hours_used: newUsed }).eq('id', creditId);
+      }
+      await db.from('studio_credit_redemptions').delete().eq('id', (redemption as any).id);
+      hoursRestored = hrs;
+    }
+  }
+
+  // Discount-funded: re-issue the grant so it isn't burned by a cancel.
+  if (b.reward_grant_id) {
+    const { data: g } = await db.from('reward_grants').select('status').eq('id', b.reward_grant_id).maybeSingle();
+    if (g && (g as any).status === 'redeemed') {
+      await db.from('reward_grants').update({ status: 'issued', redeemed_at: null }).eq('id', b.reward_grant_id);
+      grantRestored = true;
+    }
+  }
+  return { hoursRestored, grantRestored };
+}
