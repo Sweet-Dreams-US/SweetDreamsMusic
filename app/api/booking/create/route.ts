@@ -212,9 +212,17 @@ export async function POST(request: NextRequest) {
     // service_value_cents so the engineer is still paid on the FULL session.
     let discountCents = 0;
     let appliedGrantId = '';
-    if (!isBandBooking && sessionUser?.id) {
+    // Solo → the logged-in user's grants; band (non-3-day) → the band's grants.
+    // 3-day blocks (24hr) are excepted — their 3-row webhook split is separate and
+    // band discounts there are a later refinement. Band-single (4hr/8hr) flows
+    // through the same single webhook insert as solo, which already persists the
+    // discount fields + marks the grant redeemed.
+    const discountEligible = !!sessionUser?.id && (!isBandBooking || Number(duration) !== 24);
+    if (discountEligible) {
       try {
-        const best = await bestStudioDiscountForOwner(createServiceClient(), sessionUser.id, null);
+        const ownerUserId = isBandBooking ? null : sessionUser!.id;
+        const ownerBandId = isBandBooking ? (bandId || null) : null;
+        const best = await bestStudioDiscountForOwner(createServiceClient(), ownerUserId, ownerBandId);
         if (best) { discountCents = Math.floor((pricing.total * best.pct) / 100); appliedGrantId = best.grantId; }
       } catch (e) { console.error('[BOOKING CREATE] discount lookup failed (non-fatal):', e); }
     }

@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
+import { suggestedMediaCompPayoutCents } from '@/lib/rewards-issue';
 
 export async function POST(
   request: NextRequest,
@@ -45,7 +46,18 @@ export async function POST(
       { status: 400 },
     );
   }
-  const payoutCents = Math.round(payoutRaw);
+  let payoutCents = Math.round(payoutRaw);
+
+  // Reward comps: if the admin left the payout at $0 on a session funded by a REWARD
+  // (free music video/short/photo), auto-pay the team their standard cut of the comped
+  // value from the rewards/marketing budget. Non-reward $0 sessions (storyboard/marketing
+  // chats) stay $0. Paid work is still admin-typed (per-engagement rates).
+  if (payoutCents === 0) {
+    try {
+      const auto = await suggestedMediaCompPayoutCents(createServiceClient(), id);
+      if (auto > 0) payoutCents = auto;
+    } catch (e) { console.error('[media complete] comp auto-payout failed (non-fatal):', e); }
+  }
 
   // Optional split breakdown override. If admin provides one, we snapshot
   // it. Otherwise we leave whatever was there (default media split is

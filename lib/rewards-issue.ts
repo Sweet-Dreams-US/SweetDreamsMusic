@@ -14,9 +14,33 @@
 // only reflects that $0 of deferred REVENUE was booked — see spec §11.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { MEDIA_WORKER_TOTAL } from '@/lib/constants';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Client = SupabaseClient<any, any, any>;
+
+// Retail value estimate per media deliverable when the reward grant carries no cap.
+const MEDIA_RETAIL_CENTS: Record<string, number> = {
+  music_video: 100000, short_video: 15000, photo_session: 20000, cover_art: 10000, other: 15000,
+};
+
+/**
+ * Suggested team payout for a media session that was funded by a REWARD (a comp).
+ * The studio pays the team their standard cut of the comped value from the rewards
+ * budget. Returns 0 when the session wasn't reward-funded (then the admin types the
+ * amount as usual — per-engagement rates vary for paid work).
+ */
+export async function suggestedMediaCompPayoutCents(db: Client, sessionId: string): Promise<number> {
+  const { data: s } = await db.from('media_session_bookings').select('media_credit_id').eq('id', sessionId).maybeSingle();
+  const creditId = (s as any)?.media_credit_id;
+  if (!creditId) return 0;
+  // Reward-issued credits are linked from the grant via issued_ref.
+  const { data: grant } = await db.from('reward_grants').select('reward_cap_cents').eq('issued_ref', `media_credits:${creditId}`).maybeSingle();
+  if (!grant) return 0; // not a reward comp
+  const { data: credit } = await db.from('media_credits').select('credit_kind').eq('id', creditId).maybeSingle();
+  const value = Number((grant as any).reward_cap_cents) || MEDIA_RETAIL_CENTS[String((credit as any)?.credit_kind)] || MEDIA_RETAIL_CENTS.other;
+  return Math.round(value * MEDIA_WORKER_TOTAL);
+}
 
 const MEDIA_KIND: Record<string, string> = {
   free_short_video: 'short_video',
