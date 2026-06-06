@@ -119,8 +119,9 @@ interface RecomputeResponse {
 
 interface BusinessResponse {
   givenOut: {
-    byType: Record<string, { count: number; retailCents: number }>;
+    byType: Record<string, { count: number; retailCents: number; actualCostCents: number }>;
     totalRetailCents: number;
+    totalActualCostCents: number;
     redeemedRetailCents: number;
     outstandingRetailCents: number;
   };
@@ -1029,10 +1030,10 @@ function BusinessTab() {
                   hint: 'Issued + redeemed + approved',
                 },
                 {
-                  label: 'Redeemed',
-                  value: formatCents(givenOut.redeemedRetailCents),
-                  icon: Check,
-                  hint: 'Actually claimed',
+                  label: 'Cost to us (cash)',
+                  value: formatCents(givenOut.totalActualCostCents),
+                  icon: TrendingDown,
+                  hint: 'Staff pay on comped work + bonuses',
                 },
                 {
                   label: 'Outstanding liability',
@@ -1060,6 +1061,7 @@ function BusinessTab() {
                       <th className="px-3 py-2 font-bold">Reward Type</th>
                       <th className="px-3 py-2 font-bold text-right">Count</th>
                       <th className="px-3 py-2 font-bold text-right">Retail Value</th>
+                      <th className="px-3 py-2 font-bold text-right">Cost to Us</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1068,6 +1070,7 @@ function BusinessTab() {
                         <td className="px-3 py-2">{type.replace(/_/g, ' ')}</td>
                         <td className="px-3 py-2 text-right">{info.count}</td>
                         <td className="px-3 py-2 text-right font-semibold">{formatCents(info.retailCents)}</td>
+                        <td className="px-3 py-2 text-right text-black/60">{formatCents(info.actualCostCents)}</td>
                       </tr>
                     ))}
                     <tr className="border-t-2 border-black/10 font-bold bg-black/[0.02]">
@@ -1076,6 +1079,7 @@ function BusinessTab() {
                         {typeRows.reduce((sum, [, i]) => sum + i.count, 0)}
                       </td>
                       <td className="px-3 py-2 text-right text-accent">{formatCents(givenOut.totalRetailCents)}</td>
+                      <td className="px-3 py-2 text-right">{formatCents(givenOut.totalActualCostCents)}</td>
                     </tr>
                   </tbody>
                 </table>
