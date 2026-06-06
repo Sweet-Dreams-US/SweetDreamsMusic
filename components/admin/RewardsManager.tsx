@@ -13,6 +13,10 @@ import {
   DollarSign,
   Users,
   Clock,
+  BarChart3,
+  TrendingUp,
+  TrendingDown,
+  PiggyBank,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -27,7 +31,7 @@ import {
 
 const formatCents = (c: number) => `$${((c || 0) / 100).toFixed(2)}`;
 
-type TabKey = 'users' | 'launch' | 'rules';
+type TabKey = 'users' | 'launch' | 'rules' | 'business';
 
 // ── wire shapes ──────────────────────────────────────────────────────────────
 interface Grant {
@@ -113,6 +117,26 @@ interface RecomputeResponse {
   report: RecomputeReport;
 }
 
+interface BusinessResponse {
+  givenOut: {
+    byType: Record<string, { count: number; retailCents: number }>;
+    totalRetailCents: number;
+    redeemedRetailCents: number;
+    outstandingRetailCents: number;
+  };
+  byStatus: Record<string, number>;
+  roi: {
+    recipients: number;
+    recipientSpendCents: number;
+    recipientAvgCents: number;
+    otherCustomers: number;
+    otherSpendCents: number;
+    otherAvgCents: number;
+    liftPct: number;
+  };
+  note: string;
+}
+
 // ── status badge colors ──────────────────────────────────────────────────────
 const STATUS_BADGE: Record<string, string> = {
   pending_approval: 'bg-amber-100 text-amber-800',
@@ -157,6 +181,7 @@ export default function RewardsManager() {
           { key: 'users', label: 'All Users', icon: Gift },
           { key: 'launch', label: 'Launch / Backfill', icon: Rocket },
           { key: 'rules', label: 'Rules', icon: SlidersHorizontal },
+          { key: 'business', label: 'Business', icon: BarChart3 },
         ] as const).map((t) => (
           <button
             key={t.key}
@@ -176,6 +201,7 @@ export default function RewardsManager() {
       {tab === 'users' && <UsersTab />}
       {tab === 'launch' && <LaunchTab />}
       {tab === 'rules' && <RulesTab />}
+      {tab === 'business' && <BusinessTab />}
     </div>
   );
 }
@@ -865,6 +891,282 @@ function RulesTab() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 4 — Business (rewards ROI / give-away tracking)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Color-coded status labels. issued/redeemed read as "real value out the door"
+// (green), pending_approval is a decision waiting (amber), approved is committed
+// but not yet redeemed (blue), baseline/denied are inert (gray).
+const BUSINESS_STATUS_COLOR: Record<string, string> = {
+  issued: 'text-green-700',
+  redeemed: 'text-green-700',
+  approved: 'text-blue-700',
+  pending_approval: 'text-amber-700',
+  baseline: 'text-black/40',
+  denied: 'text-black/40',
+};
+
+function BusinessTab() {
+  const [data, setData] = useState<BusinessResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchBusiness = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/rewards/business');
+      const json = await res.json();
+      if (!res.ok || json.error) {
+        setError(json.error || 'Failed to load business view');
+        setData(null);
+      } else {
+        setError(null);
+        setData(json as BusinessResponse);
+      }
+    } catch {
+      setError('Network error loading business view');
+      setData(null);
+    }
+    setLoading(false);
+  }, []);
+
+  // Initial load inlined as a promise chain so setState never runs synchronously
+  // in the effect body — matches the UsersTab mount-fetch pattern.
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/admin/rewards/business')
+      .then((r) => r.json().then((json) => ({ ok: r.ok, json })))
+      .then(({ ok, json }) => {
+        if (!alive) return;
+        if (!ok || json.error) {
+          setError(json.error || 'Failed to load business view');
+          setData(null);
+        } else {
+          setError(null);
+          setData(json as BusinessResponse);
+        }
+      })
+      .catch(() => {
+        if (!alive) return;
+        setError('Network error loading business view');
+        setData(null);
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (loading) {
+    return <p className="font-mono text-sm text-black/40">Loading business view…</p>;
+  }
+  if (error) {
+    return (
+      <div className="border-2 border-red-300 bg-red-50/40 p-4">
+        <p className="font-mono text-xs text-red-600 uppercase tracking-wider font-bold mb-1">Error</p>
+        <p className="font-mono text-sm text-red-700">{error}</p>
+        <button
+          onClick={fetchBusiness}
+          className="mt-3 border border-black/20 font-mono text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-black/5"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+  if (!data) {
+    return <p className="font-mono text-sm text-black/30 text-center py-8">No business data available.</p>;
+  }
+
+  const { givenOut, byStatus, roi, note } = data;
+  const typeRows = Object.entries(givenOut.byType || {});
+  const statusRows = Object.entries(byStatus || {});
+  const nothingIssued = typeRows.length === 0 && givenOut.totalRetailCents === 0;
+  const liftPositive = roi.liftPct >= 0;
+  const noRoi = roi.recipients === 0;
+
+  return (
+    <div>
+      {/* Toolbar */}
+      <div className="flex items-center gap-3 mb-6 flex-wrap">
+        <button
+          onClick={fetchBusiness}
+          className="p-2 border border-black/20 hover:border-black transition-colors"
+          title="Refresh"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        </button>
+        <span className="font-mono text-xs text-black/60">Rewards ROI &amp; give-away tracking</span>
+      </div>
+
+      {nothingIssued ? (
+        <p className="font-mono text-sm text-black/30 text-center py-8">
+          No rewards issued yet — this fills in after launch.
+        </p>
+      ) : (
+        <div className="space-y-10">
+          {/* ── Section 1: Given out ─────────────────────────────────────── */}
+          <div>
+            <p className="font-mono text-xs font-bold uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
+              <Gift className="w-3.5 h-3.5 text-accent" /> Given out
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              {[
+                {
+                  label: 'Total retail value given',
+                  value: formatCents(givenOut.totalRetailCents),
+                  icon: Gift,
+                  hint: 'Issued + redeemed + approved',
+                },
+                {
+                  label: 'Redeemed',
+                  value: formatCents(givenOut.redeemedRetailCents),
+                  icon: Check,
+                  hint: 'Actually claimed',
+                },
+                {
+                  label: 'Outstanding liability',
+                  value: formatCents(givenOut.outstandingRetailCents),
+                  icon: PiggyBank,
+                  hint: 'Owed but not yet redeemed',
+                },
+              ].map((s) => (
+                <div key={s.label} className="border-2 border-black/10 p-4">
+                  <s.icon className="w-4 h-4 text-accent mb-2" />
+                  <p className="font-heading text-2xl">{s.value}</p>
+                  <p className="font-mono text-[10px] text-black/60 uppercase tracking-wider mt-1">{s.label}</p>
+                  <p className="font-mono text-[10px] text-black/40 mt-0.5">{s.hint}</p>
+                </div>
+              ))}
+            </div>
+
+            {typeRows.length === 0 ? (
+              <p className="font-mono text-xs text-black/40">No rewards given out by type yet.</p>
+            ) : (
+              <div className="border-2 border-black/10 overflow-x-auto">
+                <table className="w-full font-mono text-xs">
+                  <thead>
+                    <tr className="border-b border-black/10 text-left text-black/60 uppercase tracking-wider text-[10px]">
+                      <th className="px-3 py-2 font-bold">Reward Type</th>
+                      <th className="px-3 py-2 font-bold text-right">Count</th>
+                      <th className="px-3 py-2 font-bold text-right">Retail Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {typeRows.map(([type, info]) => (
+                      <tr key={type} className="border-b border-black/5 last:border-0">
+                        <td className="px-3 py-2">{type.replace(/_/g, ' ')}</td>
+                        <td className="px-3 py-2 text-right">{info.count}</td>
+                        <td className="px-3 py-2 text-right font-semibold">{formatCents(info.retailCents)}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t-2 border-black/10 font-bold bg-black/[0.02]">
+                      <td className="px-3 py-2 uppercase tracking-wider text-[10px]">Total</td>
+                      <td className="px-3 py-2 text-right">
+                        {typeRows.reduce((sum, [, i]) => sum + i.count, 0)}
+                      </td>
+                      <td className="px-3 py-2 text-right text-accent">{formatCents(givenOut.totalRetailCents)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* ── Section 2: By status ─────────────────────────────────────── */}
+          <div>
+            <p className="font-mono text-xs font-bold uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-accent" /> By status
+            </p>
+            {statusRows.length === 0 ? (
+              <p className="font-mono text-xs text-black/40">No grants on record yet.</p>
+            ) : (
+              <div className="flex flex-wrap gap-3">
+                {statusRows.map(([status, count]) => (
+                  <div key={status} className="border-2 border-black/10 px-4 py-3 min-w-[120px]">
+                    <p className={`font-heading text-xl ${BUSINESS_STATUS_COLOR[status] || 'text-black/70'}`}>
+                      {count}
+                    </p>
+                    <p
+                      className={`font-mono text-[10px] uppercase tracking-wider mt-0.5 ${
+                        BUSINESS_STATUS_COLOR[status] || 'text-black/60'
+                      }`}
+                    >
+                      {status.replace(/_/g, ' ')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Section 3: ROI ───────────────────────────────────────────── */}
+          <div>
+            <p className="font-mono text-xs font-bold uppercase tracking-wider mb-3 inline-flex items-center gap-1.5">
+              <BarChart3 className="w-3.5 h-3.5 text-accent" /> ROI — are rewards driving revenue?
+            </p>
+
+            {noRoi ? (
+              <p className="font-mono text-xs text-black/40">
+                No rewards issued yet — this fills in after launch.
+              </p>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div className="border-2 border-black/10 p-4">
+                    <p className="font-mono text-[10px] text-black/60 uppercase tracking-wider mb-1">
+                      Reward recipients
+                    </p>
+                    <p className="font-heading text-2xl">{roi.recipients}</p>
+                    <p className="font-mono text-[11px] text-black/60 mt-1">
+                      {formatCents(roi.recipientAvgCents)} avg spend
+                    </p>
+                  </div>
+                  <div className="border-2 border-black/10 p-4">
+                    <p className="font-mono text-[10px] text-black/60 uppercase tracking-wider mb-1">
+                      Other customers
+                    </p>
+                    <p className="font-heading text-2xl">{roi.otherCustomers}</p>
+                    <p className="font-mono text-[11px] text-black/60 mt-1">
+                      {formatCents(roi.otherAvgCents)} avg spend
+                    </p>
+                  </div>
+                </div>
+
+                {/* Prominent lift line */}
+                <div
+                  className={`border-2 p-4 inline-flex items-start gap-2 ${
+                    liftPositive ? 'border-green-300 bg-green-50/40' : 'border-red-300 bg-red-50/40'
+                  }`}
+                >
+                  {liftPositive ? (
+                    <TrendingUp className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <TrendingDown className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  )}
+                  <p
+                    className={`font-mono text-sm font-bold ${
+                      liftPositive ? 'text-green-700' : 'text-red-700'
+                    }`}
+                  >
+                    Reward recipients spend {Math.abs(roi.liftPct)}% {liftPositive ? 'more' : 'less'} on average
+                  </p>
+                </div>
+              </>
+            )}
+
+            {note && <p className="font-mono text-[11px] text-black/40 mt-3 leading-relaxed">{note}</p>}
+          </div>
         </div>
       )}
     </div>
