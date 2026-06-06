@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Calendar, Music, Users, DollarSign, Clock, Video, Mic, FileText, LayoutDashboard, BarChart3, Bell, PartyPopper, Film, ClipboardList, Package } from 'lucide-react';
+import { Calendar, Music, Users, DollarSign, Clock, Video, Mic, FileText, LayoutDashboard, BarChart3, Bell, PartyPopper, Film, ClipboardList, Package, Gift } from 'lucide-react';
 import type { SessionUser } from '@/lib/auth';
 import AdminOverview from './AdminOverview';
 import BookingManager from './BookingManager';
@@ -19,8 +19,9 @@ import PlatformAnalytics from './PlatformAnalytics';
 import Notifications from './Notifications';
 import AdminEvents from './AdminEvents';
 import PackageTemplates from './PackageTemplates';
+import RewardsManager from './RewardsManager';
 
-type Tab = 'overview' | 'clients' | 'accounting' | 'bookings' | 'events' | 'media' | 'media-catalog' | 'media-orders' | 'packages' | 'blocks' | 'beats' | 'producers' | 'contracts' | 'users' | 'analytics' | 'notifications';
+type Tab = 'overview' | 'clients' | 'accounting' | 'bookings' | 'events' | 'media' | 'media-catalog' | 'media-orders' | 'packages' | 'blocks' | 'beats' | 'producers' | 'contracts' | 'users' | 'rewards' | 'analytics' | 'notifications';
 
 export default function AdminDashboard({ user }: { user: SessionUser }) {
   const [tab, setTab] = useState<Tab>('overview');
@@ -43,6 +44,7 @@ export default function AdminDashboard({ user }: { user: SessionUser }) {
     { key: 'producers', label: 'Producers', icon: Mic },
     { key: 'contracts', label: 'Contracts', icon: FileText },
     { key: 'users', label: 'Users', icon: Users },
+    { key: 'rewards', label: 'Rewards', icon: Gift },
     { key: 'analytics', label: 'Analytics', icon: BarChart3 },
     { key: 'notifications', label: 'Notifications', icon: Bell },
   ];
@@ -108,6 +110,7 @@ export default function AdminDashboard({ user }: { user: SessionUser }) {
           {tab === 'producers' && <ProducerApplications />}
           {tab === 'contracts' && <ContractsViewer />}
           {tab === 'users' && <UserManager />}
+          {tab === 'rewards' && <RewardsManager />}
           {tab === 'analytics' && <PlatformAnalytics />}
           {tab === 'notifications' && <Notifications />}
             </div>

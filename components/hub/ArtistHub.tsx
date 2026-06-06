@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { LayoutDashboard, Folder, Target, BarChart3, CalendarDays, Award, BookOpen, FileText, Film, PartyPopper, Users } from 'lucide-react';
+import { LayoutDashboard, Folder, Target, BarChart3, CalendarDays, Award, BookOpen, FileText, Film, PartyPopper, Users, Gift } from 'lucide-react';
 import { HUB_TABS, type HubTab } from '@/lib/hub-constants';
 import { calculateLevel, getLevelTitle, getLevelColor } from '@/lib/xp-system';
 import XPBar from './XPBar';
@@ -16,6 +16,7 @@ import SessionNotes from './SessionNotes';
 import HubMedia from './HubMedia';
 import HubEvents from './HubEvents';
 import HubBands from './HubBands';
+import HubPerks from './HubPerks';
 import type { MediaOffering } from '@/lib/media';
 import type { MediaCreditBalance, CreditKind } from '@/lib/media-credits';
 import type { BandMembership, BandInvite, Band } from '@/lib/bands';
@@ -56,6 +57,7 @@ const TAB_ICONS: Record<string, typeof LayoutDashboard> = {
   events: PartyPopper,
   bands: Users,
   achievements: Award,
+  perks: Gift,
   roadmap: BookOpen,
   notes: FileText,
 };
@@ -251,6 +253,7 @@ export default function ArtistHub({ userId, relocated, initialTab }: { userId: s
                 />
               )}
               {tab === 'achievements' && <AchievementBadges newUnlocks={newAchievements} progress={achievementProgress} onDismiss={() => setNewAchievements([])} />}
+              {tab === 'perks' && <HubPerks />}
               {tab === 'roadmap' && <ArtistRoadmap />}
               {tab === 'notes' && <SessionNotes onXpEarned={onXpEarned} />}
             </div>

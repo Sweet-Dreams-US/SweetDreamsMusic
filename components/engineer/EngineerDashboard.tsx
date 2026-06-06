@@ -10,6 +10,7 @@ import CreateInvite from './CreateInvite';
 import EngineerAccounting from './EngineerAccounting';
 import EngineerFiles from './EngineerFiles';
 import EngineerMediaSessions from './EngineerMediaSessions';
+import EngineerBonusCard from './EngineerBonusCard';
 import EngineerAvailability from './EngineerAvailability';
 
 type Tab =
@@ -79,7 +80,7 @@ export default function EngineerDashboard({ user }: { user: SessionUser }) {
 
             {/* Main Content */}
             <div className="flex-1 min-w-0">
-              {tab === 'sessions' && <EngineerSessions userEmail={user.email} />}
+              {tab === 'sessions' && <><EngineerBonusCard /><EngineerSessions userEmail={user.email} /></>}
               {tab === 'media' && <EngineerMediaSessions />}
               {tab === 'my-clients' && <EngineerCRM userEmail={user.email} />}
               {tab === 'library' && <ClientLibrary />}
