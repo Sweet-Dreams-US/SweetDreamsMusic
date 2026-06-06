@@ -33,6 +33,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { getUserBands } from '@/lib/bands-server';
 import { ENGINEERS, type Room } from '@/lib/constants';
+import { calculateSessionTotal } from '@/lib/utils';
 import { sendEngineerNewBookingAlert } from '@/lib/email';
 
 const VALID_ROOMS: Room[] = ['studio_a', 'studio_b'];
@@ -236,6 +237,14 @@ export async function POST(request: NextRequest) {
     user.email.split('@')[0] ||
     'Customer';
 
+  // Value the work so the engineer is PAID for a $0 (prepaid/credit) session.
+  // service_value_cents = what these hours are normally worth; computeEarnings
+  // pays the engineer 60% of this even though total_amount is $0. (Fixes the
+  // long-standing $0-payout gap on credit sessions.) Surcharges included in value.
+  const startHour = new Date(startISO).getUTCHours();
+  let serviceValueCents = 0;
+  try { serviceValueCents = calculateSessionTotal(room, durationHours, startHour, false, 1).total; } catch { serviceValueCents = 0; }
+
   // ── Insert booking row ──────────────────────────────────────────────
   const { data: newBooking, error: bookErr } = await service
     .from('bookings')
@@ -249,6 +258,7 @@ export async function POST(request: NextRequest) {
       engineer_name: engineerName,
       requested_engineer: engineerName,
       total_amount: 0,
+      service_value_cents: serviceValueCents,
       deposit_amount: 0,
       remainder_amount: 0,
       actual_deposit_paid: 0,

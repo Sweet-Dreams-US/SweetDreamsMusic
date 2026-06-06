@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   // from solo-session revenue without an N+1 join.
   let bookingsQuery = supabase
     .from('bookings')
-    .select('id, customer_name, customer_email, start_time, duration, total_amount, deposit_amount, remainder_amount, actual_deposit_paid, status, engineer_name, room, band_id, booking_group_id, sweet_spot_addon, created_at')
+    .select('id, customer_name, customer_email, start_time, duration, total_amount, service_value_cents, reward_grant_id, deposit_amount, remainder_amount, actual_deposit_paid, status, engineer_name, room, band_id, booking_group_id, sweet_spot_addon, created_at')
     .not('status', 'eq', 'cancelled')
     .order('created_at', { ascending: false });
 

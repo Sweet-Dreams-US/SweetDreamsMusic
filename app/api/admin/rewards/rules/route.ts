@@ -19,7 +19,12 @@ export async function GET() {
 
   const db = createServiceClient();
   const { data } = await db.from('reward_rules').select('*').order('sort_order', { ascending: true });
-  if (data && data.length) return NextResponse.json({ rules: data, seeded: true });
+  // DB column is window_kind ('window' is reserved in Postgres); expose it as
+  // `window` so the API shape matches the TS ruleset + the UI everywhere.
+  if (data && data.length) {
+    const rules = data.map((r: any) => ({ ...r, window: r.window_kind }));
+    return NextResponse.json({ rules, seeded: true });
+  }
 
   // Table empty (migration applied but not yet seeded) → show the lib defaults.
   return NextResponse.json({ rules: REWARD_RULES.map((r, i) => ({ id: null, seeded: false, ...r, sort_order: r.sort_order ?? i })), seeded: false });

@@ -63,7 +63,7 @@ export async function seedRewardRules(db: Client): Promise<{ upserted: number }>
     label: r.label,
     counter: r.counter,
     threshold: r.threshold,
-    window: r.window,
+    window_kind: r.window, // DB column is window_kind ('window' is reserved in Postgres)
     reward_type: r.reward_type,
     reward_value: r.reward_value,
     reward_cap_cents: r.reward_cap_cents ?? null,

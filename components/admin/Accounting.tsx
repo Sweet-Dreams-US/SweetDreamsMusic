@@ -17,6 +17,8 @@ interface Booking {
   start_time: string;
   duration: number;
   total_amount: number;
+  service_value_cents?: number | null; // full value of the work — staff paid on this
+  reward_grant_id?: string | null;     // set when a reward funded/discounted this booking
   deposit_amount: number;
   remainder_amount: number;
   actual_deposit_paid: number | null;
@@ -680,6 +682,7 @@ export default function Accounting() {
     // Package salesperson commission — when a person is attributed as
     // the closer on a package quote, they earn this when the customer pays.
     packageCommission: number; packageSoldCount: number;
+    rewardsCost: number; // studio's give-away value on reward-funded sessions (not staff pay)
     totalPay: number;
   };
 
@@ -692,7 +695,7 @@ export default function Accounting() {
     packageCommissions: typeof allTimePackageCommissions = [],
   ): Record<string, PersonEarnings> {
     const people: Record<string, PersonEarnings> = {};
-    const init = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, totalPay: 0 });
+    const init = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, rewardsCost: 0, totalPay: 0 });
 
     bks.forEach(b => {
       // Only count completed sessions for payroll — pending/confirmed sessions haven't happened yet
@@ -700,10 +703,19 @@ export default function Accounting() {
       const eng = normalizeName(b.engineer_name);
       if (!eng || eng === 'Unassigned') return;
       if (!people[eng]) people[eng] = init();
+      // Pay staff on the VALUE of the work, not what the customer was charged.
+      // service_value_cents = full session value (= total_amount for normal sessions
+      // via the 067 backfill, so existing payouts are unchanged; the full price for
+      // comped/credit/discounted reward sessions where total_amount is reduced/$0).
+      // Fixes the long-standing $0-payout bug on credit/comped sessions.
+      const value = b.service_value_cents ?? b.total_amount;
       people[eng].sessionCount++;
-      people[eng].sessionRevenue += b.total_amount;
-      people[eng].sessionPay += Math.round(b.total_amount * ENGINEER_SESSION_SPLIT);
+      people[eng].sessionRevenue += b.total_amount;                          // revenue = charged
+      people[eng].sessionPay += Math.round(value * ENGINEER_SESSION_SPLIT);  // pay = on value
       people[eng].sessionHours += b.duration;
+      // Rewards/marketing cost = value given away, ONLY on reward-funded sessions
+      // (reward_grant_id set) — NOT prepaid-credit deferred revenue.
+      if (b.reward_grant_id) people[eng].rewardsCost += Math.max(0, value - b.total_amount);
     });
 
     media.forEach(m => {
@@ -898,7 +910,7 @@ export default function Accounting() {
       ...Object.keys(periodPeople),
       ...Object.keys(pendingByEngineer),
     ]);
-    const initEmpty = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, totalPay: 0 });
+    const initEmpty = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, rewardsCost: 0, totalPay: 0 });
     type PeriodPending = { count: number; potentialPay: number; hours: number };
     const entries: [string, PersonEarnings & { allTimeTotal: number; allTimePaid: number; balance: number; periodTotal: number; allTimeData: PersonEarnings; periodPending: PeriodPending }][] = [];
 

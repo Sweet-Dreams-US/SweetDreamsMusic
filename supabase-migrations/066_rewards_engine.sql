@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS public.reward_rules (
   threshold NUMERIC NOT NULL DEFAULT 0,
 
   -- Earning window — the period the counter is measured over.
-  window TEXT NOT NULL CHECK (window IN (
+  -- (Named window_kind because `window` is a reserved word in Postgres.)
+  window_kind TEXT NOT NULL CHECK (window_kind IN (
     'calendar_year','monthly','quarterly','per_purchase','per_event','one_time','lifetime'
   )),
 
