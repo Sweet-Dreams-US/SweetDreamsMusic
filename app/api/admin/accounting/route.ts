@@ -175,6 +175,37 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Staff cash bonuses (reward_grants). These add to a person's payroll like any
+  // other earnings, funded from the studio's cut. 'approved'/'issued' = owed (not
+  // yet paid); 'redeemed' = already paid out. We resolve owner_user_id → the
+  // canonical roster name so it lands in the SAME per-person bucket as sessions.
+  const { data: bonusGrants } = await supabase
+    .from('reward_grants')
+    .select('id, owner_user_id, value_cents, status, period_key, rule_key, created_at, redeemed_at')
+    .eq('reward_type', 'cash_bonus')
+    .in('status', ['approved', 'issued', 'redeemed']);
+
+  const bonusOwnerIds = Array.from(new Set((bonusGrants || []).map((g: { owner_user_id: string | null }) => g.owner_user_id).filter((x): x is string => !!x)));
+  const bonusNameMap: Record<string, string> = {};
+  if (bonusOwnerIds.length > 0) {
+    const { data: bprofiles } = await supabase.from('profiles').select('user_id, display_name, email').in('user_id', bonusOwnerIds);
+    const { ENGINEERS } = await import('@/lib/constants');
+    for (const p of (bprofiles || []) as Array<{ user_id: string; display_name: string | null; email: string | null }>) {
+      const roster = p.email ? ENGINEERS.find((e) => e.email.toLowerCase() === p.email!.toLowerCase()) : null;
+      bonusNameMap[p.user_id] = roster?.name || p.display_name || 'Unknown';
+    }
+  }
+  const rewardBonuses = (bonusGrants || []).map((g: { id: string; owner_user_id: string | null; value_cents: number | null; status: string; period_key: string; rule_key: string; created_at: string; redeemed_at: string | null }) => ({
+    id: g.id,
+    person_name: g.owner_user_id ? (bonusNameMap[g.owner_user_id] || 'Unknown') : 'Unknown',
+    value_cents: g.value_cents || 0,
+    status: g.status,            // approved|issued = owed; redeemed = paid
+    period_key: g.period_key,
+    rule_key: g.rule_key,
+    created_at: g.created_at,
+    redeemed_at: g.redeemed_at,
+  }));
+
   return NextResponse.json({
     bookings: bookings || [],
     cancelledBookings: cancelledBookings || [],
@@ -183,6 +214,7 @@ export async function GET(request: NextRequest) {
     mediaSessions: mediaSessions || [],
     mediaBookings: mediaBookings || [],
     packageCommissions: packageCommissions || [],
+    rewardBonuses,
     mediaOfferingMap,
     bandMap,
     engineerNameMap,

@@ -12,6 +12,7 @@
 //  • test/comp rows (cole@sweetdreams.us, $0 totals) are excluded from counters.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { ENGINEERS } from '@/lib/constants';
 import {
   REWARD_RULES, periodKeyFor, windowRange, rewardValueCents,
   type RewardRule, type RewardWindow, type RewardCounter,
@@ -400,6 +401,37 @@ function accExposure(report: BackfillReport, g: DesiredGrant) {
  * intentionally out of scope here (those reconcile via payroll, Phase 4).
  * dryRun=true computes + reports without writing.
  */
+export interface StaffSweepReport { dryRun: boolean; evaluated: number; found: number; inserted: number; sample: Array<{ person: string; label: string; valueCents: number; period: string }>; }
+
+/**
+ * Sweep engineer cash bonuses: evaluate each roster engineer's hours_run for the
+ * current month + quarter (clamped to effective_from — June monthly / Jul 1 quarterly)
+ * and create pending_approval cash_bonus grants. Admin approves → they add to payroll.
+ * Idempotent per (rule, owner, period). Producers/media-managers are a follow-up (their
+ * identity mapping — producer_id / filmed_by name — is fuzzier than the engineer roster).
+ */
+export async function sweepStaffBonuses(db: Client, now: Date, opts: { dryRun?: boolean } = {}): Promise<StaffSweepReport> {
+  const dryRun = opts.dryRun ?? true;
+  const launchDate = await getLaunchDate(db);
+  const report: StaffSweepReport = { dryRun, evaluated: 0, found: 0, inserted: 0, sample: [] };
+
+  // Map engineer roster email → user_id (case-insensitive).
+  const { data: profs } = await db.from('profiles').select('user_id,email').not('email', 'is', null);
+  const userByEmail = new Map<string, string>();
+  for (const p of (profs ?? []) as any[]) if (p.email && p.user_id) userByEmail.set(String(p.email).toLowerCase(), p.user_id);
+
+  for (const e of ENGINEERS) {
+    const userId = userByEmail.get(e.email.toLowerCase());
+    if (!userId) continue;
+    report.evaluated++;
+    const grants = await evaluateOwner(db, { track: 'engineer', engineerName: e.name, userId }, now, launchDate);
+    report.found += grants.length;
+    if (!dryRun) { const r = await persistGrants(db, grants, 'staff-sweep'); report.inserted += r.inserted; }
+    for (const g of grants) if (report.sample.length < 20) report.sample.push({ person: e.name, label: g.label, valueCents: g.value_cents, period: g.period_key });
+  }
+  return report;
+}
+
 export async function backfillCustomersAndBands(db: Client, now: Date, opts: { dryRun?: boolean; baseline?: boolean } = {}): Promise<BackfillReport> {
   const dryRun = opts.dryRun ?? true;
   // Progress-only launch (Cole): record already-reached tiers as 'baseline' so

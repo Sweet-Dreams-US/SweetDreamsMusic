@@ -222,6 +222,12 @@ export default function Accounting() {
       template_id: string;
     }>
   >([]);
+  // Staff cash bonuses (reward_grants). 'approved'/'issued' = earned/owed (added to
+  // payroll like sessions); paid is tracked via payroll_payouts. Funded from the
+  // studio's cut, on top of base comp.
+  const [allTimeRewardBonuses, setAllTimeRewardBonuses] = useState<
+    Array<{ id: string; person_name: string; value_cents: number; status: string; period_key: string; rule_key: string; created_at: string; redeemed_at: string | null }>
+  >([]);
 
   // Payout tracking
   const [payouts, setPayouts] = useState<{ id: string; person_name: string; amount: number; method: string; note: string | null; period_label: string | null; created_at: string }[]>([]);
@@ -278,6 +284,7 @@ export default function Accounting() {
     setAllTimeCancelledBookings(data.cancelledBookings || []);
     setAllTimeMediaSessions(data.mediaSessions || []);
     setAllTimePackageCommissions(data.packageCommissions || []);
+    setAllTimeRewardBonuses(data.rewardBonuses || []);
     setEngineerNameMap(data.engineerNameMap || {});
     setPayouts(payoutsData.payouts || []);
     setCashLedger(cashData.entries || []);
@@ -683,6 +690,7 @@ export default function Accounting() {
     // the closer on a package quote, they earn this when the customer pays.
     packageCommission: number; packageSoldCount: number;
     rewardsCost: number; // studio's give-away value on reward-funded sessions (not staff pay)
+    bonusPay: number; bonusCount: number; // staff cash bonuses earned (owed), funded from studio cut
     totalPay: number;
   };
 
@@ -693,9 +701,10 @@ export default function Accounting() {
     mediaSessions: typeof allTimeMediaSessions = [],
     engineerNames: Record<string, string> = {},
     packageCommissions: typeof allTimePackageCommissions = [],
+    bonuses: typeof allTimeRewardBonuses = [],
   ): Record<string, PersonEarnings> {
     const people: Record<string, PersonEarnings> = {};
-    const init = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, rewardsCost: 0, totalPay: 0 });
+    const init = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, rewardsCost: 0, bonusPay: 0, bonusCount: 0, totalPay: 0 });
 
     bks.forEach(b => {
       // Only count completed sessions for payroll — pending/confirmed sessions haven't happened yet
@@ -787,8 +796,20 @@ export default function Accounting() {
       people[sp].packageSoldCount++;
     });
 
+    // Staff cash bonuses (rewards). 'approved'/'issued' = earned/owed; paid is
+    // tracked via payroll_payouts (same earned−paid model as sessions), so a bonus
+    // adds to earnings and a recorded payout settles it. Funded from the studio cut.
+    bonuses.forEach((bn) => {
+      if (bn.status !== 'approved' && bn.status !== 'issued') return; // redeemed = already settled
+      const name = normalizeName(bn.person_name);
+      if (!name || name === 'Unassigned') return;
+      if (!people[name]) people[name] = init();
+      people[name].bonusPay += bn.value_cents || 0;
+      people[name].bonusCount++;
+    });
+
     Object.values(people).forEach(p => {
-      p.totalPay = p.sessionPay + p.mediaCommission + p.mediaWorkerPay + p.beatProducerPay + p.packageCommission;
+      p.totalPay = p.sessionPay + p.mediaCommission + p.mediaWorkerPay + p.beatProducerPay + p.packageCommission + p.bonusPay;
     });
     return people;
   }
@@ -840,6 +861,7 @@ export default function Accounting() {
       allTimeMediaSessions,
       engineerNameMap,
       allTimePackageCommissions,
+      allTimeRewardBonuses,
     );
 
     // All-time payouts by person (normalized)
@@ -871,6 +893,9 @@ export default function Accounting() {
     const periodPackageCommissions = allTimePackageCommissions.filter(
       (pc) => pc.created_at >= periodStartStr && pc.created_at <= periodEndStr,
     );
+    const periodRewardBonuses = allTimeRewardBonuses.filter(
+      (bn) => bn.created_at >= periodStartStr && bn.created_at <= periodEndStr,
+    );
     const periodPeople = computeEarnings(
       periodBookings,
       periodMedia,
@@ -878,6 +903,7 @@ export default function Accounting() {
       periodMediaSessions,
       engineerNameMap,
       periodPackageCommissions,
+      periodRewardBonuses,
     );
 
     // Pending sessions this period — bookings scheduled within the period that
@@ -910,7 +936,7 @@ export default function Accounting() {
       ...Object.keys(periodPeople),
       ...Object.keys(pendingByEngineer),
     ]);
-    const initEmpty = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, rewardsCost: 0, totalPay: 0 });
+    const initEmpty = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, rewardsCost: 0, bonusPay: 0, bonusCount: 0, totalPay: 0 });
     type PeriodPending = { count: number; potentialPay: number; hours: number };
     const entries: [string, PersonEarnings & { allTimeTotal: number; allTimePaid: number; balance: number; periodTotal: number; allTimeData: PersonEarnings; periodPending: PeriodPending }][] = [];
 
@@ -962,7 +988,7 @@ export default function Accounting() {
       periodLabel, periodStart: periodStartStr, periodEnd: periodEndStr,
       periodPayoutTotal,
     };
-  }, [allTimeBookings, allTimeMediaSales, allTimeBeatPurchases, allTimeCancelledBookings, allTimeMediaSessions, allTimePackageCommissions, engineerNameMap, payouts, payPeriods, payrollPeriodIndex]);
+  }, [allTimeBookings, allTimeMediaSales, allTimeBeatPurchases, allTimeCancelledBookings, allTimeMediaSessions, allTimePackageCommissions, allTimeRewardBonuses, engineerNameMap, payouts, payPeriods, payrollPeriodIndex]);
 
   // Payroll data for overview tab (date-filtered) - keep the existing behavior for overview
   const filteredPayrollData = useMemo(() => {
@@ -1581,6 +1607,13 @@ export default function Accounting() {
                           .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
                         const packageTotal = personPackages.reduce((s, pc) => s + (pc.sales_commission_cents ?? 0), 0);
 
+                        // Staff cash bonuses (rewards) earned this period — owed
+                        // (approved/issued), funded from the studio cut, on top of base pay.
+                        const personBonuses = allTimeRewardBonuses
+                          .filter((bn) => normalizeName(bn.person_name) === name && (bn.status === 'approved' || bn.status === 'issued') && bn.created_at >= ps && bn.created_at <= pe)
+                          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+                        const bonusTotal = personBonuses.reduce((s, bn) => s + (bn.value_cents || 0), 0);
+
                         // Pending (not-yet-completed) sessions in this period.
                         // Shown separately so admins can see upcoming work and
                         // know they need to mark sessions complete to move them
@@ -1666,6 +1699,28 @@ export default function Accounting() {
                                 <div className="flex justify-between font-mono text-xs font-bold mt-1 pt-1 border-t border-black/10">
                                   <span>Package commissions ({personPackages.length})</span>
                                   <span>{formatCents(packageTotal)}</span>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Staff cash bonuses (rewards) — earned/owed this
+                                period, funded from the studio's cut, on top of
+                                base pay. Paid out via the normal payout flow. */}
+                            {personBonuses.length > 0 && (
+                              <div>
+                                <div className="space-y-1">
+                                  {personBonuses.map(bn => (
+                                    <div key={bn.id} className="flex justify-between items-start font-mono text-[11px] py-0.5">
+                                      <div className="text-black/60">
+                                        <span>{fmtStampDate(bn.created_at)} · Bonus · {bn.rule_key.replace(/_/g, ' ')}</span>
+                                      </div>
+                                      <span className="text-green-700 font-semibold flex-shrink-0 ml-2">{formatCents(bn.value_cents)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="flex justify-between font-mono text-xs font-bold mt-1 pt-1 border-t border-black/10">
+                                  <span>Bonuses ({personBonuses.length})</span>
+                                  <span className="text-green-700">{formatCents(bonusTotal)}</span>
                                 </div>
                               </div>
                             )}

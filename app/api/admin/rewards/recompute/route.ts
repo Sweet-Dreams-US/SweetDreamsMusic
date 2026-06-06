@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
-import { seedRewardRules, backfillCustomersAndBands } from '@/lib/rewards-server';
+import { seedRewardRules, backfillCustomersAndBands, sweepStaffBonuses } from '@/lib/rewards-server';
 
 export async function POST(request: NextRequest) {
   const user = await getSessionUser();
@@ -19,13 +19,16 @@ export async function POST(request: NextRequest) {
   // Progress-only by default (baseline already-reached tiers, don't re-gift). Pass
   // baseline:false only for a post-launch sweep that should queue NEW tiers pending.
   const baseline = body.baseline !== false;
+  // staff:true also sweeps engineer cash bonuses (pending_approval) for this period.
+  const staff = body.staff === true;
 
   const db = createServiceClient();
   try {
     let seeded = 0;
     if (apply) seeded = (await seedRewardRules(db)).upserted;
     const report = await backfillCustomersAndBands(db, new Date(), { dryRun: !apply, baseline });
-    return NextResponse.json({ success: true, apply, baseline, seeded, report });
+    const staffReport = staff ? await sweepStaffBonuses(db, new Date(), { dryRun: !apply }) : null;
+    return NextResponse.json({ success: true, apply, baseline, staff, seeded, report, staffReport });
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed' }, { status: 500 });
   }
