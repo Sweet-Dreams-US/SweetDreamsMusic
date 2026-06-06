@@ -156,14 +156,25 @@ Each step is independently testable; nothing touches `main` until you approve th
 
 ---
 
-## 7. Decisions for Cole
+## 7. Decisions — RESOLVED (Cole, 2026-06-06)
 
-1. **Payout-on-value rule (§4):** engineer always paid 60% of the full session value; rewards
-   reduce revenue, never pay; comp = a real rewards-budget cost. ✅ confirm this is right.
-2. **Comped session value** = hours × the standard room rate (the would-be price). OK, or use
-   the credit's `cost_basis_cents` when present?
-3. **Rewards cost bucket** shown in Accounting as its own expense line. ✅?
-4. **Partial free-hours** (1 free hour on a 3-hour booking → pay the other 2) — build it, or keep
-   free-hour redemptions whole-session only for now?
-5. **Existing $0 credit sessions** that already happened — recompute and pay those engineers
-   retroactively (fixes the current bug), or only apply the new payout rule going forward?
+1. **Payout-on-value: YES.** Staff always paid 60% of the full value of the work; rewards reduce
+   the studio's revenue, never the employee's pay; a full comp is a real rewards/marketing cost.
+2. **Comped value = the standard (cheapest base) room rate × hours.** IMPORTANT nuance:
+   **surcharges are never comped** — on a free session/hour the customer **still pays** same-day,
+   late-night, and guest fees; only the base session cost is given free. (Proven in
+   `scripts/rewards-charge-proof.ts` scenario 4.)
+3. **Rewards-cost bucket: YES** — Accounting shows `Σ(service_value − charged)` as its own
+   expense line so a free hour visibly costs the studio the engineer's pay.
+4. **Partial free-hours: BUILD IT** — 1 free hour on a 3-hour booking comps one hour's base and
+   charges the other two at the normal rate, same booking.
+5. **Past $0 sessions: GOING FORWARD ONLY** — do NOT retroactively back-pay historical comped/
+   credit sessions. Achieved by backfilling existing `service_value_cents = total_amount` (so
+   past comps stay $0); only new bookings set the true value.
+
+**Status:** the pure charge math (`applyRewardsToPricing`) is built + proven (all checks pass).
+Migration 067 (`service_value_cents` + `reward_grant_id`, backfill = total_amount) is written
+and HELD. The remaining live integration — `computeEarnings` paying on `service_value_cents`,
+the credit/booking flows setting it + applying best-of discounts at checkout, and the Accounting
+rewards-cost line — all activate together when 067 is applied (so the branch preview and prod
+stay safe until then).

@@ -196,6 +196,48 @@ export function windowRange(window: RewardWindow, d: Date): { start: Date; end: 
   return { start: new Date(Date.UTC(y, 0, 1)), end: new Date(Date.UTC(y + 1, 0, 1)) };
 }
 
+export interface RewardedCharge {
+  serviceValueCents: number;   // full value of the work — staff are paid on THIS
+  customerChargeCents: number; // what the customer actually pays
+  depositCents: number;        // 50% of the charge
+  discountCents: number;       // best-of discount applied to the paid remainder
+  compedBaseCents: number;     // base value of the free hours (comped — surcharges NOT comped)
+  rewardsCostCents: number;    // serviceValue - customerCharge = what the studio gave away
+}
+
+/**
+ * Apply rewards to a session's pricing and return the correct charge split.
+ *
+ * Cole's rules, encoded:
+ *  • Staff are paid on the FULL value of the work → serviceValueCents = the normal total.
+ *  • A free hour comps the BASE rate only (the "cheapest"/standard per-hour cost). Surcharges
+ *    — same-day, late-night, guest fees — are ALWAYS charged to the customer, even on free hours.
+ *  • Partial: N free hours + the remaining hours paid at the normal rate, same booking.
+ *  • A discount (%) applies to the paid remainder (best-of, never stacked — caller passes one %).
+ *  • rewardsCost = what we gave away = serviceValue − customerCharge (a studio rewards/marketing
+ *    cost on a comp; a margin reduction on a discount).
+ *
+ * `subtotalCents` is the base (pre-surcharge) cost; `totalCents` is the full normal price
+ * (base + night/same-day/guest fees) — both from calculateSessionTotal.
+ */
+export function applyRewardsToPricing(
+  p: { totalCents: number; subtotalCents: number },
+  totalHours: number,
+  opts: { freeHours?: number; discountPct?: number },
+): RewardedCharge {
+  const freeHours = Math.max(0, Math.min(opts.freeHours ?? 0, totalHours));
+  const discountPct = Math.max(0, Math.min(opts.discountPct ?? 0, 100));
+  const serviceValueCents = Math.max(0, Math.round(p.totalCents));
+  const basePerHour = totalHours > 0 ? p.subtotalCents / totalHours : 0;
+  const compedBaseCents = Math.round(basePerHour * freeHours);         // free hours' base only
+  const afterFree = Math.max(0, serviceValueCents - compedBaseCents);  // customer still owes surcharges + paid hours
+  const discountCents = Math.round(afterFree * (discountPct / 100));
+  const customerChargeCents = Math.max(0, afterFree - discountCents);
+  const depositCents = Math.round(customerChargeCents * 0.5);
+  const rewardsCostCents = serviceValueCents - customerChargeCents;
+  return { serviceValueCents, customerChargeCents, depositCents, discountCents, compedBaseCents, rewardsCostCents };
+}
+
 /** Money/value of a reward, in cents, for accounting + admin display (0 when not monetary). */
 export function rewardValueCents(rule: Pick<RewardRule, 'reward_type' | 'reward_value' | 'reward_cap_cents'>): number {
   switch (rule.reward_type) {
