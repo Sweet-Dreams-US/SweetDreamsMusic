@@ -11,6 +11,16 @@ import { getMembership } from '@/lib/bands-server';
 import { isEngineerBlocked } from '@/lib/engineer-blocks';
 import { bestStudioDiscountForOwner } from '@/lib/rewards-issue';
 
+/** Pad a wall-clock time so the hour is two digits ("9:00" → "09:00"), keeping
+ *  `${date}T${time}:00` a valid ISO-8601 string. An unpadded hour yields an
+ *  Invalid Date whose .toISOString() throws "Invalid time value" in the webhook
+ *  (priority/reschedule calc), which silently lost a paid booking on 2026-06-06.
+ *  Idempotent on already-padded values. */
+const padClockHm = (t: string) => {
+  const [h = '0', m = '00'] = String(t ?? '').split(':');
+  return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+};
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -155,7 +165,7 @@ export async function POST(request: NextRequest) {
     if (requestedEngineer) {
       const endDec = (startHour + Number(duration)) % 24;
       const endTimeForCheck = `${Math.floor(endDec)}:${endDec % 1 >= 0.5 ? '30' : '00'}`;
-      const startISO = `${date}T${startTime}:00+00:00`;
+      const startISO = `${date}T${padClockHm(startTime)}:00+00:00`;
       const endISO = `${date}T${endTimeForCheck.padStart(5, '0')}:00+00:00`;
       const blocked = await isEngineerBlocked({
         engineerName: requestedEngineer,
@@ -311,8 +321,8 @@ export async function POST(request: NextRequest) {
         customer_email: customerEmail,
         customer_phone: customerPhone || '',
         session_date: date,
-        start_time: startTime,
-        end_time: endTime,
+        start_time: padClockHm(startTime),
+        end_time: padClockHm(endTime),
         duration_hours: String(duration),
         room,
         engineer: requestedEngineer,

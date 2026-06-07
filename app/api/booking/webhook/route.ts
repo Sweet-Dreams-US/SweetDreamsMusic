@@ -28,6 +28,21 @@ import type Stripe from 'stripe';
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 /**
+ * Pad a wall-clock "H:MM" time so the hour is always two digits ("9:00" →
+ * "09:00"). An unpadded hour makes `${date}T${time}:00` an INVALID ISO-8601
+ * string, so `new Date(...)` is Invalid Date and any downstream `.toISOString()`
+ * (priority window, reschedule deadline, email formatting) throws
+ * "RangeError: Invalid time value" — which silently lost a paid booking
+ * (incident 2026-06-06: a 9:00 AM Studio B session, charged but never created).
+ * Older /create deploys wrote the unpadded form into Stripe metadata, so we
+ * normalize defensively on read here. Idempotent on already-padded values.
+ */
+function padClockHm(t: string | undefined | null): string {
+  const [h = '0', m = '00'] = String(t ?? '').split(':');
+  return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+}
+
+/**
  * Best-effort admin alert when the webhook handler fails after a payment
  * has succeeded. Customer's card was charged but no booking row exists
  * — admin must intervene manually before retrying. We swallow any
@@ -144,8 +159,8 @@ export async function POST(request: NextRequest) {
         //      duration by 2 hours and stamps sweet_spot_addon JSONB on
         //      that row. For 8hr the addon lives on the single row; for
         //      24hr it lives on the picked filming-day row.
-        const startDateTime = `${meta.session_date}T${meta.start_time}:00`;
-        const endDateTime = `${meta.session_date}T${meta.end_time}:00`;
+        const startDateTime = `${meta.session_date}T${padClockHm(meta.start_time)}:00`;
+        const endDateTime = `${meta.session_date}T${padClockHm(meta.end_time)}:00`;
         // duration_hours may be fractional (e.g. "1.5") once the engineer-edit
         // path lands — parseFloat keeps both integer and decimal shapes valid.
         const baseDurationHours = parseFloat(meta.duration_hours);
@@ -223,7 +238,7 @@ export async function POST(request: NextRequest) {
           // a Date built from the meta.session_date — UTC parsing keeps the
           // local Fort Wayne time intact (the rest of the system uses the
           // same convention).
-          const baseDate = new Date(`${meta.session_date}T${meta.start_time}:00Z`);
+          const baseDate = new Date(`${meta.session_date}T${padClockHm(meta.start_time)}:00Z`);
 
           const insertedIds: string[] = [];
           // Narrow the addon to its 3day-addon shape once, outside the
@@ -1626,8 +1641,8 @@ export async function POST(request: NextRequest) {
 
         if (!existing) {
           // Same logic as checkout.session.completed for booking_deposit
-          const startDateTime = `${asyncMeta.session_date}T${asyncMeta.start_time}:00`;
-          const endDateTime = `${asyncMeta.session_date}T${asyncMeta.end_time}:00`;
+          const startDateTime = `${asyncMeta.session_date}T${padClockHm(asyncMeta.start_time)}:00`;
+          const endDateTime = `${asyncMeta.session_date}T${padClockHm(asyncMeta.end_time)}:00`;
           const isAsyncBandBooking = asyncMeta.type === 'band_booking_deposit';
           // Bands always get a priority window even if asyncMeta.engineer is empty —
           // mirrors the sync branch's defense-in-depth so Iszac never gets bypassed.
