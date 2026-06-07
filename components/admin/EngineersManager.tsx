@@ -6,7 +6,7 @@
 // assignment lives in the Studios & Pricing section.
 
 import { useEffect, useState } from 'react';
-import { Loader2, Plus } from 'lucide-react';
+import { Loader2, Plus, Upload } from 'lucide-react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 interface Eng { id: string; name: string; displayName: string; email: string; specialties: string[]; photoUrl: string | null; bio: string | null; active: boolean; sortOrder: number; studios: string[] }
@@ -16,6 +16,7 @@ export default function EngineersManager() {
   const [loading, setLoading] = useState(true);
   const [edits, setEdits] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState('');
+  const [uploadingId, setUploadingId] = useState('');
   const [adding, setAdding] = useState(false);
   const [neu, setNeu] = useState({ name: '', email: '', display_name: '' });
   const [msg, setMsg] = useState('');
@@ -47,6 +48,20 @@ export default function EngineersManager() {
     } catch { setMsg('Save failed'); } finally { setSaving(''); }
   }
 
+  // Upload a photo to Supabase Storage (media bucket, engineers/ folder) and
+  // buffer the resulting public URL into photo_url — admin clicks Save to persist.
+  async function uploadPhoto(e: Eng, file: File) {
+    setUploadingId(e.id); setMsg('');
+    try {
+      const signRes = await fetch('/api/admin/engineers/upload-url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileName: file.name }) });
+      const sign = await signRes.json();
+      if (!sign.signedUrl) throw new Error(sign.error || 'no url');
+      const put = await fetch(sign.signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+      if (!put.ok) throw new Error('upload failed');
+      set(e.id, 'photo_url', sign.publicUrl);
+    } catch { setMsg('Photo upload failed — use a JPG, PNG, or WebP.'); } finally { setUploadingId(''); }
+  }
+
   async function add() {
     if (!neu.name.trim() || !neu.email.trim()) { setMsg('Name and email required.'); return; }
     setSaving('new'); setMsg('');
@@ -73,7 +88,25 @@ export default function EngineersManager() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <LabeledMini label="Display name"><input value={field(e, 'display_name') ?? ''} onChange={(ev) => set(e.id, 'display_name', ev.target.value)} className={inp} /></LabeledMini>
-              <LabeledMini label="Photo URL"><input value={field(e, 'photo_url') ?? ''} onChange={(ev) => set(e.id, 'photo_url', ev.target.value)} className={inp} /></LabeledMini>
+              <LabeledMini label="Photo">
+                <div className="flex items-center gap-2">
+                  {field(e, 'photo_url') ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={field(e, 'photo_url')} alt="" className="w-10 h-10 object-cover border border-black/10 shrink-0" />
+                  ) : (
+                    <div className="w-10 h-10 bg-black/5 flex items-center justify-center font-mono text-[9px] text-black/30 shrink-0">none</div>
+                  )}
+                  <label className="font-mono text-[11px] font-bold uppercase px-2 py-1.5 border-2 border-black/15 hover:border-accent cursor-pointer inline-flex items-center gap-1 whitespace-nowrap">
+                    {uploadingId === e.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                    {uploadingId === e.id ? 'Uploading…' : 'Upload'}
+                    <input type="file" accept="image/*" className="hidden" disabled={uploadingId === e.id}
+                      onChange={(ev) => { const f = ev.target.files?.[0]; if (f) uploadPhoto(e, f); ev.target.value = ''; }} />
+                  </label>
+                  {field(e, 'photo_url') && (
+                    <button type="button" onClick={() => set(e.id, 'photo_url', null)} className="font-mono text-[10px] text-black/40 hover:text-red-600">clear</button>
+                  )}
+                </div>
+              </LabeledMini>
               <LabeledMini label="Specialties (comma-separated)" wide><input value={field(e, 'specialties') ?? ''} onChange={(ev) => set(e.id, 'specialties', ev.target.value)} className={inp} /></LabeledMini>
               <LabeledMini label="Bio" wide><input value={field(e, 'bio') ?? ''} onChange={(ev) => set(e.id, 'bio', ev.target.value)} className={inp} /></LabeledMini>
             </div>

@@ -252,30 +252,37 @@ async function buildPendingBookings(service: SupabaseClient): Promise<AttentionC
 
 async function buildNoEngineer(service: SupabaseClient, nowISO: string): Promise<AttentionCategoryData> {
   const empty: AttentionCategoryData = {
-    key: 'no_engineer', label: 'Upcoming sessions with no engineer', tab: 'bookings', total: 0, items: [],
+    key: 'no_engineer', label: 'Sessions with no engineer', tab: 'bookings', total: 0, items: [],
   };
   try {
     const { data, error, count } = await service
       .from('bookings')
       .select('id, customer_name, start_time, room', { count: 'exact' })
       .is('engineer_name', null)
-      .gte('start_time', nowISO)
       // Unclaimed = paid but no engineer. Post-migration that's 'pending';
       // 'confirmed' kept transitionally (the CHECK makes confirmed+null impossible).
+      // NO time filter on purpose: a PAST unclaimed paid session is the MOST
+      // urgent kind (customer paid, time passed) — it must surface so an engineer
+      // can claim + reschedule it. Overdue rows are flagged below.
       .in('status', ['pending', 'confirmed'])
       .order('start_time', { ascending: true })
       .limit(CATEGORY_CAP);
     if (error) throw error;
     const rows = (data ?? []) as BookingCoreRow[];
+    const nowMs = new Date(nowISO).getTime();
     return {
       ...empty,
       total: count ?? rows.length,
-      items: rows.map((b): AttentionItem => ({
-        id: b.id,
-        primary: b.customer_name || 'Unknown client',
-        secondary: joinParts(formatSessionWhen(b.start_time), roomLabel(b.room)),
-        flagged: true, // a paid session with no engineer is the hottest item
-      })),
+      items: rows.map((b): AttentionItem => {
+        const base = joinParts(formatSessionWhen(b.start_time), roomLabel(b.room));
+        const overdue = !!b.start_time && new Date(b.start_time).getTime() < nowMs;
+        return {
+          id: b.id,
+          primary: b.customer_name || 'Unknown client',
+          secondary: overdue ? `⚠ OVERDUE — time passed, needs reschedule · ${base}` : base,
+          flagged: true, // a paid session with no engineer is the hottest item
+        };
+      }),
     };
   } catch (err) {
     console.error('[admin/attention] no_engineer failed:', err);
