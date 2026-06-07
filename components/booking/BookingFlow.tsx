@@ -141,7 +141,9 @@ export default function BookingFlow({
   const [customerName, setCustomerName] = useState(userName);
   const [customerEmail] = useState(userEmail);
   const [customerPhone, setCustomerPhone] = useState('');
-  const [guestCount, setGuestCount] = useState(1);
+  // Number of GUESTS the customer brings (the artist is always free + NOT counted).
+  // freeGuests/guestFee from the studio config use the same "guests" basis.
+  const [guestCount, setGuestCount] = useState(0);
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookedSlots, setBookedSlots] = useState<Record<string, number[]>>({});
@@ -1048,15 +1050,15 @@ export default function BookingFlow({
               <select id="guestCount" value={guestCount} onChange={(e) => setGuestCount(Number(e.target.value))}
                 className="w-full border-2 border-black px-4 py-3 font-mono text-sm bg-transparent focus:border-accent focus:outline-none">
                 {Array.from({ length: cfg.maxGuests }, (_, i) => i).map((guests) => {
-                  const totalPeople = guests + 1; // artist + guests
-                  const extraPeople = Math.max(0, totalPeople - cfg.freeGuests);
+                  // freeGuests = number of FREE guests; the artist is always free + never counted.
+                  const extra = Math.max(0, guests - cfg.freeGuests);
                   return (
-                    <option key={guests} value={totalPeople}>
+                    <option key={guests} value={guests}>
                       {guests === 0
                         ? 'No guests — just me'
-                        : totalPeople <= cfg.freeGuests
+                        : extra === 0
                           ? `${guests} guest${guests > 1 ? 's' : ''} (free)`
-                          : `${guests} guests (+${formatCents(cfg.guestFeeCents * extraPeople)}/hr for ${extraPeople} extra)`
+                          : `${guests} guest${guests > 1 ? 's' : ''} (+${formatCents(cfg.guestFeeCents * extra)}/hr for ${extra} extra)`
                       }
                     </option>
                   );
@@ -1064,7 +1066,7 @@ export default function BookingFlow({
               </select>
               {guestCount > cfg.freeGuests && (
                 <p className="font-mono text-xs text-amber-700 mt-1">
-                  {guestCount - cfg.freeGuests} extra guest{guestCount - cfg.freeGuests > 1 ? 's' : ''} beyond the included {cfg.freeGuests - 1} — {formatCents(cfg.guestFeeCents)}/hr each = {formatCents(pricing.guestFee)} added to your session
+                  {guestCount - cfg.freeGuests} extra guest{guestCount - cfg.freeGuests > 1 ? 's' : ''} beyond the included {cfg.freeGuests} free — {formatCents(cfg.guestFeeCents)}/hr each = {formatCents(pricing.guestFee)} added to your session
                 </p>
               )}
             </div>

@@ -25,7 +25,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { date, startTime, duration, room, engineer: rawEngineer, customerName, customerEmail: bodyCustomerEmail, customerPhone, guestCount: rawGuestCount, notes, bandId, sweetSpotAddon: rawSweetSpotAddon } = body;
-    const guestCount = Math.min(Math.max(1, Number(rawGuestCount) || 1), MAX_GUESTS);
+    // guestCount = number of GUESTS (artist always free, not counted). 0 = solo.
+    const guestCount = Math.min(Math.max(0, Number(rawGuestCount) || 0), MAX_GUESTS);
     const isBandBooking = typeof bandId === 'string' && bandId.length > 0;
     // Band sessions ALWAYS route to Iszac — he's the dedicated band engineer.
     // Server-side enforcement matters here because the body is otherwise the
