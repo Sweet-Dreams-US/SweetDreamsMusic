@@ -31,6 +31,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { paidBookingStatus } from '@/lib/booking-status';
 import { getUserBands } from '@/lib/bands-server';
 import { ENGINEERS, type Room } from '@/lib/constants';
 import { getStudioConfig } from '@/lib/studio-config-server';
@@ -274,7 +275,8 @@ export async function POST(request: NextRequest) {
       deposit_amount: 0,
       remainder_amount: 0,
       actual_deposit_paid: 0,
-      status: 'confirmed',
+      // Customer picked the engineer at redemption (required) → born 'confirmed'.
+      status: paidBookingStatus(engineerName),
       // Tag the booking so admin can spot credit-funded sessions at a glance.
       // Format mirrors the convention used elsewhere for system-generated tags.
       admin_notes: `credit_redemption:${creditRow.id}${customerNote ? ` · ${customerNote}` : ''}`,

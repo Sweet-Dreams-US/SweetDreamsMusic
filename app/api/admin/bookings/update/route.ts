@@ -13,9 +13,22 @@ export async function POST(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
+  // Keep the invariant status='confirmed' ⇔ engineer assigned (DB CHECK, migration
+  // 072). When an admin (re)assigns or clears the engineer without naming a status,
+  // sync it: assigning a paid-unclaimed ('pending') session confirms it; clearing
+  // the engineer on a 'confirmed' session drops it back to 'pending' (Awaiting
+  // Engineer). 'completed'/'cancelled' are never auto-changed, and an explicit
+  // status in the request always wins.
+  const finalUpdates = { ...updates };
+  if ('engineer_name' in finalUpdates && finalUpdates.status === undefined) {
+    const { data: cur } = await supabase.from('bookings').select('status').eq('id', bookingId).single();
+    if (finalUpdates.engineer_name && cur?.status === 'pending') finalUpdates.status = 'confirmed';
+    else if (!finalUpdates.engineer_name && cur?.status === 'confirmed') finalUpdates.status = 'pending';
+  }
+
   const { error } = await supabase
     .from('bookings')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update({ ...finalUpdates, updated_at: new Date().toISOString() })
     .eq('id', bookingId);
 
   if (error) {

@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     .eq('customer_email', user.email!)
     .gte('start_time', `${startDate}T00:00:00`)
     .lte('start_time', `${endDate}T23:59:59`)
-    .in('status', ['confirmed', 'completed', 'pending_deposit']);
+    .in('status', ['confirmed', 'pending', 'completed', 'pending_deposit']);
 
   // Project release dates this month
   const { data: releases } = await supabase

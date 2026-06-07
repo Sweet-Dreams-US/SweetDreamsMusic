@@ -8,6 +8,7 @@ import { ENGINEERS, ROOM_LABELS } from '@/lib/constants';
 import CashCorrectionModal from '@/components/booking/CashCorrectionModal';
 import AdminMediaSessionsPanel from '@/components/admin/AdminMediaSessionsPanel';
 import { depositCollectedCents } from '@/lib/deposit';
+import { bookingStatusLabel } from '@/lib/booking-status';
 
 interface Booking {
   id: string;
@@ -508,7 +509,7 @@ export default function BookingManager() {
           className="border-2 border-black px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none"
         >
           <option value="all">All Statuses</option>
-          <option value="pending">Pending</option>
+          <option value="pending">Awaiting Engineer</option>
           <option value="confirmed">Confirmed</option>
           <option value="completed">Completed</option>
           <option value="cancelled">Cancelled</option>
@@ -552,7 +553,7 @@ export default function BookingManager() {
                         </span>
                       )}
                       <span className={`font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 ${STATUS_COLORS[b.status] || 'bg-black/5 text-black/70'}`}>
-                        {b.status}
+                        {bookingStatusLabel(b.status)}
                       </span>
                       {hasUnpaidBalance && (
                         <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-red-600 text-white animate-pulse">
@@ -847,10 +848,12 @@ export default function BookingManager() {
                     {/* Actions */}
                     <div className="flex flex-wrap gap-2">
                       {b.status === 'pending' && (
-                        <button onClick={() => updateStatus(b.id, 'confirmed')} disabled={updatingId === b.id}
-                          className="bg-green-600 text-white font-mono text-xs font-bold uppercase px-3 py-2 hover:bg-green-700 disabled:opacity-50 inline-flex items-center gap-1">
-                          <Check className="w-3 h-3" /> Confirm
-                        </button>
+                        // Paid but unclaimed. Confirmation happens ONLY when an engineer
+                        // claims it (DB enforces confirmed ⇒ engineer set), so there is no
+                        // admin "Confirm" shortcut — show the state instead.
+                        <span className="bg-yellow-100 text-yellow-800 font-mono text-[11px] font-bold uppercase px-3 py-2 inline-flex items-center gap-1">
+                          ⏳ Awaiting engineer claim
+                        </span>
                       )}
                       {b.status === 'confirmed' && (
                         <button onClick={() => updateStatus(b.id, 'completed')} disabled={updatingId === b.id}

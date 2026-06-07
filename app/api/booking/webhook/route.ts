@@ -6,6 +6,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { getStudioConfig } from '@/lib/studio-config-server';
 import { sweetSpotAddonCents } from '@/lib/studio-config';
 import { markGrantRedeemed } from '@/lib/rewards-issue';
+import { paidBookingStatus } from '@/lib/booking-status';
 import {
   sendBookingConfirmation,
   sendAdminBookingAlert,
@@ -277,7 +278,9 @@ export async function POST(request: NextRequest) {
               stripe_checkout_session_id: session.id,
               // Only day 1 carries the payment_intent — the deposit hit there.
               stripe_payment_intent_id: i === 0 ? (session.payment_intent as string) : null,
-              status: 'confirmed',
+              // Deposit paid, no engineer yet → 'pending' (Awaiting Engineer).
+              // Flips to 'confirmed' only when an engineer claims (respond/claim).
+              status: 'pending',
               priority_expires_at: dayPriority,
               reschedule_deadline: dayReschedule,
               admin_notes:
@@ -353,7 +356,9 @@ export async function POST(request: NextRequest) {
             stripe_customer_id: session.customer as string,
             stripe_checkout_session_id: session.id,
             stripe_payment_intent_id: session.payment_intent as string,
-            status: 'confirmed',
+            // Deposit paid, no engineer yet → 'pending' (Awaiting Engineer);
+            // an engineer claiming (respond/claim) flips it to 'confirmed'.
+            status: 'pending',
             priority_expires_at: priorityExpiry,
             reschedule_deadline: rescheduleDeadline,
             admin_notes: meta.notes || null,
@@ -496,7 +501,8 @@ export async function POST(request: NextRequest) {
 
         if (existingBooking) {
           await supabase.from('bookings').update({
-            status: 'confirmed',
+            // Confirmed only if the invite already names an engineer; else 'pending'.
+            status: paidBookingStatus(existingBooking.engineer_name),
             actual_deposit_paid: session.amount_total,
             stripe_customer_id: session.customer as string,
             stripe_checkout_session_id: session.id,
@@ -1671,7 +1677,8 @@ export async function POST(request: NextRequest) {
             stripe_customer_id: asyncSession.customer as string,
             stripe_checkout_session_id: asyncSession.id,
             stripe_payment_intent_id: asyncSession.payment_intent as string,
-            status: 'confirmed',
+            // Deposit paid, no engineer yet → 'pending' (Awaiting Engineer).
+            status: 'pending',
             priority_expires_at: priorityExpiry,
             reschedule_deadline: rescheduleDeadline,
             admin_notes: asyncMeta.notes || null,
@@ -1757,7 +1764,8 @@ export async function POST(request: NextRequest) {
 
         if (existingBooking && existingBooking.status !== 'confirmed') {
           await supabase.from('bookings').update({
-            status: 'confirmed',
+            // Confirmed only if the invite already names an engineer; else 'pending'.
+            status: paidBookingStatus(existingBooking.engineer_name),
             actual_deposit_paid: asyncSession.amount_total,
             stripe_customer_id: asyncSession.customer as string,
             stripe_checkout_session_id: asyncSession.id,

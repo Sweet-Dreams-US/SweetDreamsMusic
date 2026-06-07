@@ -16,7 +16,7 @@ export async function GET() {
     supabase.from('artist_achievements').select('achievement_key, unlocked_at')
       .eq('user_id', user.id).order('unlocked_at', { ascending: false }),
     supabase.from('bookings').select('id, start_time, duration, room, status, engineer_name')
-      .eq('customer_email', user.email!).eq('status', 'confirmed').gte('start_time', new Date().toISOString())
+      .eq('customer_email', user.email!).in('status', ['confirmed', 'pending']).gte('start_time', new Date().toISOString())
       .order('start_time', { ascending: true }).limit(3),
     // Completed sessions for session notes
     supabase.from('bookings').select('id, start_time, duration, room, status, engineer_name')

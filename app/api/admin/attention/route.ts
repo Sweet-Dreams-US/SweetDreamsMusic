@@ -260,7 +260,9 @@ async function buildNoEngineer(service: SupabaseClient, nowISO: string): Promise
       .select('id, customer_name, start_time, room', { count: 'exact' })
       .is('engineer_name', null)
       .gte('start_time', nowISO)
-      .eq('status', 'confirmed')
+      // Unclaimed = paid but no engineer. Post-migration that's 'pending';
+      // 'confirmed' kept transitionally (the CHECK makes confirmed+null impossible).
+      .in('status', ['pending', 'confirmed'])
       .order('start_time', { ascending: true })
       .limit(CATEGORY_CAP);
     if (error) throw error;
@@ -272,7 +274,7 @@ async function buildNoEngineer(service: SupabaseClient, nowISO: string): Promise
         id: b.id,
         primary: b.customer_name || 'Unknown client',
         secondary: joinParts(formatSessionWhen(b.start_time), roomLabel(b.room)),
-        flagged: true, // a confirmed session with no engineer is the hottest item
+        flagged: true, // a paid session with no engineer is the hottest item
       })),
     };
   } catch (err) {

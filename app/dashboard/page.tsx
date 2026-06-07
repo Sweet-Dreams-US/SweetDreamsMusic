@@ -8,6 +8,7 @@ import { formatCents, formatDuration } from '@/lib/utils';
 import { fmtSessionDate, fmtSessionTime, fmtStampDate } from '@/lib/studio-time';
 import DashboardNav from '@/components/layout/DashboardNav';
 import RescheduleButton from '@/components/dashboard/RescheduleButton';
+import { bookingStatusLabel } from '@/lib/booking-status';
 import XPWidget from '@/components/dashboard/XPWidget';
 import FileShowcaseToggle from '@/components/dashboard/FileShowcaseToggle';
 import PricingCalculator from '@/components/dashboard/PricingCalculator';
@@ -175,15 +176,16 @@ export default async function DashboardPage() {
                           <span className={`font-mono text-xs font-bold uppercase tracking-wider px-2 py-1 ${
                             booking.status === 'completed' ? 'bg-green-100 text-green-700' :
                             booking.status === 'confirmed' ? 'bg-accent/20 text-accent' :
+                            booking.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                             booking.status === 'cancelled' ? 'bg-red-100 text-red-600' :
                             'bg-black/5 text-black/50'
                           }`}>
-                            {booking.status}
+                            {bookingStatusLabel(booking.status)}
                           </span>
                         </div>
                       </div>
-                      {/* Session prep + reschedule for confirmed sessions */}
-                      {booking.status === 'confirmed' && (
+                      {/* Session prep + reschedule for paid sessions (confirmed or awaiting engineer) */}
+                      {(booking.status === 'confirmed' || booking.status === 'pending') && (
                         <div className="mt-3 pt-3 border-t border-black/5 flex flex-wrap gap-2">
                           <Link
                             href={`/dashboard/prep/${booking.id}`}

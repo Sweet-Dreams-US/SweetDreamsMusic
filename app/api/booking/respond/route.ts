@@ -100,6 +100,9 @@ export async function POST(request: NextRequest) {
       .update({
         engineer_name: engineerName,
         claimed_at: new Date().toISOString(),
+        // Claiming is what CONFIRMS a session — set atomically with the claim so
+        // the DB invariant (status='confirmed' ⇒ engineer_name set) always holds.
+        status: 'confirmed',
       })
       .eq('id', bookingId)
       .is('engineer_name', null)

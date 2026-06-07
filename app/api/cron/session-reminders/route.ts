@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
   const { data: bookings, error } = await supabase
     .from('bookings')
     .select('id, customer_name, customer_email, artist_name, start_time, duration, room, engineer_name, created_by_email, status')
-    .eq('status', 'confirmed')
+    .in('status', ['confirmed', 'pending'])
     .eq('reminder_sent', false)
     .gte('start_time', windowStartISO)
     .lte('start_time', windowEndISO);

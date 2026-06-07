@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifyEngineerAccess } from '@/lib/admin-auth';
 import { checkBookingOwnership } from '@/lib/booking-ownership';
+import { paidBookingStatus } from '@/lib/booking-status';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -98,7 +99,9 @@ export async function POST(request: NextRequest) {
     const confirmedRemainder = Math.max(0, booking.total_amount - amountCents);
 
     const { error: confErr } = await serviceClient.from('bookings').update({
-      status: 'confirmed',
+      // Cash deposit recorded: confirmed only if the invite already names an
+      // engineer; otherwise 'pending' (Awaiting Engineer) until one claims.
+      status: paidBookingStatus(booking.engineer_name),
       actual_deposit_paid: actualDepositPaid,
       remainder_amount: confirmedRemainder,
       updated_at: new Date().toISOString(),

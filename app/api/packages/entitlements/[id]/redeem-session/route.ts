@@ -201,7 +201,9 @@ export async function POST(
       deposit_amount: 0,
       total_amount: 0,
       remainder_amount: 0,
-      status: 'confirmed',
+      // Package session: no engineer attached yet → 'pending' (Awaiting Engineer);
+      // an engineer claiming it flips it to 'confirmed'.
+      status: 'pending',
       room: 'studio_b',
       requested_engineer: body.requested_engineer ?? null,
       band_id: ent.band_id,
