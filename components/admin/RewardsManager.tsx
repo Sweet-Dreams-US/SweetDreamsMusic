@@ -34,51 +34,6 @@ const formatCents = (c: number) => `$${((c || 0) / 100).toFixed(2)}`;
 type TabKey = 'users' | 'launch' | 'rules' | 'business';
 
 // ── wire shapes ──────────────────────────────────────────────────────────────
-interface Grant {
-  id: string;
-  rule_key: string;
-  track: string;
-  counter: string;
-  period_key: string;
-  reward_type: string;
-  reward_value: number;
-  value_cents: number;
-  status: string;
-  counter_value: number;
-  threshold: number;
-  label: string;
-  source: string | null;
-  issuance: 'auto' | 'approval';
-  expires_at: string | null;
-}
-
-interface Owner {
-  key: string;
-  kind: 'user' | 'band';
-  id: string;
-  name: string;
-  email: string | null;
-  counters: Record<string, number>;
-  pending: number;
-  issued: number;
-  approved: number;
-  denied: number;
-  grants: Grant[];
-}
-
-interface OverviewSummary {
-  owners: number;
-  pending: number;
-  approved: number;
-  issued: number;
-  pendingValueCents: number;
-}
-
-interface OverviewResponse {
-  summary: OverviewSummary;
-  owners: Owner[];
-}
-
 interface Rule {
   id: string | null;
   rule_key: string;
@@ -138,39 +93,6 @@ interface BusinessResponse {
   note: string;
 }
 
-// ── status badge colors ──────────────────────────────────────────────────────
-const STATUS_BADGE: Record<string, string> = {
-  pending_approval: 'bg-amber-100 text-amber-800',
-  approved: 'bg-blue-100 text-blue-800',
-  issued: 'bg-green-100 text-green-700',
-  redeemed: 'bg-green-100 text-green-700',
-  denied: 'bg-gray-100 text-gray-500',
-};
-
-// Counters we know how to phrase compactly. Anything else falls back to a
-// generic "<value> <counter>" rendering so new counters still show up.
-function counterLine(counters: Record<string, number>): string {
-  if (!counters || Object.keys(counters).length === 0) return 'no activity yet';
-  const parts: string[] = [];
-  if (counters.studio_hours != null) parts.push(`${counters.studio_hours} studio hrs`);
-  if (counters.band_hours != null) parts.push(`${counters.band_hours} band hrs`);
-  if (counters.hours_run != null) parts.push(`${counters.hours_run} hrs run`);
-  if (counters.dollars_spent != null) parts.push(`${formatCents(counters.dollars_spent)} spent`);
-  if (counters.band_spend != null) parts.push(`${formatCents(counters.band_spend)} band spend`);
-  if (counters.producer_revenue != null) parts.push(`${formatCents(counters.producer_revenue)} beats`);
-  if (counters.media_revenue != null) parts.push(`${formatCents(counters.media_revenue)} media`);
-  // Surface any remaining counters we didn't special-case.
-  const known = new Set([
-    'studio_hours', 'band_hours', 'hours_run', 'dollars_spent',
-    'band_spend', 'producer_revenue', 'media_revenue',
-  ]);
-  for (const [k, v] of Object.entries(counters)) {
-    if (known.has(k)) continue;
-    parts.push(`${v} ${k.replace(/_/g, ' ')}`);
-  }
-  return parts.length ? parts.join(' · ') : 'no activity yet';
-}
-
 export default function RewardsManager() {
   const [tab, setTab] = useState<TabKey>('users');
 
@@ -179,7 +101,7 @@ export default function RewardsManager() {
       {/* Tabs */}
       <div className="flex gap-0 border-b border-black/10 mb-6 overflow-x-auto">
         {([
-          { key: 'users', label: 'All Users', icon: Gift },
+          { key: 'users', label: 'Standings', icon: Gift },
           { key: 'launch', label: 'Launch / Backfill', icon: Rocket },
           { key: 'rules', label: 'Rules', icon: SlidersHorizontal },
           { key: 'business', label: 'Business', icon: BarChart3 },
@@ -199,7 +121,7 @@ export default function RewardsManager() {
         ))}
       </div>
 
-      {tab === 'users' && <UsersTab />}
+      {tab === 'users' && <StandingsTab />}
       {tab === 'launch' && <LaunchTab />}
       {tab === 'rules' && <RulesTab />}
       {tab === 'business' && <BusinessTab />}
@@ -210,136 +132,93 @@ export default function RewardsManager() {
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB 1 — All Users
 // ─────────────────────────────────────────────────────────────────────────────
-function UsersTab() {
-  const [data, setData] = useState<OverviewResponse | null>(null);
+interface StandingRow {
+  id: string; name: string; sub: string | null; kind: string;
+  primaryDisplay: string; primaryUnit: string; rank: number;
+  extras: { label: string; value: string }[];
+  reached: number; total: number;
+  next: { reward: string; threshold: number; remaining: number; pct: number } | null;
+  pending: number; issued: number; baseline: number;
+}
+interface StandingsResponse {
+  summary: { owners: number; pending: number; issued: number; baseline: number; pendingValueCents: number };
+  pendingQueue: Array<{ id: string; ownerName: string; track: string; rewardLabel: string; counter: string; counter_value: number; threshold: number; value_cents: number }>;
+  tracks: Array<{ key: string; label: string; rows: StandingRow[] }>;
+}
+
+function StandingsTab() {
+  const [data, setData] = useState<StandingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
   const [busyGrant, setBusyGrant] = useState<string | null>(null);
   const [bulkRunning, setBulkRunning] = useState(false);
+  const [openTrack, setOpenTrack] = useState<string | null>('customer');
 
-  const fetchOverview = useCallback(async () => {
+  const fetchStandings = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/rewards/overview');
+      const res = await fetch('/api/admin/rewards/standings');
       const json = await res.json();
-      if (!res.ok) {
-        setError(json.error || 'Failed to load rewards overview');
-        setData(null);
-      } else {
-        setError(null);
-        setData(json as OverviewResponse);
-      }
-    } catch {
-      setError('Network error loading rewards overview');
-      setData(null);
-    }
+      if (!res.ok) { setError(json.error || 'Failed to load standings'); setData(null); }
+      else { setError(null); setData(json as StandingsResponse); }
+    } catch { setError('Network error loading standings'); setData(null); }
     setLoading(false);
   }, []);
 
-  // Initial load is inlined as a promise chain (rather than calling
-  // fetchOverview synchronously) so setState never runs synchronously in the
-  // effect body — matches UserManager's mount-fetch pattern.
-  useEffect(() => {
-    let alive = true;
-    fetch('/api/admin/rewards/overview')
-      .then((r) => r.json().then((json) => ({ ok: r.ok, json })))
-      .then(({ ok, json }) => {
-        if (!alive) return;
-        if (!ok) {
-          setError(json.error || 'Failed to load rewards overview');
-          setData(null);
-        } else {
-          setError(null);
-          setData(json as OverviewResponse);
-        }
-      })
-      .catch(() => {
-        if (!alive) return;
-        setError('Network error loading rewards overview');
-        setData(null);
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+  useEffect(() => { fetchStandings(); }, [fetchStandings]);
 
   async function actOnGrant(grantId: string, action: 'approve' | 'deny') {
     setBusyGrant(grantId);
     try {
       const res = await fetch(`/api/admin/rewards/grants/${grantId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }),
       });
       const json = await res.json();
-      if (!res.ok || json.error) {
-        alert(json.error || `Failed to ${action} grant`);
-      }
-    } catch {
-      alert(`Error trying to ${action} grant`);
-    }
+      if (!res.ok || json.error) alert(json.error || `Failed to ${action} grant`);
+    } catch { alert(`Error trying to ${action} grant`); }
     setBusyGrant(null);
-    fetchOverview();
+    fetchStandings();
   }
 
-  // Backfill grants that are still awaiting approval, across all owners.
-  const backfillPending: Grant[] = (data?.owners || []).flatMap((o) =>
-    o.grants.filter((g) => g.source === 'backfill' && g.status === 'pending_approval'),
-  );
-
-  async function approveAllBackfill() {
-    const count = backfillPending.length;
-    if (count === 0) return;
-    if (!confirm(`Approve ${count} backfill grant${count === 1 ? '' : 's'} awaiting approval? This issues each one to its owner.`)) return;
+  async function approveAll() {
+    const queue = data?.pendingQueue ?? [];
+    if (!queue.length) return;
+    if (!confirm(`Approve all ${queue.length} pending reward${queue.length === 1 ? '' : 's'}? Each one is issued to its owner.`)) return;
     setBulkRunning(true);
-    for (const g of backfillPending) {
+    for (const g of queue) {
       try {
         await fetch(`/api/admin/rewards/grants/${g.id}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'approve' }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'approve' }),
         });
-      } catch {
-        // Keep going — a single failure shouldn't abort the whole batch.
-      }
+      } catch { /* keep going */ }
     }
     setBulkRunning(false);
-    fetchOverview();
+    fetchStandings();
   }
 
-  if (loading) {
-    return <p className="font-mono text-sm text-black/40">Loading rewards…</p>;
-  }
+  if (loading) return <p className="font-mono text-sm text-black/40">Loading standings…</p>;
   if (error) {
     return (
       <div className="border-2 border-red-300 bg-red-50/40 p-4">
         <p className="font-mono text-xs text-red-600 uppercase tracking-wider font-bold mb-1">Error</p>
         <p className="font-mono text-sm text-red-700">{error}</p>
-        <button
-          onClick={fetchOverview}
-          className="mt-3 border border-black/20 font-mono text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-black/5"
-        >
-          Retry
-        </button>
+        <button onClick={fetchStandings} className="mt-3 border border-black/20 font-mono text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-black/5">Retry</button>
       </div>
     );
   }
 
   const summary = data?.summary;
-  const owners = data?.owners || [];
+  const queue = data?.pendingQueue ?? [];
+  const tracks = data?.tracks ?? [];
 
   return (
     <div>
       {/* Summary row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Owners', value: summary?.owners ?? 0, icon: Users },
-          { label: 'Pending Approval', value: summary?.pending ?? 0, icon: Clock },
-          { label: 'Pending Value', value: formatCents(summary?.pendingValueCents ?? 0), icon: DollarSign },
+          { label: 'Active owners', value: summary?.owners ?? 0, icon: Users },
+          { label: 'Awaiting approval', value: summary?.pending ?? 0, icon: Clock },
+          { label: 'Pending value', value: formatCents(summary?.pendingValueCents ?? 0), icon: DollarSign },
           { label: 'Issued', value: summary?.issued ?? 0, icon: Check },
         ].map((s) => (
           <div key={s.label} className="border border-black/10 p-4">
@@ -350,136 +229,110 @@ function UsersTab() {
         ))}
       </div>
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 mb-6 flex-wrap">
-        <button
-          onClick={fetchOverview}
-          className="p-2 border border-black/20 hover:border-black transition-colors"
-          title="Refresh"
-        >
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={fetchStandings} className="p-2 border border-black/20 hover:border-black transition-colors" title="Refresh">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
-        <span className="font-mono text-xs text-black/60">{owners.length} owners</span>
-        {backfillPending.length > 0 && (
-          <button
-            onClick={approveAllBackfill}
-            disabled={bulkRunning}
-            className="ml-auto bg-green-600 text-white font-mono text-xs font-bold uppercase tracking-wider px-3 py-2 hover:bg-green-700 disabled:opacity-50 inline-flex items-center gap-1"
-          >
-            <Check className="w-3 h-3" />
-            {bulkRunning ? 'Approving…' : `Approve all backfill (${backfillPending.length})`}
-          </button>
+        <span className="font-mono text-xs text-black/60">Progression + approvals across all user types</span>
+      </div>
+
+      {/* Needs-approval queue (what to approve, like session requests). */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 mb-3">
+          <Clock className="w-4 h-4 text-amber-600" />
+          <h3 className="font-mono text-sm font-bold uppercase tracking-wider">Needs approval</h3>
+          {queue.length > 0 && (
+            <button onClick={approveAll} disabled={bulkRunning}
+              className="ml-auto bg-green-600 text-white font-mono text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-green-700 disabled:opacity-50 inline-flex items-center gap-1">
+              <Check className="w-3 h-3" /> {bulkRunning ? 'Approving…' : `Approve all (${queue.length})`}
+            </button>
+          )}
+        </div>
+        {queue.length === 0 ? (
+          <p className="font-mono text-xs text-black/40 border-2 border-dashed border-black/10 p-4 text-center">
+            Nothing waiting. New free-work rewards land here for approval once the program is live.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {queue.map((g) => (
+              <div key={g.id} className="border-2 border-amber-300 bg-amber-50/30 p-3 flex items-start gap-3 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-sm font-bold truncate">{g.ownerName}</span>
+                    <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-black/5 text-black/60">{g.track}</span>
+                  </div>
+                  <p className="font-mono text-xs mt-1">🎁 {g.rewardLabel}</p>
+                  <p className="font-mono text-[10px] text-black/50 mt-0.5">
+                    {g.counter?.replace(/_/g, ' ')}: {g.counter_value} / {g.threshold}
+                    {g.value_cents > 0 ? ` · worth ${formatCents(g.value_cents)}` : ''}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={() => actOnGrant(g.id, 'approve')} disabled={busyGrant === g.id}
+                    className="bg-green-600 text-white font-mono text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-green-700 disabled:opacity-50 inline-flex items-center gap-1">
+                    <Check className="w-3 h-3" /> Approve
+                  </button>
+                  <button onClick={() => actOnGrant(g.id, 'deny')} disabled={busyGrant === g.id}
+                    className="border border-red-300 text-red-600 font-mono text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-red-50 disabled:opacity-50 inline-flex items-center gap-1">
+                    <X className="w-3 h-3" /> Deny
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
-      {/* Owner list */}
-      {owners.length === 0 ? (
-        <p className="font-mono text-sm text-black/30 text-center py-8">No reward owners yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {owners.map((o) => {
-            const isOpen = expanded === o.key;
-            return (
-              <div
-                key={o.key}
-                className={`border-2 transition-colors ${
-                  o.pending > 0 ? 'border-amber-300 bg-amber-50/20' : 'border-black/10 hover:border-black/20'
-                }`}
-              >
-                {/* Summary row */}
-                <button
-                  onClick={() => setExpanded(isOpen ? null : o.key)}
-                  className="w-full p-4 text-left flex items-center gap-4"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-sm font-bold truncate">{o.name}</span>
-                      {o.kind === 'band' && (
-                        <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-accent text-black">
-                          Band
-                        </span>
-                      )}
-                      {o.pending > 0 && (
-                        <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-200 text-amber-800">
-                          {o.pending} pending
-                        </span>
-                      )}
-                    </div>
-                    <p className="font-mono text-xs text-black/50 truncate mt-1">{o.email || 'No email'}</p>
-                    <p className="font-mono text-[11px] text-black/60 mt-0.5">{counterLine(o.counters)}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0 font-mono text-[10px] text-black/50">
-                    {o.issued > 0 && <p className="text-green-600 font-bold">{o.issued} issued</p>}
-                    {o.approved > 0 && <p className="text-blue-600">{o.approved} approved</p>}
-                    {o.denied > 0 && <p className="text-black/40">{o.denied} denied</p>}
-                  </div>
-                  <ChevronDown
-                    className={`w-4 h-4 text-black/30 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`}
-                  />
-                </button>
-
-                {/* Expanded grants */}
-                {isOpen && (
-                  <div className="border-t border-black/10 p-4 space-y-2">
-                    {o.grants.length === 0 ? (
-                      <p className="font-mono text-xs text-black/40">No grants for this owner.</p>
-                    ) : (
-                      o.grants.map((g) => (
-                        <div
-                          key={g.id}
-                          className="border border-black/10 p-3 flex items-start gap-3 flex-wrap"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span
-                                className={`font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 ${
-                                  STATUS_BADGE[g.status] || 'bg-black/5 text-black/70'
-                                }`}
-                              >
-                                {g.status.replace(/_/g, ' ')}
-                              </span>
-                              <span className="font-mono text-xs font-semibold">{g.label}</span>
-                              {g.source === 'backfill' && (
-                                <span className="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 bg-black/5 text-black/50">
-                                  backfill
-                                </span>
-                              )}
+      {/* Standings by user type — ranked progression toward each one's next reward. */}
+      <div className="space-y-3">
+        {tracks.map((t) => {
+          const isOpen = openTrack === t.key;
+          return (
+            <div key={t.key} className="border-2 border-black/10">
+              <button onClick={() => setOpenTrack(isOpen ? null : t.key)} className="w-full p-3 flex items-center gap-3 text-left hover:bg-black/[0.02]">
+                <h3 className="font-mono text-sm font-bold uppercase tracking-wider">{t.label}</h3>
+                <span className="font-mono text-[10px] text-black/40">{t.rows.length}</span>
+                <ChevronDown className={`w-4 h-4 text-black/30 ml-auto transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {isOpen && (
+                <div className="border-t border-black/10 divide-y divide-black/5">
+                  {t.rows.map((r, i) => (
+                    <div key={r.id} className="p-3 flex items-center gap-3 flex-wrap">
+                      <span className="font-mono text-[10px] text-black/30 w-5 text-right flex-shrink-0">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-sm font-bold truncate">{r.name}</span>
+                          {r.pending > 0 && <span className="font-mono text-[10px] font-bold uppercase px-1.5 py-0.5 bg-amber-200 text-amber-800">{r.pending} pending</span>}
+                          {r.issued > 0 && <span className="font-mono text-[10px] font-bold uppercase px-1.5 py-0.5 bg-green-100 text-green-700">{r.issued} earned</span>}
+                          {r.reached > 0 && r.issued === 0 && r.pending === 0 && <span className="font-mono text-[10px] uppercase px-1.5 py-0.5 bg-black/5 text-black/40">{r.reached} tiers</span>}
+                        </div>
+                        {r.next ? (
+                          <div className="mt-1.5">
+                            <div className="h-1.5 bg-black/10 w-full max-w-xs">
+                              <div className="h-full bg-accent" style={{ width: `${r.next.pct}%` }} />
                             </div>
                             <p className="font-mono text-[10px] text-black/50 mt-1">
-                              {g.counter.replace(/_/g, ' ')}: {g.counter_value} / {g.threshold}
-                              {g.period_key ? ` · ${g.period_key}` : ''}
-                              {g.value_cents > 0 ? ` · worth ${formatCents(g.value_cents)}` : ''}
-                              {` · ${g.issuance}`}
+                              {r.next.remaining} {r.primaryUnit} to next: <span className="text-black/70 font-semibold">{r.next.reward}</span>
                             </p>
                           </div>
-                          {g.status === 'pending_approval' && (
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <button
-                                onClick={() => actOnGrant(g.id, 'approve')}
-                                disabled={busyGrant === g.id}
-                                className="bg-green-600 text-white font-mono text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-green-700 disabled:opacity-50 inline-flex items-center gap-1"
-                              >
-                                <Check className="w-3 h-3" /> Approve
-                              </button>
-                              <button
-                                onClick={() => actOnGrant(g.id, 'deny')}
-                                disabled={busyGrant === g.id}
-                                className="border border-red-300 text-red-600 font-mono text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-red-50 disabled:opacity-50 inline-flex items-center gap-1"
-                              >
-                                <X className="w-3 h-3" /> Deny
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+                        ) : (
+                          <p className="font-mono text-[10px] text-black/40 mt-1">Top tier reached 🏆</p>
+                        )}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-mono text-sm font-bold">{r.primaryDisplay} <span className="text-[10px] font-normal text-black/40">{r.primaryUnit}</span></p>
+                        {r.extras.length > 0 && (
+                          <p className="font-mono text-[10px] text-black/40">{r.extras.map((e) => `${e.label} ${e.value}`).join(' · ')}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

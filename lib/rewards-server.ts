@@ -266,6 +266,16 @@ export async function engineerProgress(db: Client, engineerName: string, now: Da
   return { monthHours, quarterHours };
 }
 
+/** Producer beat revenue (calendar year) for standings. producerId = profiles.id. */
+export async function producerProgress(db: Client, producerId: string, now: Date): Promise<number> {
+  return producerRevenue(db, producerId, windowRange('calendar_year', now));
+}
+
+/** Media worker revenue (film+edit, calendar year) for standings. name = filmed_by/edited_by. */
+export async function mediaManagerProgress(db: Client, name: string, now: Date): Promise<number> {
+  return mediaRevenue(db, name, windowRange('calendar_year', now));
+}
+
 /** Current calendar-year counter values for a band. */
 export async function bandProgress(db: Client, bandId: string, now: Date): Promise<Record<string, number>> {
   const r = windowRange('calendar_year', now);
