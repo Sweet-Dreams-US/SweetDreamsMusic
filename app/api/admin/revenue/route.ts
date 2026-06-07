@@ -27,10 +27,18 @@ export async function GET() {
   const gate = await requireAdmin();
   if (gate.error) return gate.error;
   const db = createServiceClient();
+  // Producers shown = anyone who could earn a beat commission: flagged is_producer,
+  // has a producer_name, OR has EVER posted a beat (beats.producer_id → profiles.id).
+  // The old query only listed producer_name-set profiles, so beat posters who were
+  // never flagged/named were missing from the Revenue Shares editor.
+  const { data: beatRows } = await db.from('beats').select('producer_id').not('producer_id', 'is', null);
+  const beatProducerIds = [...new Set((beatRows ?? []).map((b: { producer_id: string | null }) => b.producer_id).filter(Boolean))];
+  const orFilter = ['producer_name.not.is.null', 'is_producer.eq.true'];
+  if (beatProducerIds.length) orFilter.push(`id.in.(${beatProducerIds.join(',')})`);
   const [settings, { data: engineers }, { data: producers }] = await Promise.all([
     getRevenueSettingsRow(db),
     db.from('engineers').select('id, name, display_name, email, session_split_pct, active').order('sort_order'),
-    db.from('profiles').select('user_id, producer_name, producer_commission_pct').not('producer_name', 'is', null).order('producer_name'),
+    db.from('profiles').select('user_id, producer_name, display_name, producer_commission_pct').or(orFilter.join(',')).order('producer_name', { nullsFirst: false }),
   ]);
   return NextResponse.json({ settings, engineers: engineers ?? [], producers: producers ?? [] });
 }

@@ -187,7 +187,7 @@ function PeopleTab({ kind, rows, defaultPct, onSaved }: { kind: 'engineer' | 'pr
       <p className="font-mono text-xs text-black/50 mb-3">Leave blank to inherit the studio default ({defaultPct}%).</p>
       {rows.map((r) => {
         const idVal = kind === 'engineer' ? r.id : r.user_id;
-        const name = kind === 'engineer' ? (r.display_name || r.name) : r.producer_name;
+        const name = kind === 'engineer' ? (r.display_name || r.name) : (r.producer_name || r.display_name || '(unnamed producer)');
         const current = kind === 'engineer' ? r.session_split_pct : r.producer_commission_pct;
         const buf = edits[idVal] ?? (current == null ? '' : String(current));
         const dirty = buf !== (current == null ? '' : String(current));
