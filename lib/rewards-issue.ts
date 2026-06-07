@@ -203,6 +203,25 @@ export async function markGrantRedeemed(db: Client, grantId: string, bookingId?:
 }
 
 /**
+ * Redeem ONE use of a MULTI-use discount grant (the beat exclusive perk, good for up
+ * to maxUses exclusives). Tracks uses in metadata.uses; only flips to 'redeemed' once
+ * maxUses is reached — so bestBeatDiscountForOwner (which filters approved/issued)
+ * keeps returning it until then. Single-use grants keep using markGrantRedeemed.
+ */
+export async function redeemBeatDiscountUse(db: Client, grantId: string, purchaseId: string, maxUses: number): Promise<void> {
+  const { data: g } = await db.from('reward_grants').select('metadata,status').eq('id', grantId).single();
+  if (!g || (g.status !== 'approved' && g.status !== 'issued')) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const md: any = g.metadata || {};
+  const uses = (Number(md.uses) || 0) + 1;
+  const metadata = { ...md, uses, last_redeemed_purchase_id: purchaseId };
+  const patch = uses >= maxUses
+    ? { status: 'redeemed', redeemed_at: new Date().toISOString(), metadata }
+    : { metadata };
+  await db.from('reward_grants').update(patch).eq('id', grantId).in('status', ['approved', 'issued']);
+}
+
+/**
  * Restore rewards when a booking is cancelled (idempotent). Two cases:
  *  • credit-funded (admin_notes 'credit_redemption:<id>' + a studio_credit_redemptions
  *    row): give the hours back (decrement hours_used) and delete the redemption — the

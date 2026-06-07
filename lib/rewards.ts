@@ -60,6 +60,10 @@ export interface RewardRule {
 const DOLLAR = 100; // cents per dollar
 const EXPIRES = 90; // default redemption expiry for free work
 
+// A $1,000 beat-spend exclusive perk is good for up to this many exclusive beats
+// (multi-use, unlike the single-use lease discounts).
+export const BEAT_EXCLUSIVE_DISCOUNT_MAX_USES = 3;
+
 // ───────────────────────── CUSTOMER ─────────────────────────
 // Studio loyalty — by completed HOURS, per calendar year. Each rung grants once
 // (cumulative), rewards intentionally varied. Free work needs approval.
@@ -89,12 +93,12 @@ const CUSTOMER_SPEND: RewardRule[] = [
 // (mp3/trackout) are best-of (one_total); exclusives get a single high-spend perk.
 // Free studio hours cross-sell beat buyers into sessions.
 const CUSTOMER_BEAT_SPEND: RewardRule[] = [
-  { rule_key: 'cust_beat_75',    track: 'customer', label: '$75 in beats → 10% off beat leases',     counter: 'beat_spend', threshold: 75 * DOLLAR,   window: 'calendar_year', reward_type: 'beat_lease_discount_pct',     reward_value: 10, issuance: 'auto',     stack_mode: 'one_total',  expires_days: null,    sort_order: 160 },
-  { rule_key: 'cust_beat_150',   track: 'customer', label: '$150 in beats → 20% off beat leases',    counter: 'beat_spend', threshold: 150 * DOLLAR,  window: 'calendar_year', reward_type: 'beat_lease_discount_pct',     reward_value: 20, issuance: 'auto',     stack_mode: 'one_total',  expires_days: null,    sort_order: 161 },
+  { rule_key: 'cust_beat_100',   track: 'customer', label: '$100 in beats → 10% off beat leases',    counter: 'beat_spend', threshold: 100 * DOLLAR,  window: 'calendar_year', reward_type: 'beat_lease_discount_pct',     reward_value: 10, issuance: 'auto',     stack_mode: 'one_total',  expires_days: null,    sort_order: 160 },
+  { rule_key: 'cust_beat_200',   track: 'customer', label: '$200 in beats → 20% off beat leases',    counter: 'beat_spend', threshold: 200 * DOLLAR,  window: 'calendar_year', reward_type: 'beat_lease_discount_pct',     reward_value: 20, issuance: 'auto',     stack_mode: 'one_total',  expires_days: null,    sort_order: 161 },
   { rule_key: 'cust_beat_300',   track: 'customer', label: '$300 in beats → 1 free studio hour',     counter: 'beat_spend', threshold: 300 * DOLLAR,  window: 'calendar_year', reward_type: 'free_hours',                 reward_value: 1,  issuance: 'approval', stack_mode: 'cumulative', expires_days: EXPIRES, sort_order: 162 },
   { rule_key: 'cust_beat_600',   track: 'customer', label: '$600 in beats → 25% off beat leases',    counter: 'beat_spend', threshold: 600 * DOLLAR,  window: 'calendar_year', reward_type: 'beat_lease_discount_pct',     reward_value: 25, issuance: 'auto',     stack_mode: 'one_total',  expires_days: null,    sort_order: 163 },
   { rule_key: 'cust_beat_1000h', track: 'customer', label: '$1,000 in beats → 2 free studio hours',  counter: 'beat_spend', threshold: 1000 * DOLLAR, window: 'calendar_year', reward_type: 'free_hours',                 reward_value: 2,  issuance: 'approval', stack_mode: 'cumulative', expires_days: EXPIRES, sort_order: 164 },
-  { rule_key: 'cust_beat_1000x', track: 'customer', label: '$1,000 in beats → 15% off an exclusive', counter: 'beat_spend', threshold: 1000 * DOLLAR, window: 'calendar_year', reward_type: 'beat_exclusive_discount_pct', reward_value: 15, issuance: 'auto',     stack_mode: 'one_total',  expires_days: null,    sort_order: 165 },
+  { rule_key: 'cust_beat_1000x', track: 'customer', label: '$1,000 in beats → 15% off up to 3 exclusive beats', counter: 'beat_spend', threshold: 1000 * DOLLAR, window: 'calendar_year', reward_type: 'beat_exclusive_discount_pct', reward_value: 15, issuance: 'auto',     stack_mode: 'one_total',  expires_days: null,    sort_order: 165 },
 ];
 
 // Music-video cutdowns — bundled with the purchase, 1 free cutdown per $250 spent

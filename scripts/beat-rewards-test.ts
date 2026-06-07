@@ -1,6 +1,6 @@
 // scripts/beat-rewards-test.ts — verifies the beat-spend reward ladder + the
 // license-scoped discount math. Pure (no DB). Run: npx tsx scripts/beat-rewards-test.ts
-import { REWARD_RULES } from '../lib/rewards';
+import { REWARD_RULES, BEAT_EXCLUSIVE_DISCOUNT_MAX_USES } from '../lib/rewards';
 
 let pass = true;
 const ok = (label: string, cond: boolean) => { console.log(`${cond ? '✅' : '❌'} ${label}`); if (!cond) pass = false; };
@@ -13,12 +13,13 @@ ok('all are customer track', beat.every((r) => r.track === 'customer'));
 ok('all calendar_year window', beat.every((r) => r.window === 'calendar_year'));
 
 // Tiers + reward types (the brackets Cole asked for).
-ok('$75 → 10% lease discount',  by('cust_beat_75').threshold === 7500  && by('cust_beat_75').reward_type === 'beat_lease_discount_pct' && by('cust_beat_75').reward_value === 10);
-ok('$150 → 20% lease discount', by('cust_beat_150').threshold === 15000 && by('cust_beat_150').reward_type === 'beat_lease_discount_pct' && by('cust_beat_150').reward_value === 20);
+ok('$100 → 10% lease discount', by('cust_beat_100').threshold === 10000 && by('cust_beat_100').reward_type === 'beat_lease_discount_pct' && by('cust_beat_100').reward_value === 10);
+ok('$200 → 20% lease discount', by('cust_beat_200').threshold === 20000 && by('cust_beat_200').reward_type === 'beat_lease_discount_pct' && by('cust_beat_200').reward_value === 20);
 ok('$300 → 1 free studio hour', by('cust_beat_300').threshold === 30000 && by('cust_beat_300').reward_type === 'free_hours' && by('cust_beat_300').reward_value === 1);
 ok('$600 → 25% lease discount', by('cust_beat_600').threshold === 60000 && by('cust_beat_600').reward_type === 'beat_lease_discount_pct' && by('cust_beat_600').reward_value === 25);
 ok('$1000 → 2 free studio hours', by('cust_beat_1000h').threshold === 100000 && by('cust_beat_1000h').reward_type === 'free_hours' && by('cust_beat_1000h').reward_value === 2);
 ok('$1000 → 15% EXCLUSIVE discount', by('cust_beat_1000x').threshold === 100000 && by('cust_beat_1000x').reward_type === 'beat_exclusive_discount_pct' && by('cust_beat_1000x').reward_value === 15);
+ok('exclusive perk is multi-use (up to 3 beats)', BEAT_EXCLUSIVE_DISCOUNT_MAX_USES === 3);
 
 // Brackets: lease discounts are best-of (one_total); exclusive is its own type.
 const leaseRules = beat.filter((r) => r.reward_type === 'beat_lease_discount_pct');

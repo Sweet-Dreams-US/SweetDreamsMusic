@@ -5,7 +5,8 @@ import { stripe } from '@/lib/stripe';
 import { createServiceClient } from '@/lib/supabase/server';
 import { getStudioConfig } from '@/lib/studio-config-server';
 import { sweetSpotAddonCents } from '@/lib/studio-config';
-import { markGrantRedeemed } from '@/lib/rewards-issue';
+import { markGrantRedeemed, redeemBeatDiscountUse } from '@/lib/rewards-issue';
+import { BEAT_EXCLUSIVE_DISCOUNT_MAX_USES } from '@/lib/rewards';
 import { paidBookingStatus } from '@/lib/booking-status';
 import {
   sendBookingConfirmation,
@@ -700,10 +701,17 @@ export async function POST(request: NextRequest) {
           lease_expires_at: leaseExpiresAt,
         }).select('id').single();
 
-        // If a beat-reward discount funded this purchase, mark it redeemed (single-use).
+        // Redeem the beat-reward discount that funded this purchase. The exclusive
+        // perk is MULTI-use (up to BEAT_EXCLUSIVE_DISCOUNT_MAX_USES exclusives); lease
+        // discounts are single-use.
         if (meta.applied_beat_discount_grant_id && purchase?.id) {
-          try { await markGrantRedeemed(supabase, meta.applied_beat_discount_grant_id, purchase.id); }
-          catch (e) { console.error('[webhook] beat discount grant redeem failed (non-fatal):', e); }
+          try {
+            if (meta.license_type === 'exclusive') {
+              await redeemBeatDiscountUse(supabase, meta.applied_beat_discount_grant_id, purchase.id, BEAT_EXCLUSIVE_DISCOUNT_MAX_USES);
+            } else {
+              await markGrantRedeemed(supabase, meta.applied_beat_discount_grant_id, purchase.id);
+            }
+          } catch (e) { console.error('[webhook] beat discount grant redeem failed (non-fatal):', e); }
         }
 
         // If exclusive and purchase was created, mark beat as sold + grandfather existing leases
