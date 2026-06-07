@@ -700,6 +700,12 @@ export async function POST(request: NextRequest) {
           lease_expires_at: leaseExpiresAt,
         }).select('id').single();
 
+        // If a beat-reward discount funded this purchase, mark it redeemed (single-use).
+        if (meta.applied_beat_discount_grant_id && purchase?.id) {
+          try { await markGrantRedeemed(supabase, meta.applied_beat_discount_grant_id, purchase.id); }
+          catch (e) { console.error('[webhook] beat discount grant redeem failed (non-fatal):', e); }
+        }
+
         // If exclusive and purchase was created, mark beat as sold + grandfather existing leases
         if (purchase && meta.license_type === 'exclusive') {
           await supabase.from('beats').update({

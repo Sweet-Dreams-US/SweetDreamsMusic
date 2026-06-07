@@ -168,6 +168,32 @@ export async function bestStudioDiscountForOwner(
   return pct > 0 ? { grantId: best.id, pct, rule_key: best.rule_key } : null;
 }
 
+/**
+ * The best BEAT-store discount grant for a buyer at beat checkout, scoped by license
+ * type: leases (mp3/trackout) → beat_lease_discount_pct; exclusive →
+ * beat_exclusive_discount_pct. Best-of (highest %), never stacked. Returns null when
+ * nothing applies, so beat checkout is a no-op until a grant actually exists.
+ */
+export async function bestBeatDiscountForOwner(
+  db: Client, ownerUserId: string | null, licenseType: string,
+): Promise<{ grantId: string; pct: number; rule_key: string } | null> {
+  if (!ownerUserId) return null;
+  const rewardType = licenseType === 'exclusive' ? 'beat_exclusive_discount_pct' : 'beat_lease_discount_pct';
+  const { data } = await db.from('reward_grants')
+    .select('id,reward_type,reward_value,status,expires_at,rule_key')
+    .in('status', ['approved', 'issued'])
+    .eq('reward_type', rewardType)
+    .eq('owner_user_id', ownerUserId);
+  const now = Date.now();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const live = (data ?? []).filter((g: any) => !g.expires_at || new Date(g.expires_at).getTime() > now);
+  if (!live.length) return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const best = live.reduce((hi: any, g: any) => ((Number(g.reward_value) || 0) > (Number(hi.reward_value) || 0) ? g : hi), live[0]);
+  const pct = Number(best.reward_value) || 0;
+  return pct > 0 ? { grantId: best.id, pct, rule_key: best.rule_key } : null;
+}
+
 /** Mark a discount grant redeemed (single-use) once a booking actually uses it. */
 export async function markGrantRedeemed(db: Client, grantId: string, bookingId?: string): Promise<void> {
   await db.from('reward_grants').update({

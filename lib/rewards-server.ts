@@ -150,6 +150,16 @@ async function customerDollarsSpent(db: Client, userId: string, email: string, r
   return studioCents + mediaCents + beatsCents;
 }
 
+// Strictly BEAT purchases (the separate beat-spend ladder, not the combined dollars_spent).
+async function customerBeatSpend(db: Client, userId: string, r: { start: Date; end: Date }): Promise<number> {
+  const { data } = await db.from('beat_purchases')
+    .select('amount_paid,created_at')
+    .eq('buyer_id', userId)
+    .gte('created_at', iso(r.start)).lt('created_at', iso(r.end));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).reduce((s: number, b: any) => s + (Number(b.amount_paid) || 0), 0);
+}
+
 async function bandStudioHours(db: Client, bandId: string, r: { start: Date; end: Date }): Promise<number> {
   const { data } = await db.from('bookings')
     .select('duration,total_amount')
@@ -211,6 +221,7 @@ async function resolveCounter(db: Client, counter: RewardCounter, owner: OwnerRe
   switch (counter) {
     case 'studio_hours':     return owner.track === 'customer' ? customerStudioHours(db, owner.email, r) : 0;
     case 'dollars_spent':    return owner.track === 'customer' ? customerDollarsSpent(db, owner.userId, owner.email, r) : 0;
+    case 'beat_spend':       return owner.track === 'customer' ? customerBeatSpend(db, owner.userId, r) : 0;
     case 'band_hours':       return owner.track === 'band' ? bandStudioHours(db, owner.bandId, r) : 0;
     case 'band_spend':       return owner.track === 'band' ? bandSpend(db, owner.bandId, r) : 0;
     case 'hours_run':        return owner.track === 'engineer' ? engineerHoursRun(db, owner.engineerName, r) : 0;
@@ -223,11 +234,12 @@ async function resolveCounter(db: Client, counter: RewardCounter, owner: OwnerRe
 /** Current calendar-year counter values for a customer (for progress bars). */
 export async function customerProgress(db: Client, userId: string, email: string, now: Date): Promise<Record<string, number>> {
   const r = windowRange('calendar_year', now);
-  const [studio_hours, dollars_spent] = await Promise.all([
+  const [studio_hours, dollars_spent, beat_spend] = await Promise.all([
     customerStudioHours(db, email, r),
     customerDollarsSpent(db, userId, email, r),
+    customerBeatSpend(db, userId, r),
   ]);
-  return { studio_hours, dollars_spent };
+  return { studio_hours, dollars_spent, beat_spend };
 }
 
 /**

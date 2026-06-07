@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { SITE_URL, BEAT_LICENSES } from '@/lib/constants';
+import { bestBeatDiscountForOwner } from '@/lib/rewards-issue';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -50,6 +51,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'This license type is not available for this beat' }, { status: 400 });
   }
 
+  // Apply the buyer's best beat-reward discount for THIS license type (lease vs
+  // exclusive). No grant → full price (a no-op until rewards go live). Single-use:
+  // the webhook marks it redeemed on purchase.
+  let chargedPrice = price;
+  let appliedBeatDiscountGrantId = '';
+  try {
+    const disc = await bestBeatDiscountForOwner(createServiceClient(), user.id, licenseType);
+    if (disc && disc.pct > 0) {
+      chargedPrice = Math.max(0, price - Math.floor((price * disc.pct) / 100));
+      appliedBeatDiscountGrantId = disc.grantId;
+    }
+  } catch (e) {
+    console.error('[beats/checkout] discount lookup failed (non-fatal):', e);
+  }
+
   const license = BEAT_LICENSES[licenseType as keyof typeof BEAT_LICENSES];
 
   try {
@@ -66,7 +82,7 @@ export async function POST(request: NextRequest) {
               description: `${license.description} | Delivery: ${license.deliveryFormat}`,
               tax_code: 'txcd_10202000', // Digital goods - audio
             },
-            unit_amount: price,
+            unit_amount: chargedPrice,
           },
           quantity: 1,
         },
@@ -84,6 +100,7 @@ export async function POST(request: NextRequest) {
         buyer_id: user.id,
         buyer_email: user.email || '',
         buyer_name: buyerName,
+        applied_beat_discount_grant_id: appliedBeatDiscountGrantId,
       },
     });
 
