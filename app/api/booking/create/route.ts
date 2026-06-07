@@ -10,6 +10,7 @@ import { memberHasFlag } from '@/lib/bands';
 import { getMembership } from '@/lib/bands-server';
 import { isEngineerBlocked } from '@/lib/engineer-blocks';
 import { bestStudioDiscountForOwner } from '@/lib/rewards-issue';
+import { loadEngineers } from '@/lib/engineers-server';
 
 /** Pad a wall-clock time so the hour is two digits ("9:00" → "09:00"), keeping
  *  `${date}T${time}:00` a valid ISO-8601 string. An unpadded hour yields an
@@ -28,15 +29,11 @@ export async function POST(request: NextRequest) {
     // guestCount = number of GUESTS (artist always free, not counted). 0 = solo.
     const guestCount = Math.min(Math.max(0, Number(rawGuestCount) || 0), MAX_GUESTS);
     const isBandBooking = typeof bandId === 'string' && bandId.length > 0;
-    // Band sessions ALWAYS route to Iszac — he's the dedicated band engineer.
-    // Server-side enforcement matters here because the body is otherwise the
-    // booker's word; without this override a tampered POST or stale UI state
-    // could route a band priority alert to the wrong engineer.
-    const requestedEngineer: string = isBandBooking
-      ? 'Iszac Griner'
-      : typeof rawEngineer === 'string'
-        ? rawEngineer
-        : '';
+    // The requested engineer is the booker's word (a non-binding request). For
+    // band bookings it's re-validated below against the band-eligible roster
+    // (can_book_bands) so a tampered POST can't route a band session to a
+    // non-band engineer.
+    let requestedEngineer: string = typeof rawEngineer === 'string' ? rawEngineer : '';
 
     // Sweet Spot filming add-on validation. Only meaningful for band bookings
     // on the 8hr or 24hr (3-day) tier. Server re-validates the kind matches
@@ -106,6 +103,15 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Band not found' }, { status: 404 });
       }
       band = bandRow as { id: string; display_name: string };
+
+      // Validate the requested band engineer is actually band-eligible; else fall
+      // back to 'any' (the studio matches a band engineer). Never route a band
+      // session to a non-band engineer.
+      if (requestedEngineer && requestedEngineer !== 'any') {
+        const roster = await loadEngineers(supabase, { activeOnly: true });
+        const ok = roster.some((e) => e.canBookBands && (e.name === requestedEngineer || e.displayName === requestedEngineer));
+        if (!ok) requestedEngineer = 'any';
+      }
 
       // Band sessions are Studio A only (BAND_PRICING is Studio A).
       if (room !== 'studio_a') {

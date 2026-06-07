@@ -92,6 +92,7 @@ export interface CompletionCheck {
     start_time: string | null;
     end_time: string | null;
     duration: number | null;
+    band_id: string | null;
   } | null;
 }
 
@@ -150,7 +151,7 @@ export async function checkCanComplete(
   void supabase; // kept in signature for symmetry with callers; intentionally unused here
   const { data: booking } = await service
     .from('bookings')
-    .select('id, status, engineer_name, customer_email, customer_name, start_time, end_time, duration')
+    .select('id, status, engineer_name, customer_email, customer_name, start_time, end_time, duration, band_id')
     .eq('id', bookingId)
     .maybeSingle();
 
@@ -267,6 +268,7 @@ export async function checkCanComplete(
       start_time: booking.start_time ?? null,
       end_time: booking.end_time ?? null,
       duration: booking.duration ?? null,
+      band_id: (booking as any).band_id ?? null,
     },
   };
 }

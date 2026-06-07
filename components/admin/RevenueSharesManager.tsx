@@ -14,7 +14,8 @@ const fmt = (cents: number) => `${cents < 0 ? '-' : ''}$${Math.abs(cents / 100).
 
 type Tab = 'defaults' | 'engineers' | 'producers';
 const SETTINGS: { col: string; label: string; help?: string }[] = [
-  { col: 'engineer_session_pct', label: 'Engineer session split', help: 'Engineer cut of a session; business keeps the rest.' },
+  { col: 'engineer_session_pct', label: 'Engineer solo session split', help: 'Engineer cut of a SOLO session; business keeps the rest.' },
+  { col: 'engineer_band_session_pct', label: 'Engineer band session split', help: 'Engineer cut of a BAND session (higher — harder, multi-person work). Inherits the solo split when blank.' },
   { col: 'producer_commission_pct', label: 'Producer beat commission', help: 'Producer cut of a beat sale; platform keeps the rest.' },
   { col: 'media_seller_pct', label: 'Media seller commission' },
   { col: 'media_worker_pct', label: 'Media worker (film + edit)' },
@@ -47,7 +48,7 @@ export default function RevenueSharesManager() {
         ))}
       </div>
       {tab === 'defaults' && <DefaultsTab settings={data.settings} onSaved={load} />}
-      {tab === 'engineers' && <PeopleTab kind="engineer" rows={data.engineers} defaultPct={data.settings.engineer_session_pct} onSaved={load} />}
+      {tab === 'engineers' && <PeopleTab kind="engineer" rows={data.engineers} defaultPct={data.settings.engineer_session_pct} bandDefaultPct={data.settings.engineer_band_session_pct} onSaved={load} />}
       {tab === 'producers' && <PeopleTab kind="producer" rows={data.producers} defaultPct={data.settings.producer_commission_pct} onSaved={load} />}
     </div>
   );
@@ -165,40 +166,62 @@ function DefaultsTab({ settings, onSaved }: { settings: Record<string, number>; 
   );
 }
 
-function PeopleTab({ kind, rows, defaultPct, onSaved }: { kind: 'engineer' | 'producer'; rows: any[]; defaultPct: number; onSaved: () => void }) {
+function PeopleTab({ kind, rows, defaultPct, bandDefaultPct, onSaved }: { kind: 'engineer' | 'producer'; rows: any[]; defaultPct: number; bandDefaultPct?: number; onSaved: () => void }) {
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [bandEdits, setBandEdits] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState('');
 
-  async function save(idKey: string, idVal: string, pctStr: string) {
+  async function save(idVal: string, body: Record<string, unknown>) {
     setSaving(idVal);
     try {
       await fetch('/api/admin/revenue', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind, [idKey]: idVal, pct: pctStr.trim() === '' ? null : Number(pctStr) }),
+        body: JSON.stringify({ kind, [kind === 'engineer' ? 'id' : 'userId']: idVal, ...body }),
       });
       onSaved();
     } catch { /* ignore */ } finally { setSaving(''); }
   }
+  const numOrNull = (s: string) => (s.trim() === '' ? null : Number(s));
 
   if (!rows.length) return <p className="font-mono text-sm text-black/40 py-4">No {kind}s found.</p>;
 
   return (
-    <div className="max-w-xl space-y-2">
-      <p className="font-mono text-xs text-black/50 mb-3">Leave blank to inherit the studio default ({defaultPct}%).</p>
+    <div className="max-w-2xl space-y-2">
+      <p className="font-mono text-xs text-black/50 mb-3">
+        Leave a split blank to inherit the studio default ({defaultPct}%{kind === 'engineer' && bandDefaultPct != null ? `; band ${bandDefaultPct}%` : ''}).
+        {kind === 'engineer' && ' Toggle “Bands” to allow an engineer to be booked for band sessions.'}
+      </p>
       {rows.map((r) => {
         const idVal = kind === 'engineer' ? r.id : r.user_id;
         const name = kind === 'engineer' ? (r.display_name || r.name) : (r.producer_name || r.display_name || '(unnamed producer)');
         const current = kind === 'engineer' ? r.session_split_pct : r.producer_commission_pct;
         const buf = edits[idVal] ?? (current == null ? '' : String(current));
         const dirty = buf !== (current == null ? '' : String(current));
+        const bandCur = r.band_session_split_pct;
+        const bandBuf = bandEdits[idVal] ?? (bandCur == null ? '' : String(bandCur));
+        const bandDirty = bandBuf !== (bandCur == null ? '' : String(bandCur));
         return (
-          <div key={idVal} className="flex items-center gap-3 border-2 border-black/10 p-3">
-            <span className="flex-1 font-mono text-sm font-bold">{name}</span>
+          <div key={idVal} className="flex items-center gap-2 border-2 border-black/10 p-3 flex-wrap">
+            <span className="flex-1 min-w-[110px] font-mono text-sm font-bold">{name}</span>
+            <label className="font-mono text-[10px] uppercase tracking-wider text-black/40">{kind === 'engineer' ? 'Solo' : '%'}</label>
             <input value={buf} onChange={(e) => setEdits((x) => ({ ...x, [idVal]: e.target.value }))} inputMode="decimal"
-              placeholder={`${defaultPct} (default)`}
-              className="w-28 border-2 border-black/15 px-2.5 py-1.5 font-mono text-sm focus:border-accent focus:outline-none" />
-            <span className="font-mono text-xs text-black/40">%</span>
-            <button disabled={!dirty || saving === idVal} onClick={() => save(kind === 'engineer' ? 'id' : 'userId', idVal, buf)}
+              placeholder={`${defaultPct}`}
+              className="w-16 border-2 border-black/15 px-2 py-1.5 font-mono text-sm focus:border-accent focus:outline-none" />
+            {kind === 'engineer' && (
+              <>
+                <label className="font-mono text-[10px] uppercase tracking-wider text-black/40">Band</label>
+                <input value={bandBuf} onChange={(e) => setBandEdits((x) => ({ ...x, [idVal]: e.target.value }))} inputMode="decimal"
+                  placeholder={`${bandDefaultPct ?? defaultPct}`}
+                  className="w-16 border-2 border-black/15 px-2 py-1.5 font-mono text-sm focus:border-accent focus:outline-none" />
+                <label className="flex items-center gap-1.5 font-mono text-[11px] cursor-pointer select-none">
+                  <input type="checkbox" checked={!!r.can_book_bands} disabled={saving === idVal}
+                    onChange={(e) => save(idVal, { canBookBands: e.target.checked })} />
+                  Bands
+                </label>
+              </>
+            )}
+            <button disabled={(!dirty && !bandDirty) || saving === idVal}
+              onClick={() => save(idVal, { ...(dirty ? { pct: numOrNull(buf) } : {}), ...(kind === 'engineer' && bandDirty ? { bandPct: numOrNull(bandBuf) } : {}) })}
               className="font-mono text-[11px] font-bold uppercase px-3 py-2 border-2 border-black hover:bg-black hover:text-white transition-colors disabled:opacity-30">
               {saving === idVal ? '…' : 'Save'}
             </button>

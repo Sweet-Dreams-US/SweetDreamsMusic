@@ -249,7 +249,8 @@ export const RENEWAL_DISCOUNT = 0.75;
 // Beat store commission rates
 export const PRODUCER_COMMISSION = 0.60; // 60% to producer
 export const PLATFORM_COMMISSION = 0.40; // 40% to platform
-export const ENGINEER_SESSION_SPLIT = 0.60; // 60% to engineer for sessions
+export const ENGINEER_SESSION_SPLIT = 0.60; // 60% to engineer for solo sessions
+export const ENGINEER_BAND_SESSION_SPLIT = 0.70; // 70% to engineer for BAND sessions (harder multi-person work; band rates are higher so studio margin holds)
 export const BUSINESS_SESSION_SPLIT = 0.40; // 40% to business for sessions
 export const MEDIA_SELLER_COMMISSION = 0.15; // 15% to seller for media sales
 export const MEDIA_BUSINESS_CUT = 0.35; // 35% to business for media sales

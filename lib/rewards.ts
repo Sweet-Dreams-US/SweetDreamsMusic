@@ -33,6 +33,7 @@ export type RewardType =
   | 'bundled_cutdowns' | 'mv_discount_pct' | 'spend_discount_pct'
   | 'referral_discount_pct' | 'account_credit_cents' | 'cash_bonus' | 'cash_per_hour'
   | 'beat_lease_discount_pct' | 'beat_exclusive_discount_pct' // beat-store discounts, license-scoped
+  | 'free_sweet_spot' // free Band Sweet Spot (multicam live filming)
   | 'status' | 'perk';
 
 export type Issuance = 'auto' | 'approval';
@@ -116,13 +117,17 @@ const CUSTOMER_GROWTH: RewardRule[] = [
 ];
 
 // ───────────────────────── BAND ─────────────────────────
+// Band loyalty — by completed BAND hours, per calendar year. Each rung grants once
+// (cumulative); free work needs approval. Rewards escalate: media → free time →
+// a free Sweet Spot / music video → a full free day.
 const BAND_HOURS: RewardRule[] = [
-  { rule_key: 'band_sh_20',  track: 'band', label: '20 band hours → free band short-form video', counter: 'band_hours', threshold: 20,  window: 'calendar_year', reward_type: 'free_short_video',   reward_value: 1, issuance: 'approval', stack_mode: 'cumulative', expires_days: EXPIRES, sort_order: 310 },
-  { rule_key: 'band_sh_40',  track: 'band', label: '40 band hours → 2 free studio hours',         counter: 'band_hours', threshold: 40,  window: 'calendar_year', reward_type: 'free_hours',         reward_value: 2, issuance: 'approval', stack_mode: 'cumulative', expires_days: EXPIRES, sort_order: 320 },
-  { rule_key: 'band_sh_80',  track: 'band', label: '80 band hours → free photo session (or 25% off MV)', counter: 'band_hours', threshold: 80, window: 'calendar_year', reward_type: 'free_photo_session', reward_value: 1, issuance: 'approval', stack_mode: 'cumulative', expires_days: EXPIRES, sort_order: 330, notes: 'Alt: 25% off a music video.' },
-  { rule_key: 'band_sh_120', track: 'band', label: '120 band hours → free music video (up to $1.5k)', counter: 'band_hours', threshold: 120, window: 'calendar_year', reward_type: 'free_music_video', reward_value: 1, reward_cap_cents: 1500 * DOLLAR, issuance: 'approval', stack_mode: 'cumulative', expires_days: EXPIRES, sort_order: 340 },
-  { rule_key: 'band_sh_160a',track: 'band', label: '160 band hours → free recording day (5 hours)', counter: 'band_hours', threshold: 160, window: 'calendar_year', reward_type: 'free_hours', reward_value: 5, issuance: 'approval', stack_mode: 'cumulative', expires_days: EXPIRES, sort_order: 350 },
-  { rule_key: 'band_sh_160b',track: 'band', label: '160 band hours → "Resident Band" status',      counter: 'band_hours', threshold: 160, window: 'calendar_year', reward_type: 'status', reward_value: 0, issuance: 'approval', stack_mode: 'one_total', expires_days: null, sort_order: 351, notes: 'Resident Band status.' },
+  { rule_key: 'band_sh_16',  track: 'band', label: '16 band hours → free short-form video',          counter: 'band_hours', threshold: 16,  window: 'calendar_year', reward_type: 'free_short_video',  reward_value: 1, issuance: 'approval', stack_mode: 'cumulative', expires_days: EXPIRES, sort_order: 310 },
+  { rule_key: 'band_sh_24',  track: 'band', label: '24 band hours → 3 free mixing hours',            counter: 'band_hours', threshold: 24,  window: 'calendar_year', reward_type: 'free_hours',        reward_value: 3, issuance: 'approval', stack_mode: 'cumulative', expires_days: EXPIRES, sort_order: 320, notes: 'Redeem as 3 free studio/mixing hours.' },
+  { rule_key: 'band_sh_40',  track: 'band', label: '40 band hours → free photo shoot during a session', counter: 'band_hours', threshold: 40, window: 'calendar_year', reward_type: 'free_photo_session', reward_value: 1, issuance: 'approval', stack_mode: 'cumulative', expires_days: EXPIRES, sort_order: 330 },
+  { rule_key: 'band_sh_60',  track: 'band', label: '60 band hours → free 4-hour session (or ½ off an 8-hour)', counter: 'band_hours', threshold: 60, window: 'calendar_year', reward_type: 'free_hours', reward_value: 4, issuance: 'approval', stack_mode: 'cumulative', expires_days: EXPIRES, sort_order: 340, notes: 'Alt: half off an 8-hour session.' },
+  { rule_key: 'band_sh_80',  track: 'band', label: '80 band hours → free Band Sweet Spot',           counter: 'band_hours', threshold: 80,  window: 'calendar_year', reward_type: 'free_sweet_spot',   reward_value: 1, issuance: 'approval', stack_mode: 'cumulative', expires_days: EXPIRES, sort_order: 350 },
+  { rule_key: 'band_sh_120', track: 'band', label: '120 band hours → free music video (up to $1.5k)', counter: 'band_hours', threshold: 120, window: 'calendar_year', reward_type: 'free_music_video',  reward_value: 1, reward_cap_cents: 1500 * DOLLAR, issuance: 'approval', stack_mode: 'cumulative', expires_days: EXPIRES, sort_order: 354 },
+  { rule_key: 'band_sh_150', track: 'band', label: '150 band hours → free full-day session (8 hours)', counter: 'band_hours', threshold: 150, window: 'calendar_year', reward_type: 'free_hours', reward_value: 8, issuance: 'approval', stack_mode: 'cumulative', expires_days: EXPIRES, sort_order: 356 },
 ];
 const BAND_SPEND: RewardRule[] = [
   { rule_key: 'band_spend_3000',  track: 'band', label: '$3,000 band spend → 5% off rest of year',  counter: 'band_spend', threshold: 3000 * DOLLAR,  window: 'calendar_year', reward_type: 'spend_discount_pct', reward_value: 5,  issuance: 'auto', stack_mode: 'one_total', expires_days: null, sort_order: 360 },

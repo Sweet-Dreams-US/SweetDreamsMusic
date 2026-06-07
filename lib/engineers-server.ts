@@ -24,13 +24,14 @@ export interface EngineerRec {
   active: boolean;
   sortOrder: number;
   studios: string[];     // assigned room slugs
+  canBookBands: boolean; // eligible to be booked for band sessions
 }
 
 export function engineersFromConstants(): EngineerRec[] {
   return ENGINEERS.map((e, i) => ({
     id: `const-${i}`, name: e.name, displayName: e.displayName, email: e.email,
     specialties: [...e.specialties], photoUrl: null, bio: null, active: true, sortOrder: i,
-    studios: [...e.studios],
+    studios: [...e.studios], canBookBands: e.displayName === 'Iszac',
   }));
 }
 
@@ -40,13 +41,14 @@ function rowsToRecs(rows: any[], assigns: any[]): EngineerRec[] {
     specialties: r.specialties ?? [], photoUrl: r.photo_url ?? null, bio: r.bio ?? null,
     active: r.active, sortOrder: r.sort_order ?? 0,
     studios: assigns.filter((a) => a.engineer_id === r.id).map((a) => a.studio_rooms?.slug).filter(Boolean),
+    canBookBands: r.can_book_bands ?? false,
   }));
 }
 
 /** DI'd: all engineers (admin) or active-only (public/pickers). Fallback to constant. */
 export async function loadEngineers(db: Client, opts?: { activeOnly?: boolean }): Promise<EngineerRec[]> {
   try {
-    let q = db.from('engineers').select('id,name,display_name,email,specialties,photo_url,bio,active,sort_order').order('sort_order');
+    let q = db.from('engineers').select('id,name,display_name,email,specialties,photo_url,bio,active,sort_order,can_book_bands').order('sort_order');
     if (opts?.activeOnly) q = q.eq('active', true);
     const { data: rows } = await q;
     if (!rows || rows.length === 0) return engineersFromConstants();

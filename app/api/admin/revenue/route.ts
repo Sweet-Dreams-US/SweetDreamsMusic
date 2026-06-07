@@ -19,7 +19,7 @@ async function requireAdmin() {
 }
 
 const SETTINGS_FIELDS = new Set([
-  'engineer_session_pct', 'producer_commission_pct',
+  'engineer_session_pct', 'engineer_band_session_pct', 'producer_commission_pct',
   'media_seller_pct', 'media_worker_pct', 'media_business_pct', 'renewal_discount_pct',
 ]);
 
@@ -37,7 +37,7 @@ export async function GET() {
   if (beatProducerIds.length) orFilter.push(`id.in.(${beatProducerIds.join(',')})`);
   const [settings, { data: engineers }, { data: producers }] = await Promise.all([
     getRevenueSettingsRow(db),
-    db.from('engineers').select('id, name, display_name, email, session_split_pct, active').order('sort_order'),
+    db.from('engineers').select('id, name, display_name, email, session_split_pct, band_session_split_pct, can_book_bands, active').order('sort_order'),
     db.from('profiles').select('user_id, producer_name, display_name, producer_commission_pct').or(orFilter.join(',')).order('producer_name', { nullsFirst: false }),
   ]);
   return NextResponse.json({ settings, engineers: engineers ?? [], producers: producers ?? [] });
@@ -69,11 +69,21 @@ export async function PATCH(request: NextRequest) {
     const { error } = await db.from('revenue_settings').update(updates as never).is('studio_id', null);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   } else if (body.kind === 'engineer') {
-    const { id, pct } = body;
+    const { id } = body;
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
-    const val = pct == null || pct === '' ? null : Number(pct);
-    if (val != null && (!Number.isFinite(val) || val < 0 || val > 100)) return NextResponse.json({ error: 'Invalid pct' }, { status: 400 });
-    const { error } = await db.from('engineers').update({ session_split_pct: val } as never).eq('id', id);
+    const patch: Record<string, unknown> = {};
+    // pct/bandPct: field absent → leave alone; null/'' → clear (inherit default); number → set.
+    for (const [field, col] of [['pct', 'session_split_pct'], ['bandPct', 'band_session_split_pct']] as const) {
+      if (!(field in body)) continue;
+      const raw = body[field];
+      if (raw == null || raw === '') { patch[col] = null; continue; }
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0 || n > 100) return NextResponse.json({ error: `Invalid ${field}` }, { status: 400 });
+      patch[col] = n;
+    }
+    if (typeof body.canBookBands === 'boolean') patch.can_book_bands = body.canBookBands;
+    if (!Object.keys(patch).length) return NextResponse.json({ error: 'No engineer fields to update' }, { status: 400 });
+    const { error } = await db.from('engineers').update(patch as never).eq('id', id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   } else if (body.kind === 'producer') {
     const { userId, pct } = body;

@@ -21,7 +21,7 @@ type Client = SupabaseClient<any, any, any>;
 
 // Retail value estimate per media deliverable when the reward grant carries no cap.
 const MEDIA_RETAIL_CENTS: Record<string, number> = {
-  music_video: 100000, short_video: 15000, photo_session: 20000, cover_art: 10000, other: 15000,
+  music_video: 100000, short_video: 15000, photo_session: 20000, cover_art: 10000, sweet_spot: 200000, other: 15000,
 };
 
 /**
@@ -46,6 +46,7 @@ const MEDIA_KIND: Record<string, string> = {
   free_short_video: 'short_video',
   free_music_video: 'music_video',
   free_photo_session: 'photo_session',
+  free_sweet_spot: 'sweet_spot',
   bundled_cutdowns: 'short_video',
 };
 

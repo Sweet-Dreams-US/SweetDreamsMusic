@@ -107,6 +107,7 @@ export function estimateExposureCents(g: { reward_type: string; reward_value: nu
     case 'free_hours':           return Math.round(g.reward_value * 50_00); // ~$50/hr retail
     case 'free_short_video':     return 150_00;
     case 'free_photo_session':   return 200_00;
+    case 'free_sweet_spot':      return 2000_00;                            // Band Sweet Spot retail
     case 'free_music_video':     return g.value_cents || 1000_00;           // the cap
     case 'account_credit_cents': return g.value_cents;
     case 'cash_bonus':           return g.value_cents;

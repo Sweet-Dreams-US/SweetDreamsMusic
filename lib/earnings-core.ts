@@ -9,22 +9,27 @@
 // overrides, and DB defaults == constants, the output is identical to today.
 
 import {
-  ENGINEER_SESSION_SPLIT, PRODUCER_COMMISSION, MEDIA_SELLER_COMMISSION,
+  ENGINEER_SESSION_SPLIT, ENGINEER_BAND_SESSION_SPLIT, PRODUCER_COMMISSION, MEDIA_SELLER_COMMISSION,
   MEDIA_WORKER_TOTAL, ENGINEERS,
 } from '@/lib/constants';
 
 /** Studio-level splits as fractions (0..1) to match every existing call site. */
 export interface RevenueConfig {
-  engineerSessionSplit: number; // 0.60
-  producerCommission: number;   // 0.60
-  mediaSellerPct: number;       // 0.15
-  mediaWorkerTotal: number;     // 0.50
+  engineerSessionSplit: number;     // 0.60 (solo sessions)
+  engineerBandSessionSplit: number; // 0.70 (band sessions). NOTE: computeEarningsCore does NOT read
+                                    // this — bands pay via the engineer_split_pct snapshot stamped at
+                                    // completion (so historical rows stay frozen). It's read by the
+                                    // completion route + what-if when stamping a NEW band session.
+  producerCommission: number;       // 0.60
+  mediaSellerPct: number;           // 0.15
+  mediaWorkerTotal: number;         // 0.50
 }
 
 /** Seed source AND safe fallback — byte-identical to the current constants. */
 export function revenueConfigFromConstants(): RevenueConfig {
   return {
     engineerSessionSplit: ENGINEER_SESSION_SPLIT,
+    engineerBandSessionSplit: ENGINEER_BAND_SESSION_SPLIT,
     producerCommission: PRODUCER_COMMISSION,
     mediaSellerPct: MEDIA_SELLER_COMMISSION,
     mediaWorkerTotal: MEDIA_WORKER_TOTAL,
@@ -79,7 +84,8 @@ export interface EarningsInput {
 }
 
 export interface Overrides {
-  engineerByName?: Record<string, number | null>; // normalizedName → pct (0..100), NULL = inherit
+  engineerByName?: Record<string, number | null>;     // normalizedName → pct (0..100), NULL = inherit
+  engineerBandByName?: Record<string, number | null>; // per-engineer BAND split override (read by the completion route)
   producerByName?: Record<string, number | null>;
 }
 

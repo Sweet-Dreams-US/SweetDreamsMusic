@@ -17,8 +17,12 @@ export async function getRevenueConfig(db: Client, studioId: string | null = nul
   try {
     const { data } = await db.from('revenue_settings').select('*').is('studio_id', null).maybeSingle();
     if (!data) return revenueConfigFromConstants();
+    const engineerSessionSplit = Number((data as any).engineer_session_pct) / 100;
+    const bandPct = (data as any).engineer_band_session_pct;
     return {
-      engineerSessionSplit: Number((data as any).engineer_session_pct) / 100,
+      engineerSessionSplit,
+      // NULL band pct → inherit the solo split (so unset = no band premium).
+      engineerBandSessionSplit: bandPct != null ? Number(bandPct) / 100 : engineerSessionSplit,
       producerCommission: Number((data as any).producer_commission_pct) / 100,
       mediaSellerPct: Number((data as any).media_seller_pct) / 100,
       mediaWorkerTotal: Number((data as any).media_worker_pct) / 100,
@@ -33,6 +37,7 @@ export async function getRevenueSettingsRow(db: Client): Promise<Record<string, 
   const c = revenueConfigFromConstants();
   const fallback = {
     engineer_session_pct: c.engineerSessionSplit * 100,
+    engineer_band_session_pct: c.engineerBandSessionSplit * 100,
     producer_commission_pct: c.producerCommission * 100,
     media_seller_pct: c.mediaSellerPct * 100,
     media_worker_pct: c.mediaWorkerTotal * 100,
@@ -42,8 +47,10 @@ export async function getRevenueSettingsRow(db: Client): Promise<Record<string, 
   try {
     const { data } = await db.from('revenue_settings').select('*').is('studio_id', null).maybeSingle();
     if (!data) return fallback;
+    const bandPct = (data as any).engineer_band_session_pct;
     return {
       engineer_session_pct: Number((data as any).engineer_session_pct),
+      engineer_band_session_pct: bandPct != null ? Number(bandPct) : Number((data as any).engineer_session_pct),
       producer_commission_pct: Number((data as any).producer_commission_pct),
       media_seller_pct: Number((data as any).media_seller_pct),
       media_worker_pct: Number((data as any).media_worker_pct),
@@ -59,18 +66,23 @@ export async function getRevenueSettingsRow(db: Client): Promise<Record<string, 
  *  excluded by the query, so the maps contain only real overrides. */
 export async function getRevenueOverrides(db: Client): Promise<Overrides> {
   const engineerByName: Record<string, number | null> = {};
+  const engineerBandByName: Record<string, number | null> = {};
   const producerByName: Record<string, number | null> = {};
   try {
     const [{ data: engs }, { data: prods }] = await Promise.all([
-      db.from('engineers').select('name, session_split_pct').not('session_split_pct', 'is', null),
+      db.from('engineers').select('name, session_split_pct, band_session_split_pct'),
       db.from('profiles').select('producer_name, producer_commission_pct').not('producer_commission_pct', 'is', null).not('producer_name', 'is', null),
     ]);
-    for (const e of (engs ?? []) as any[]) { const n = normalizeName(e.name); if (n) engineerByName[n] = Number(e.session_split_pct); }
+    for (const e of (engs ?? []) as any[]) {
+      const n = normalizeName(e.name); if (!n) continue;
+      if (e.session_split_pct != null) engineerByName[n] = Number(e.session_split_pct);
+      if (e.band_session_split_pct != null) engineerBandByName[n] = Number(e.band_session_split_pct);
+    }
     for (const p of (prods ?? []) as any[]) { const n = normalizeName(p.producer_name); if (n) producerByName[n] = Number(p.producer_commission_pct); }
   } catch {
     /* no overrides on error */
   }
-  return { engineerByName, producerByName };
+  return { engineerByName, engineerBandByName, producerByName };
 }
 
 /** Seed/reset the default revenue_settings row to the current constants (idempotent). */
@@ -78,6 +90,7 @@ export async function seedRevenueFromConstants(db: Client): Promise<void> {
   const c = revenueConfigFromConstants();
   const updates = {
     engineer_session_pct: c.engineerSessionSplit * 100,
+    engineer_band_session_pct: c.engineerBandSessionSplit * 100,
     producer_commission_pct: c.producerCommission * 100,
     media_seller_pct: c.mediaSellerPct * 100,
     media_worker_pct: c.mediaWorkerTotal * 100,

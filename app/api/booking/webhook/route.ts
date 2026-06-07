@@ -19,6 +19,7 @@ import {
 } from '@/lib/email';
 import { mintEntitlementFromQuote, extendEntitlement } from '@/lib/packages-mint';
 import { ENGINEERS, SUPER_ADMINS, SITE_URL, type Room } from '@/lib/constants';
+import { loadEngineers } from '@/lib/engineers-server';
 import { calculatePriorityExpiry, getPriorityHoursLabel, calculateRescheduleDeadline } from '@/lib/priority';
 import { awardXP } from '@/lib/xp-system';
 import { fmtSessionDate, fmtSessionTime, fmtStampDate } from '@/lib/studio-time';
@@ -424,14 +425,18 @@ export async function POST(request: NextRequest) {
         //     preference, fan out to every engineer assigned to that studio.
         const room = meta.room as string;
         if (isBandBooking) {
-          // Resolve Iszac from the roster. Use displayName "Iszac" or canonical
-          // name "Iszac Griner" — both work since the roster carries both.
-          // displayName 'Iszac' uniquely identifies him in the roster; checking
-          // both `name` and `displayName` confuses TS narrowing in disjunctions.
-          const iszac = ENGINEERS.find((e) => e.displayName === 'Iszac');
-          if (iszac && priorityExpiry) {
+          // Band sessions route to band-eligible engineers (can_book_bands):
+          //   • a specific requested band engineer → priority alert to them;
+          //   • 'any'/no preference → fan out to all band-eligible engineers so
+          //     any of them can claim it.
+          const roster = await loadEngineers(supabase, { activeOnly: true });
+          const bandEngineers = roster.filter((e) => e.canBookBands);
+          const requestedBandEng = meta.engineer && meta.engineer !== 'any'
+            ? bandEngineers.find((e) => e.name === meta.engineer || e.displayName === meta.engineer)
+            : null;
+          if (requestedBandEng && priorityExpiry) {
             const priorityLabel = getPriorityHoursLabel(priorityExpiry);
-            await sendEngineerPriorityAlert(iszac.email, {
+            await sendEngineerPriorityAlert(requestedBandEng.email, {
               id: newBooking?.id || '',
               customerName: meta.customer_name,
               date: dateStr,
@@ -440,6 +445,18 @@ export async function POST(request: NextRequest) {
               room: meta.room,
               priorityHours: priorityLabel,
             });
+          } else {
+            const bandEmails = bandEngineers.map((e) => e.email).filter(Boolean);
+            if (bandEmails.length > 0) {
+              await sendEngineerNewBookingAlert(bandEmails, {
+                id: newBooking?.id || '',
+                customerName: meta.customer_name,
+                date: dateStr,
+                startTime: timeStr,
+                duration,
+                room: meta.room,
+              });
+            }
           }
         } else if (meta.engineer && priorityExpiry) {
           // Solo: requested engineer gets priority — only notify them

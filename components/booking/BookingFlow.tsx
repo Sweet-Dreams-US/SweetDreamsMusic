@@ -58,7 +58,7 @@ export default function BookingFlow({
   userName: string;
   userEmail: string;
   /** DB-driven engineer roster (active), filtered to the selected room for the picker. */
-  engineers: readonly { name: string; displayName: string; specialties: string[]; studios: string[] }[];
+  engineers: readonly { name: string; displayName: string; specialties: string[]; studios: string[]; canBookBands?: boolean }[];
   /**
    * DB-driven room configs (studio_rooms) loaded server-side and passed in, so
    * admin edits to rates / hours / guest rules / surcharges / tiers cascade to
@@ -125,17 +125,12 @@ export default function BookingFlow({
     }
   }, [isBandMode, duration]);
   const [engineer, setEngineer] = useState<string>('any');
-  // Band sessions are Iszac-only — he's the dedicated band engineer. The
-  // server enforces this regardless, but mirroring the rule client-side
-  // keeps the picker consistent with what gets submitted.
+  // Band sessions are open to band-eligible engineers (the picker below filters
+  // to canBookBands). Reset the engineer choice whenever the mode flips so a
+  // solo-only pick can't leak into a band booking (and vice-versa); the server
+  // re-validates eligibility on submit regardless.
   useEffect(() => {
-    if (isBandMode) {
-      setEngineer('Iszac Griner');
-    } else if (engineer === 'Iszac Griner') {
-      // Switching out of band mode — reset so the solo flow shows "Any
-      // Available" instead of leaving the band-specific engineer pinned.
-      setEngineer('any');
-    }
+    setEngineer('any');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isBandMode]);
   const [customerName, setCustomerName] = useState(userName);
@@ -564,16 +559,42 @@ export default function BookingFlow({
         </div>
 
         {isBandMode ? (
-          // Band sessions are dedicated to Iszac — no picker, just a
-          // confirmation that he's the engineer for this booking.
-          <div className="mb-4 p-4 border-2 border-black bg-black text-white">
-            <p className="font-mono text-[11px] uppercase tracking-wider text-white/60 mb-1">
-              Your engineer
-            </p>
-            <p className="font-bold text-lg">Iszac</p>
-            <p className="font-mono text-xs text-white/70 mt-1">
-              Iszac is our dedicated band session engineer. He&apos;ll reach out to confirm
-              your booking and coordinate the day.
+          // Band sessions are run by our band-experienced engineers (canBookBands).
+          <div className="mb-4">
+            <h3 className="font-mono text-sm font-semibold uppercase tracking-wider mb-4">
+              Request a Band Engineer <span className="font-normal text-black/60">(not guaranteed)</span>
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <button
+                onClick={() => setEngineer('any')}
+                className={cn(
+                  'p-4 border-2 font-mono text-sm text-left transition-colors',
+                  engineer === 'any' ? 'border-black bg-black text-white' : 'border-black/20 hover:border-black'
+                )}
+              >
+                <p className="font-bold uppercase tracking-wider">Any Available</p>
+                <p className={cn('text-xs mt-1', engineer === 'any' ? 'text-white/80' : 'text-black/60')}>
+                  We&apos;ll match a band engineer
+                </p>
+              </button>
+              {engineers.filter((eng) => eng.canBookBands).map((eng) => (
+                <button
+                  key={eng.name}
+                  onClick={() => setEngineer(eng.name)}
+                  className={cn(
+                    'p-4 border-2 font-mono text-sm text-left transition-colors',
+                    engineer === eng.name ? 'border-black bg-black text-white' : 'border-black/20 hover:border-black'
+                  )}
+                >
+                  <p className="font-bold uppercase tracking-wider">{eng.displayName}</p>
+                  <p className={cn('text-xs mt-1', engineer === eng.name ? 'text-white/80' : 'text-black/60')}>
+                    {eng.specialties.join(', ') || 'Band sessions'}
+                  </p>
+                </button>
+              ))}
+            </div>
+            <p className="font-mono text-xs text-black/50 mt-3">
+              Your band engineer will reach out to confirm and coordinate the day.
             </p>
           </div>
         ) : (

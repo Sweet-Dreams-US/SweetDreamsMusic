@@ -117,8 +117,19 @@ export async function POST(request: NextRequest) {
   try {
     const [cfg, overrides] = await Promise.all([getRevenueConfig(service), getRevenueOverrides(service)]);
     const eng = normalizeName(check.booking.engineer_name);
-    const overridePct = eng ? overrides.engineerByName?.[eng] : null;
-    engineerSplitPct = overridePct != null ? overridePct : Math.round(cfg.engineerSessionSplit * 100 * 100) / 100;
+    const isBand = check.booking.band_id != null;
+    // Band sessions pay the band split (per-engineer band override ?? studio band
+    // default, 70%); solo sessions pay the solo split (override ?? studio default,
+    // 60%). Snapshotted here as a percent (0..100) so historical rows stay frozen.
+    let basePct: number;
+    if (isBand) {
+      const bandOverride = eng ? overrides.engineerBandByName?.[eng] : null;
+      basePct = bandOverride != null ? bandOverride : cfg.engineerBandSessionSplit * 100;
+    } else {
+      const overridePct = eng ? overrides.engineerByName?.[eng] : null;
+      basePct = overridePct != null ? overridePct : cfg.engineerSessionSplit * 100;
+    }
+    engineerSplitPct = Math.round(basePct * 100) / 100;
   } catch (e) {
     console.error('[BOOKING COMPLETE] revenue snapshot failed (non-fatal):', e);
   }

@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
 
   const hypCfg: RevenueConfig = {
     engineerSessionSplit: h.engineer_session_pct != null ? h.engineer_session_pct / 100 : currentCfg.engineerSessionSplit,
+    engineerBandSessionSplit: h.engineer_band_session_pct != null ? h.engineer_band_session_pct / 100 : currentCfg.engineerBandSessionSplit,
     producerCommission: h.producer_commission_pct != null ? h.producer_commission_pct / 100 : currentCfg.producerCommission,
     mediaSellerPct: h.media_seller_pct != null ? h.media_seller_pct / 100 : currentCfg.mediaSellerPct,
     mediaWorkerTotal: h.media_worker_pct != null ? h.media_worker_pct / 100 : currentCfg.mediaWorkerTotal,
