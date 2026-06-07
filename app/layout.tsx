@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Mono } from 'next/font/google';
 import Script from 'next/script';
 import { Analytics } from '@vercel/analytics/next';
-import Header from '@/components/layout/Header';
-import Footer from '@/components/layout/Footer';
+import HeaderSlot from '@/components/layout/HeaderSlot';
+import FooterSlot from '@/components/layout/FooterSlot';
 import JsonLd from '@/components/seo/JsonLd';
 import { AudioPlayerProvider } from '@/components/audio/AudioPlayerContext';
 import AudioPlayerBar from '@/components/audio/AudioPlayerBar';
@@ -118,11 +118,11 @@ export default function RootLayout({
           Skip to main content
         </a>
         <AudioPlayerProvider>
-          <Header />
+          <HeaderSlot />
           <main id="main-content" tabIndex={-1} className="min-h-screen pt-16 sm:pt-20 pb-20">
             {children}
           </main>
-          <Footer />
+          <FooterSlot />
           <AudioPlayerBar />
           {/* Authenticated-only messaging widget — bottom-right floating
               chat button. Server component checks session + only renders

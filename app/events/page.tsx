@@ -5,6 +5,7 @@ import { Calendar, ArrowRight, MapPin, Clock, Lock } from 'lucide-react';
 import { SITE_URL } from '@/lib/constants';
 import { STUDIO_IMAGES } from '@/lib/images';
 import { getUpcomingListedEvents } from '@/lib/events-server';
+import { requireHref } from '@/lib/site-settings-server';
 import { allowsDirectRsvp } from '@/lib/events';
 import { fmtStampDate, fmtStampTime } from '@/lib/studio-time';
 
@@ -36,6 +37,7 @@ export const dynamic = 'force-dynamic';
  *   private_listed → "Request to attend"
  */
 export default async function EventsPage() {
+  await requireHref('/events'); // 404 when Events is disabled in the control panel
   const events = await getUpcomingListedEvents();
 
   return (

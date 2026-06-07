@@ -3,11 +3,8 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Calculator, ChevronDown, ChevronUp, Moon, Sun, Clock } from 'lucide-react';
-import { calculateSessionTotal, formatCents, getHourSurcharge, formatTime } from '@/lib/utils';
-import { PRICING, ROOM_LABELS, STUDIO_A_WEEKDAY_START } from '@/lib/constants';
-import type { Room } from '@/lib/constants';
-
-const HOUR_OPTIONS = Array.from({ length: 8 }, (_, i) => i + 1);
+import { formatCents, formatTime } from '@/lib/utils';
+import { priceSessionFromConfig, type StudioConfig } from '@/lib/studio-config';
 
 // Generate time slots from 9:00 to 23:30 in 30-min increments (covers full 24hr range relevant for booking)
 function generateTimeSlots(): { label: string; value: string; hour: number }[] {
@@ -24,12 +21,17 @@ function generateTimeSlots(): { label: string; value: string; hour: number }[] {
 
 const ALL_TIME_SLOTS = generateTimeSlots();
 
-export default function PricingCalculator() {
+export default function PricingCalculator({ studios }: { studios: StudioConfig[] }) {
   const [open, setOpen] = useState(false);
-  const [room, setRoom] = useState<Room>('studio_a');
+  const [room, setRoom] = useState<string>(studios[0]?.slug ?? 'studio_a');
   const [hours, setHours] = useState(2);
   const [startTime, setStartTime] = useState('12:0');
   const [isSameDay, setIsSameDay] = useState(false);
+
+  // Current room's DB-driven config (rates / hours / surcharges / tiers).
+  const cfg = useMemo(() => studios.find((s) => s.slug === room) ?? studios[0], [studios, room]);
+  const hourOptions = useMemo(() => Array.from({ length: cfg.maxHours }, (_, i) => i + 1), [cfg.maxHours]);
+  const sameDayCents = cfg.surcharges.find((s) => s.kind === 'same_day')?.amountCents ?? 0;
 
   const startHour = useMemo(() => {
     const [h, m] = startTime.split(':').map(Number);
@@ -37,8 +39,8 @@ export default function PricingCalculator() {
   }, [startTime]);
 
   const pricing = useMemo(
-    () => calculateSessionTotal(room, hours, startHour, isSameDay),
-    [room, hours, startHour, isSameDay]
+    () => priceSessionFromConfig(cfg, { hours, startHour, sameDay: isSameDay, guests: 1 }),
+    [cfg, hours, startHour, isSameDay]
   );
 
   const remainder = pricing.total - pricing.deposit;
@@ -80,17 +82,17 @@ export default function PricingCalculator() {
                 Room
               </label>
               <div className="flex gap-2">
-                {(['studio_a', 'studio_b'] as Room[]).map((r) => (
+                {studios.map((s) => (
                   <button
-                    key={r}
-                    onClick={() => setRoom(r)}
+                    key={s.slug}
+                    onClick={() => setRoom(s.slug)}
                     className={`flex-1 font-mono text-xs font-bold uppercase tracking-wider px-3 py-2.5 border-2 transition-colors ${
-                      room === r
+                      room === s.slug
                         ? 'border-accent bg-accent text-black'
                         : 'border-black/10 text-black/60 hover:border-black/30'
                     }`}
                   >
-                    {ROOM_LABELS[r]}
+                    {s.displayName}
                   </button>
                 ))}
               </div>
@@ -106,7 +108,7 @@ export default function PricingCalculator() {
                 onChange={(e) => setHours(Number(e.target.value))}
                 className="w-full font-mono text-sm border-2 border-black/10 px-3 py-2.5 bg-white hover:border-black/30 transition-colors appearance-none cursor-pointer"
               >
-                {HOUR_OPTIONS.map((h) => (
+                {hourOptions.map((h) => (
                   <option key={h} value={h}>
                     {h} hour{h > 1 ? 's' : ''}
                   </option>
@@ -145,7 +147,7 @@ export default function PricingCalculator() {
                     : 'border-black/10 text-black/60 hover:border-black/30'
                 }`}
               >
-                {isSameDay ? 'Yes (+$10/hr)' : 'No'}
+                {isSameDay ? `Yes (+${formatCents(sameDayCents)}/hr)` : 'No'}
               </button>
             </div>
           </div>
@@ -185,12 +187,12 @@ export default function PricingCalculator() {
                               : 'bg-amber-100 text-amber-600'
                           }`}
                         >
-                          {entry.tier === 'deepNight' ? 'Deep Night +$30' : 'Late Night +$10'}
+                          {entry.tier === 'deepNight' ? `Deep Night +${formatCents(entry.nightFee)}` : `Late Night +${formatCents(entry.nightFee)}`}
                         </span>
                       )}
                       {entry.sameDayFee > 0 && (
                         <span className="text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 bg-amber-50 text-amber-500">
-                          Same-Day +$10
+                          Same-Day +{formatCents(entry.sameDayFee)}
                         </span>
                       )}
                     </div>
@@ -224,7 +226,7 @@ export default function PricingCalculator() {
               <span>{formatCents(pricing.total)}</span>
             </div>
             <div className="flex justify-between font-mono text-xs text-accent font-semibold">
-              <span>Deposit Due (50%)</span>
+              <span>Deposit Due ({cfg.depositPercent}%)</span>
               <span>{formatCents(pricing.deposit)}</span>
             </div>
             <div className="flex justify-between font-mono text-xs text-black/40">

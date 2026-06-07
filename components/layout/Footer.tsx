@@ -1,17 +1,29 @@
 import Link from 'next/link';
-import { NAV_LINKS, FOOTER_EXTRA_LINKS, BRAND } from '@/lib/constants';
+import { getSiteContent } from '@/lib/site-content-server';
+import { content } from '@/lib/site-content';
+import { getBrand } from '@/lib/brand-server';
 
-export default function Footer() {
+// navLinks + footerLinks are pre-filtered by the server (FooterSlot) per the
+// site's feature/nav flags. Locked items always survive the filter. Editorial
+// strings (hours headline, company label) come from the CMS (site_content).
+export default async function Footer({
+  navLinks,
+  footerLinks,
+}: {
+  navLinks: readonly { href: string; label: string }[];
+  footerLinks: readonly { href: string; label: string }[];
+}) {
+  const c = await getSiteContent();
+  const brand = await getBrand();
   return (
     <footer className="bg-black text-white border-t border-white/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
           {/* Brand */}
           <div>
-            <h3 className="text-2xl mb-4">SWEET DREAMS MUSIC</h3>
+            <h3 className="text-2xl mb-4">{brand.name.toUpperCase()}</h3>
             <p className="font-mono text-white/60 text-sm leading-relaxed">
-              Professional recording studio in {BRAND.address.city}, {BRAND.address.state}.
-              Sessions starting at $60/hour.
+              {content(c, 'footer.brand.blurb')}
             </p>
           </div>
 
@@ -19,7 +31,7 @@ export default function Footer() {
           <div>
             <h4 className="text-lg mb-4">NAVIGATE</h4>
             <nav aria-label="Footer" className="flex flex-col gap-2">
-              {NAV_LINKS.map((link) => (
+              {navLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
@@ -28,7 +40,7 @@ export default function Footer() {
                   {link.label}
                 </Link>
               ))}
-              {FOOTER_EXTRA_LINKS.map((link) => (
+              {footerLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
@@ -44,7 +56,7 @@ export default function Footer() {
           <div>
             <h4 className="text-lg mb-4">STUDIO HOURS</h4>
             <div className="font-mono text-sm text-white/60 space-y-2">
-              <p>Open 24 Hours — 7 Days a Week</p>
+              <p>{content(c, 'footer.hours.headline')}</p>
               <p className="text-white/60 text-xs mt-3">Regular: 9 AM – 10 PM</p>
               <p className="text-amber-400/70 text-xs">Late Night: 10 PM – 2 AM (+$10/hr)</p>
               <p className="text-red-400/70 text-xs">After Hours: 2 AM – 9 AM (+$30/hr)</p>
@@ -63,7 +75,7 @@ export default function Footer() {
             rel="noopener noreferrer"
             className="font-mono text-xs text-white/60 hover:text-accent transition-colors no-underline"
           >
-            A Sweet Dreams Company
+            {content(c, 'footer.company.label')}
           </Link>
         </div>
       </div>

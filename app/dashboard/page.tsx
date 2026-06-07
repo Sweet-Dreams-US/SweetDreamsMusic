@@ -11,6 +11,7 @@ import RescheduleButton from '@/components/dashboard/RescheduleButton';
 import XPWidget from '@/components/dashboard/XPWidget';
 import FileShowcaseToggle from '@/components/dashboard/FileShowcaseToggle';
 import PricingCalculator from '@/components/dashboard/PricingCalculator';
+import { getStudioConfigs } from '@/lib/studio-config-server';
 import ProfileBeatGrid from '@/components/beats/ProfileBeatGrid';
 
 export const metadata: Metadata = {
@@ -22,6 +23,9 @@ export default async function DashboardPage() {
   if (!user) redirect('/login');
 
   const supabase = await createClient();
+
+  // DB-driven room configs for the price calculator (matches the booking engine).
+  const studios = await getStudioConfigs(createServiceClient());
 
   // Fetch user's bookings
   const { data: bookings } = await supabase
@@ -302,7 +306,7 @@ export default async function DashboardPage() {
           </div>
 
           {/* Session Price Calculator */}
-          <PricingCalculator />
+          <PricingCalculator studios={studios} />
 
           {/* My Lyrics */}
           {userLyrics && userLyrics.length > 0 && (

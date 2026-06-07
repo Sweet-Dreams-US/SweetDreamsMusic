@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifyProducerAccess } from '@/lib/admin-auth';
-import { PRODUCER_COMMISSION, PLATFORM_COMMISSION } from '@/lib/constants';
+import { PRODUCER_COMMISSION } from '@/lib/constants';
 
 export async function GET() {
   const supabase = await createClient();
@@ -33,12 +33,16 @@ export async function GET() {
   // Get all purchases for these beats
   const { data: purchases } = await serviceClient
     .from('beat_purchases')
-    .select('amount_paid')
+    .select('amount_paid, producer_pct')
     .in('beat_id', beatIds);
 
   const totalGross = purchases?.reduce((sum, p) => sum + p.amount_paid, 0) || 0;
-  const netEarnings = Math.round(totalGross * PRODUCER_COMMISSION);
-  const platformFee = Math.round(totalGross * PLATFORM_COMMISSION);
+  // Per-row (frozen snapshot producer_pct ?? constant), summed — byte-identical to
+  // admin payroll's beat math (lib/earnings-core.ts, called with constants + no live
+  // overrides). platformFee is the exact complement so net + fee === gross.
+  const netEarnings = purchases?.reduce((sum, p) =>
+    sum + Math.round(p.amount_paid * (p.producer_pct != null ? Number(p.producer_pct) / 100 : PRODUCER_COMMISSION)), 0) || 0;
+  const platformFee = totalGross - netEarnings;
 
   // Get payouts from both tables (producer_payouts legacy + payroll_payouts new)
   const { data: legacyPayouts } = await serviceClient

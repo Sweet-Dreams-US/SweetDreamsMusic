@@ -3,6 +3,8 @@ import { randomUUID } from 'crypto';
 import { Resend } from 'resend';
 import { stripe } from '@/lib/stripe';
 import { createServiceClient } from '@/lib/supabase/server';
+import { getStudioConfig } from '@/lib/studio-config-server';
+import { sweetSpotAddonCents } from '@/lib/studio-config';
 import { markGrantRedeemed } from '@/lib/rewards-issue';
 import {
   sendBookingConfirmation,
@@ -159,13 +161,16 @@ export async function POST(request: NextRequest) {
         if (meta.sweet_spot_addon) {
           try {
             const parsed = JSON.parse(meta.sweet_spot_addon);
+            // Record the add-on price from config (admin-editable), consistent with
+            // what /create charged. Fallback to the constant is inside the helper.
+            const bandCfg = await getStudioConfig(supabase, 'studio_a');
             if (parsed?.kind === '8hr-addon') {
-              sweetSpotAddon = { kind: '8hr-addon', price_cents: 200000, extra_filming_hours: 2 };
+              sweetSpotAddon = { kind: '8hr-addon', price_cents: sweetSpotAddonCents(bandCfg, 8), extra_filming_hours: 2 };
             } else if (parsed?.kind === '3day-addon' && [0, 1, 2].includes(parsed.filmingDayIndex)) {
               sweetSpotAddon = {
                 kind: '3day-addon',
                 filmingDayIndex: parsed.filmingDayIndex,
-                price_cents: 100000,
+                price_cents: sweetSpotAddonCents(bandCfg, 24),
                 extra_filming_hours: 2,
               };
             }

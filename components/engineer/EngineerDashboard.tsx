@@ -12,6 +12,7 @@ import EngineerFiles from './EngineerFiles';
 import EngineerMediaSessions from './EngineerMediaSessions';
 import EngineerBonusCard from './EngineerBonusCard';
 import EngineerAvailability from './EngineerAvailability';
+import type { StudioConfig } from '@/lib/studio-config';
 
 type Tab =
   | 'sessions'
@@ -23,7 +24,7 @@ type Tab =
   | 'availability'
   | 'accounting';
 
-export default function EngineerDashboard({ user }: { user: SessionUser }) {
+export default function EngineerDashboard({ user, studios, engineers }: { user: SessionUser; studios: StudioConfig[]; engineers: readonly { name: string; displayName: string }[] }) {
   const [tab, setTab] = useState<Tab>('sessions');
 
   const tabs: { key: Tab; label: string; icon: typeof Users }[] = [
@@ -85,7 +86,7 @@ export default function EngineerDashboard({ user }: { user: SessionUser }) {
               {tab === 'my-clients' && <EngineerCRM userEmail={user.email} />}
               {tab === 'library' && <ClientLibrary />}
               {tab === 'files' && <EngineerFiles />}
-              {tab === 'invite' && <CreateInvite />}
+              {tab === 'invite' && <CreateInvite studios={studios} engineers={engineers} />}
               {tab === 'availability' && <EngineerAvailability />}
               {tab === 'accounting' && <EngineerAccounting />}
             </div>

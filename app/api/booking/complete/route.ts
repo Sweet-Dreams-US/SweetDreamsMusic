@@ -3,6 +3,8 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifyEngineerAccess, isAdmin } from '@/lib/admin-auth';
 import { checkCanComplete } from '@/lib/booking-completion';
 import { checkBookingOwnership } from '@/lib/booking-ownership';
+import { getRevenueConfig, getRevenueOverrides } from '@/lib/revenue-config-server';
+import { normalizeName } from '@/lib/earnings-core';
 
 /**
  * POST /api/booking/complete
@@ -106,9 +108,24 @@ export async function POST(request: NextRequest) {
   const forcedBypass = force && !check.canComplete;
 
   const nowIso = new Date().toISOString();
+
+  // Snapshot the EFFECTIVE engineer split % at completion so a future share
+  // change can't retroactively alter this session's payout (override ?? studio
+  // default ?? constant). Best-effort: on any failure leave it NULL, which the
+  // payroll math reads as the constant default — safe.
+  let engineerSplitPct: number | null = null;
+  try {
+    const [cfg, overrides] = await Promise.all([getRevenueConfig(service), getRevenueOverrides(service)]);
+    const eng = normalizeName(check.booking.engineer_name);
+    const overridePct = eng ? overrides.engineerByName?.[eng] : null;
+    engineerSplitPct = overridePct != null ? overridePct : Math.round(cfg.engineerSessionSplit * 100 * 100) / 100;
+  } catch (e) {
+    console.error('[BOOKING COMPLETE] revenue snapshot failed (non-fatal):', e);
+  }
+
   const { error: updateErr } = await supabase
     .from('bookings')
-    .update({ status: 'completed', approved_at: nowIso, updated_at: nowIso })
+    .update({ status: 'completed', approved_at: nowIso, updated_at: nowIso, ...(engineerSplitPct != null ? { engineer_split_pct: engineerSplitPct } : {}) })
     .eq('id', bookingId);
 
   if (updateErr) {

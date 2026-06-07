@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { DollarSign, TrendingUp, Calendar, Music, Users, Filter, ChevronDown } from 'lucide-react';
 import { formatCents, formatDuration } from '@/lib/utils';
 import { fmtSessionDate, fmtStampDate } from '@/lib/studio-time';
-import { PRODUCER_COMMISSION, PLATFORM_COMMISSION, ENGINEER_SESSION_SPLIT, BUSINESS_SESSION_SPLIT, MEDIA_SELLER_COMMISSION, MEDIA_BUSINESS_CUT, MEDIA_WORKER_TOTAL, ENGINEERS } from '@/lib/constants';
+import { PRODUCER_COMMISSION, PLATFORM_COMMISSION, ENGINEER_SESSION_SPLIT, BUSINESS_SESSION_SPLIT, MEDIA_SELLER_COMMISSION, MEDIA_BUSINESS_CUT, MEDIA_WORKER_TOTAL } from '@/lib/constants';
+import { computeEarningsCore, normalizeName, revenueConfigFromConstants, type PersonEarnings } from '@/lib/earnings-core';
 import CreditsLiabilityPanel from './CreditsLiabilityPanel';
 import PackageAccounting from './PackageAccounting';
 import CashCorrectionsLog from './CashCorrectionsLog';
@@ -102,40 +103,9 @@ const LICENSE_LABELS: Record<string, string> = {
   exclusive: 'Exclusive',
 };
 
-// Build name normalization map from ENGINEERS constant
-// Maps displayName -> name, and name -> name (identity), case-insensitive
-const NAME_MAP: Record<string, string> = {};
-ENGINEERS.forEach(eng => {
-  NAME_MAP[eng.name.toLowerCase()] = eng.name;
-  if (eng.displayName && eng.displayName !== eng.name) {
-    NAME_MAP[eng.displayName.toLowerCase()] = eng.name;
-  }
-  // Also map email-derived names (e.g., "zionomari" from email "zionomari@...")
-  const emailPrefix = eng.email.split('@')[0].toLowerCase();
-  if (emailPrefix) NAME_MAP[emailPrefix] = eng.name;
-});
-// Additional known aliases not derivable from the ENGINEERS constant.
-//
-// HISTORICAL NAMES MUST STAY HERE FOREVER. When an engineer is renamed in
-// the ENGINEERS constant, their OLD name lives on in already-written rows
-// (payroll_payouts.person_name, cash_ledger.engineer_name, media_sales.*,
-// beat producer, etc.). Payroll buckets every row by normalizeName(), so a
-// historical name with no alias becomes its OWN bucket — and past payouts
-// recorded under the old name stop netting against the new name's earned
-// total, inflating "owed". That is exactly what happened when "Zion Tinsley"
-// → "Zion": his 5 prior payouts ($1182) stranded under the old name and his
-// owed balance read $1182 instead of $0 (fixed 2026-06-03, data + this map).
-//
-// Rule of thumb: renaming an engineer = ADD their prior name(s) below, never
-// just replace the ENGINEERS entry.
-NAME_MAP['zion omari'] = 'Zion';     // email-derived / legacy display
-NAME_MAP['zion tinsley'] = 'Zion';   // prior roster name (renamed 2026-06-02)
-
-function normalizeName(raw: string | null): string | null {
-  if (!raw) return null;
-  const trimmed = raw.trim();
-  return NAME_MAP[trimmed.toLowerCase()] || trimmed;
-}
+// NAME_MAP + normalizeName moved to lib/earnings-core.ts (imported above) so the
+// payroll math + the golden test bucket names identically. Historical aliases
+// (the Zion-rename lesson) live there now.
 
 // URL/DOM-id-safe slug for names. Only used for scroll anchors on paystub
 // cards — not shown to users, not stored in DB. Falls back to a generic
@@ -680,20 +650,12 @@ export default function Accounting() {
     };
   }, [bookings, bandMap]);
 
-  // ===== Helper: compute per-person earnings from a set of bookings/media/beats =====
-  type PersonEarnings = {
-    sessionCount: number; sessionRevenue: number; sessionPay: number; sessionHours: number;
-    mediaCommission: number; mediaSoldCount: number;
-    mediaWorkerPay: number; mediaFilmedCount: number; mediaEditedCount: number;
-    beatSales: number; beatProducerPay: number; beatCount: number;
-    // Package salesperson commission — when a person is attributed as
-    // the closer on a package quote, they earn this when the customer pays.
-    packageCommission: number; packageSoldCount: number;
-    rewardsCost: number; // studio's give-away value on reward-funded sessions (not staff pay)
-    bonusPay: number; bonusCount: number; // staff cash bonuses earned (owed), funded from studio cut
-    totalPay: number;
-  };
-
+  // ===== Per-person earnings — math lives in lib/earnings-core.ts =====
+  // ACTUAL payroll resolves per row as: snapshot (frozen % stamped at
+  // completion/sale) ?? constant. We pass the CONSTANTS (not the live DB config)
+  // as the fallback ON PURPOSE — so an admin's share edit can never retroactively
+  // move historical, un-snapshotted rows. The live DB config is applied only at
+  // snapshot-write time (future work) and in the what-if simulator.
   function computeEarnings(
     bks: Booking[],
     media: typeof allTimeMediaSales,
@@ -703,115 +665,10 @@ export default function Accounting() {
     packageCommissions: typeof allTimePackageCommissions = [],
     bonuses: typeof allTimeRewardBonuses = [],
   ): Record<string, PersonEarnings> {
-    const people: Record<string, PersonEarnings> = {};
-    const init = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, rewardsCost: 0, bonusPay: 0, bonusCount: 0, totalPay: 0 });
-
-    bks.forEach(b => {
-      // Only count completed sessions for payroll — pending/confirmed sessions haven't happened yet
-      if (b.status !== 'completed') return;
-      const eng = normalizeName(b.engineer_name);
-      if (!eng || eng === 'Unassigned') return;
-      if (!people[eng]) people[eng] = init();
-      // Pay staff on the VALUE of the work, not what the customer was charged.
-      // service_value_cents = full session value (= total_amount for normal sessions
-      // via the 067 backfill, so existing payouts are unchanged; the full price for
-      // comped/credit/discounted reward sessions where total_amount is reduced/$0).
-      // Fixes the long-standing $0-payout bug on credit/comped sessions.
-      const value = b.service_value_cents ?? b.total_amount;
-      people[eng].sessionCount++;
-      people[eng].sessionRevenue += b.total_amount;                          // revenue = charged
-      people[eng].sessionPay += Math.round(value * ENGINEER_SESSION_SPLIT);  // pay = on value
-      people[eng].sessionHours += b.duration;
-      // Rewards/marketing cost = value given away, ONLY on reward-funded sessions
-      // (reward_grant_id set) — NOT prepaid-credit deferred revenue.
-      if (b.reward_grant_id) people[eng].rewardsCost += Math.max(0, value - b.total_amount);
-    });
-
-    media.forEach(m => {
-      const seller = normalizeName(m.sold_by);
-      if (seller) {
-        if (!people[seller]) people[seller] = init();
-        people[seller].mediaSoldCount++;
-        people[seller].mediaCommission += Math.round(m.amount * MEDIA_SELLER_COMMISSION);
-      }
-      const filmer = normalizeName(m.filmed_by);
-      const editor = normalizeName(m.edited_by);
-      if (filmer && editor && filmer === editor) {
-        // Same person filmed AND edited — they get the full 50%
-        if (!people[filmer]) people[filmer] = init();
-        people[filmer].mediaFilmedCount++;
-        people[filmer].mediaEditedCount++;
-        people[filmer].mediaWorkerPay += Math.round(m.amount * MEDIA_WORKER_TOTAL);
-      } else {
-        // Different people — each gets 25%
-        if (filmer) {
-          if (!people[filmer]) people[filmer] = init();
-          people[filmer].mediaFilmedCount++;
-          people[filmer].mediaWorkerPay += Math.round(m.amount * MEDIA_WORKER_TOTAL / 2);
-        }
-        if (editor) {
-          if (!people[editor]) people[editor] = init();
-          people[editor].mediaEditedCount++;
-          people[editor].mediaWorkerPay += Math.round(m.amount * MEDIA_WORKER_TOTAL / 2);
-        }
-      }
-    });
-
-    beats.forEach(p => {
-      const prod = normalizeName(p.beats?.producer ?? null);
-      if (!prod) return;
-      if (!people[prod]) people[prod] = init();
-      people[prod].beatCount++;
-      people[prod].beatSales += p.amount_paid;
-      people[prod].beatProducerPay += Math.round(p.amount_paid * PRODUCER_COMMISSION);
-    });
-
-    // Phase E: media_session_bookings completed payouts. The amount is admin-typed
-    // dollar value (no commission percentage) — we merge it directly into
-    // mediaWorkerPay and bump mediaFilmedCount/mediaEditedCount as a "did media
-    // work" indicator (we don't know which role they played without per-session
-    // metadata, so we increment filmed_count as the catch-all).
-    mediaSessions.forEach((s) => {
-      const engName = engineerNames[s.engineer_id];
-      const eng = normalizeName(engName);
-      if (!eng) return;
-      const cents = s.engineer_payout_cents ?? 0;
-      if (cents <= 0) return;
-      if (!people[eng]) people[eng] = init();
-      people[eng].mediaWorkerPay += cents;
-      people[eng].mediaFilmedCount++;
-    });
-
-    // Package salesperson commissions. Each entitlement with a
-    // salesperson + positive commission credits that person. The
-    // commission was snapshotted at mint time (= when the customer
-    // paid), so it's a frozen, already-earned number.
-    packageCommissions.forEach((pc) => {
-      const sp = normalizeName(pc.salesperson_name);
-      if (!sp) return;
-      const cents = pc.sales_commission_cents ?? 0;
-      if (cents <= 0) return;
-      if (!people[sp]) people[sp] = init();
-      people[sp].packageCommission += cents;
-      people[sp].packageSoldCount++;
-    });
-
-    // Staff cash bonuses (rewards). 'approved'/'issued' = earned/owed; paid is
-    // tracked via payroll_payouts (same earned−paid model as sessions), so a bonus
-    // adds to earnings and a recorded payout settles it. Funded from the studio cut.
-    bonuses.forEach((bn) => {
-      if (bn.status !== 'approved' && bn.status !== 'issued') return; // redeemed = already settled
-      const name = normalizeName(bn.person_name);
-      if (!name || name === 'Unassigned') return;
-      if (!people[name]) people[name] = init();
-      people[name].bonusPay += bn.value_cents || 0;
-      people[name].bonusCount++;
-    });
-
-    Object.values(people).forEach(p => {
-      p.totalPay = p.sessionPay + p.mediaCommission + p.mediaWorkerPay + p.beatProducerPay + p.packageCommission + p.bonusPay;
-    });
-    return people;
+    return computeEarningsCore(
+      { bookings: bks, media, beats, mediaSessions, engineerNames, packageCommissions, bonuses },
+      revenueConfigFromConstants(),
+    );
   }
 
   // Generate pay period options (last 12 periods)

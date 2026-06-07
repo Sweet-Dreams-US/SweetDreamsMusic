@@ -12,6 +12,7 @@
 import {
   ROOM_RATES, ROOM_RATES_SINGLE, SWEET_4, BAND_PRICING, PRICING,
   GUEST_FEE_PER_HOUR, FREE_GUESTS, MAX_GUESTS, ROOM_LABELS, STUDIO_A_WEEKDAY_START,
+  SWEET_SPOT_PRICING,
   type Room,
 } from '@/lib/constants';
 
@@ -38,8 +39,22 @@ export interface StudioConfig {
   surcharges: StudioSurcharge[];
 }
 
+export type HourTier = 'regular' | 'lateNight' | 'deepNight';
+export interface HourBreakdownEntry {
+  hour: number; baseRate: number; nightFee: number; sameDayFee: number; hourTotal: number; tier: HourTier;
+}
+// Mirrors lib/utils SessionPricing exactly so priceSessionFromConfig is a
+// drop-in replacement for calculateSessionTotal (incl. the per-hour breakdown).
 export interface SessionPriceResult {
-  subtotal: number; nightFees: number; sameDayFee: number; guestFee: number; total: number; deposit: number;
+  subtotal: number;
+  hourBreakdown: HourBreakdownEntry[];
+  nightFees: number;
+  sameDayFee: number;
+  guestFee: number;
+  guestCount: number;
+  sweetSpot: boolean;
+  total: number;
+  deposit: number;
 }
 
 /** True if hour h falls in [start,end) — handling windows that wrap past midnight (start>end). */
@@ -48,13 +63,19 @@ function inWindow(h: number, start: number | null, end: number | null): boolean 
   return start <= end ? (h >= start && h < end) : (h >= start || h < end);
 }
 
-/** Per-hour night surcharge from config — deep-night checked before late-night (matches getHourSurcharge). */
-function nightSurchargeForHour(config: StudioConfig, h: number): number {
+/**
+ * Per-hour surcharge tier + amount from config — deep-night checked before
+ * late-night (matches lib/utils getHourSurcharge exactly). Drives both the
+ * pricing math and the booking-flow time-picker coloring, so an admin's
+ * surcharge window/amount edits cascade to both.
+ */
+export function hourSurchargeFromConfig(config: StudioConfig, hour: number): { tier: HourTier; amount: number } {
+  const h = Math.floor(hour) % 24;
   const deep = config.surcharges.find((s) => s.kind === 'deep_night' && inWindow(h, s.startHour, s.endHour));
-  if (deep) return deep.amountCents;
+  if (deep) return { tier: 'deepNight', amount: deep.amountCents };
   const late = config.surcharges.find((s) => s.kind === 'late_night' && inWindow(h, s.startHour, s.endHour));
-  if (late) return late.amountCents;
-  return 0;
+  if (late) return { tier: 'lateNight', amount: late.amountCents };
+  return { tier: 'regular', amount: 0 };
 }
 
 /**
@@ -72,19 +93,32 @@ export function priceSessionFromConfig(
   const basePerHour = isSweet4 ? sweet4!.perHourCents : hours === 1 ? config.singleHourRateCents : config.hourlyRateCents;
   const sameDayCents = config.surcharges.find((s) => s.kind === 'same_day')?.amountCents ?? 0;
 
+  const hourBreakdown: HourBreakdownEntry[] = [];
   let nightFees = 0;
   let sameDayFee = 0;
   for (let i = 0; i < hours; i++) {
-    const h = Math.floor((startHour + i) % 24);
-    nightFees += nightSurchargeForHour(config, h);
-    sameDayFee += sameDay ? sameDayCents : 0;
+    const h = (startHour + i) % 24; // decimal hour preserved (e.g. 18.5); floored only for the surcharge lookup
+    const sc = hourSurchargeFromConfig(config, h);
+    const sdFee = sameDay ? sameDayCents : 0;
+    hourBreakdown.push({ hour: h, baseRate: basePerHour, nightFee: sc.amount, sameDayFee: sdFee, hourTotal: basePerHour + sc.amount + sdFee, tier: sc.tier });
+    nightFees += sc.amount;
+    sameDayFee += sdFee;
   }
   const subtotal = isSweet4 ? sweet4!.priceCents : basePerHour * hours;
   const extraGuests = Math.max(0, guests - config.freeGuests);
   const guestFee = extraGuests * config.guestFeeCents * hours;
   const total = subtotal + nightFees + sameDayFee + guestFee;
   const deposit = Math.round(total * (config.depositPercent / 100));
-  return { subtotal, nightFees, sameDayFee, guestFee, total, deposit };
+  return { subtotal, hourBreakdown, nightFees, sameDayFee, guestFee, guestCount: guests, sweetSpot: isSweet4, total, deposit };
+}
+
+/** Sweet Spot filming add-on price (cents) for an 8hr / 24hr band session, from
+ *  config (admin-editable tiers) with a constant fallback. Drives the charge,
+ *  the booking-flow display, and the webhook's recorded metadata consistently. */
+export function sweetSpotAddonCents(config: StudioConfig, hours: number): number {
+  if (hours === 8) return config.tiers.find((t) => t.kind === 'sweet_spot_8h')?.priceCents ?? 200000;
+  if (hours === 24) return config.tiers.find((t) => t.kind === 'sweet_spot_24h')?.priceCents ?? 100000;
+  return 0;
 }
 
 /** Band session price from config — equal to calculateBandSessionTotal (flat, no surcharges). */
@@ -96,10 +130,10 @@ export function priceBandFromConfig(
   const tier = config.tiers.find((t) => t.kind === `band_${hours}h`);
   if (!tier) throw new Error(`No band tier for ${hours}h on studio ${config.slug}`);
   let total = tier.priceCents;
-  if (addon?.kind === '8hr-addon' && hours === 8) total += 200000;
-  else if (addon?.kind === '3day-addon' && hours === 24) total += 100000;
+  if (addon?.kind === '8hr-addon' && hours === 8) total += sweetSpotAddonCents(config, 8);
+  else if (addon?.kind === '3day-addon' && hours === 24) total += sweetSpotAddonCents(config, 24);
   const deposit = Math.round(total * (config.depositPercent / 100));
-  return { subtotal: total, nightFees: 0, sameDayFee: 0, guestFee: 0, total, deposit };
+  return { subtotal: total, hourBreakdown: [], nightFees: 0, sameDayFee: 0, guestFee: 0, guestCount: 1, sweetSpot: false, total, deposit };
 }
 
 /**
@@ -115,6 +149,10 @@ export function studioConfigFromConstants(room: Room): StudioConfig {
     for (const t of BAND_PRICING) {
       tiers.push({ kind: `band_${t.hours}h`, hours: t.hours, priceCents: t.price, perHourCents: t.perHour, label: t.label, note: t.note });
     }
+    // Sweet Spot filming add-ons + standalone — admin-editable via the tier editor.
+    tiers.push({ kind: 'sweet_spot_8h', hours: 8, priceCents: SWEET_SPOT_PRICING.addOnTo8hrSession, perHourCents: 0, label: 'Sweet Spot — 8hr add-on' });
+    tiers.push({ kind: 'sweet_spot_24h', hours: 24, priceCents: SWEET_SPOT_PRICING.addOnTo3DayFull, perHourCents: 0, label: 'Sweet Spot — 3-day add-on' });
+    tiers.push({ kind: 'sweet_spot_standalone', hours: 0, priceCents: SWEET_SPOT_PRICING.standalone, perHourCents: 0, label: 'Sweet Spot — standalone' });
   }
   return {
     slug: room,

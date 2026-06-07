@@ -33,7 +33,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { getUserBands } from '@/lib/bands-server';
 import { ENGINEERS, type Room } from '@/lib/constants';
-import { calculateSessionTotal } from '@/lib/utils';
+import { getStudioConfig } from '@/lib/studio-config-server';
+import { priceSessionFromConfig } from '@/lib/studio-config';
 import { sendEngineerNewBookingAlert } from '@/lib/email';
 
 const VALID_ROOMS: Room[] = ['studio_a', 'studio_b'];
@@ -243,7 +244,10 @@ export async function POST(request: NextRequest) {
   // long-standing $0-payout gap on credit sessions.) Surcharges included in value.
   const startHour = new Date(startISO).getUTCHours();
   let serviceValueCents = 0;
-  try { serviceValueCents = calculateSessionTotal(room, durationHours, startHour, false, 1).total; } catch { serviceValueCents = 0; }
+  try {
+    const cfg = await getStudioConfig(service, room);
+    serviceValueCents = priceSessionFromConfig(cfg, { hours: durationHours, startHour, sameDay: false, guests: 1 }).total;
+  } catch { serviceValueCents = 0; }
 
   // If this credit was ISSUED by a reward, tag the booking with that grant so the
   // per-booking accounting + Business view tie out (and a cancel can restore it).

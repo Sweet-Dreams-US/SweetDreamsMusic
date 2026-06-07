@@ -1,8 +1,13 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
-import { SITE_URL, ENGINEERS } from '@/lib/constants';
+import { SITE_URL } from '@/lib/constants';
 import { STUDIO_IMAGES } from '@/lib/images';
+import { requireHref } from '@/lib/site-settings-server';
+import { getEngineers } from '@/lib/engineers-server';
+
+// Reads the site's nav flags at request time so the page can 404 when disabled.
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Our Engineers — Recording, Mixing & Production',
@@ -23,7 +28,9 @@ const ENGINEER_PHOTOS: Record<string, string> = {
   'Jay Val Leo': STUDIO_IMAGES.jayTopStudioBVert,
 };
 
-export default function EngineersPage() {
+export default async function EngineersPage() {
+  await requireHref('/engineers'); // 404 when the Engineers page is disabled
+  const engineers = await getEngineers();
   return (
     <>
       {/* Hero */}
@@ -52,11 +59,11 @@ export default function EngineersPage() {
       <section className="bg-white text-black py-20 sm:py-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-            {ENGINEERS.map((engineer) => {
-              const photo = ENGINEER_PHOTOS[engineer.name];
+            {engineers.map((engineer) => {
+              const photo = engineer.photoUrl || ENGINEER_PHOTOS[engineer.name];
               return (
                 <div
-                  key={engineer.name}
+                  key={engineer.id}
                   className="border-2 border-black group hover:border-accent transition-colors"
                 >
                   <div className="aspect-square bg-black/5 flex items-center justify-center relative overflow-hidden">

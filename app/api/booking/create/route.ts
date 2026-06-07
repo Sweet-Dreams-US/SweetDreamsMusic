@@ -3,7 +3,9 @@ import { stripe } from '@/lib/stripe';
 import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import { PRICING, SITE_URL, ROOM_LABELS, STUDIO_A_WEEKDAY_START, MAX_GUESTS, type Room } from '@/lib/constants';
-import { calculateSessionTotal, calculateBandSessionTotal, isSelfServeBandHours, parseTimeSlot, formatDuration } from '@/lib/utils';
+import { isSelfServeBandHours, parseTimeSlot, formatDuration } from '@/lib/utils';
+import { getStudioConfig } from '@/lib/studio-config-server';
+import { priceSessionFromConfig, priceBandFromConfig } from '@/lib/studio-config';
 import { memberHasFlag } from '@/lib/bands';
 import { getMembership } from '@/lib/bands-server';
 import { isEngineerBlocked } from '@/lib/engineer-blocks';
@@ -200,10 +202,14 @@ export async function POST(request: NextRequest) {
 
     // Branch pricing on booking type. Band bookings are flat-rate packages
     // (no night / same-day / guest surcharges stack); solo sessions keep the
-    // full per-hour surcharge matrix.
+    // full per-hour surcharge matrix. Pricing is now DB-driven (studio_rooms)
+    // with a constants fallback baked into getStudioConfig, so admin price edits
+    // cascade to the actual charge. Proven byte-identical to the constants by the
+    // golden round-trip (scripts/studio-pricing-db-roundtrip.ts).
+    const studioConfig = await getStudioConfig(supabase, room as string);
     const pricing = isBandBooking
-      ? calculateBandSessionTotal(Number(duration) as 4 | 8 | 24, sweetSpotAddon)
-      : calculateSessionTotal(room as Room, duration, startHour, sameDayBooking, guestCount);
+      ? priceBandFromConfig(studioConfig, Number(duration), sweetSpotAddon)
+      : priceSessionFromConfig(studioConfig, { hours: Number(duration), startHour, sameDay: sameDayBooking, guests: guestCount });
 
     // Reward discount (best-of, never stacked). Gated to the LOGGED-IN user so an
     // email can't be spoofed to grab someone's discount; solo sessions only for now
@@ -227,7 +233,7 @@ export async function POST(request: NextRequest) {
       } catch (e) { console.error('[BOOKING CREATE] discount lookup failed (non-fatal):', e); }
     }
     const chargedTotal = Math.max(0, pricing.total - discountCents);
-    const chargedDeposit = Math.round(chargedTotal * (PRICING.depositPercent / 100));
+    const chargedDeposit = Math.round(chargedTotal * (studioConfig.depositPercent / 100));
 
     const endDec = (startHour + duration) % 24;
     const endTime = `${Math.floor(endDec)}:${endDec % 1 >= 0.5 ? '30' : '00'}`;

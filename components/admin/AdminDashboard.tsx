@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Calendar, Music, Users, DollarSign, Clock, Video, Mic, FileText, LayoutDashboard, BarChart3, Bell, PartyPopper, Film, ClipboardList, Package, Gift } from 'lucide-react';
+import { Calendar, Music, Users, DollarSign, Clock, Video, Mic, FileText, LayoutDashboard, BarChart3, Bell, PartyPopper, Film, ClipboardList, Package, Gift, SlidersHorizontal } from 'lucide-react';
 import type { SessionUser } from '@/lib/auth';
 import AdminOverview from './AdminOverview';
 import BookingManager from './BookingManager';
@@ -20,14 +20,16 @@ import Notifications from './Notifications';
 import AdminEvents from './AdminEvents';
 import PackageTemplates from './PackageTemplates';
 import RewardsManager from './RewardsManager';
+import StudioControlPanel from './StudioControlPanel';
 
-type Tab = 'overview' | 'clients' | 'accounting' | 'bookings' | 'events' | 'media' | 'media-catalog' | 'media-orders' | 'packages' | 'blocks' | 'beats' | 'producers' | 'contracts' | 'users' | 'rewards' | 'analytics' | 'notifications';
+type Tab = 'overview' | 'control' | 'clients' | 'accounting' | 'bookings' | 'events' | 'media' | 'media-catalog' | 'media-orders' | 'packages' | 'blocks' | 'beats' | 'producers' | 'contracts' | 'users' | 'rewards' | 'analytics' | 'notifications';
 
 export default function AdminDashboard({ user }: { user: SessionUser }) {
   const [tab, setTab] = useState<Tab>('overview');
 
   const tabs: { key: Tab; label: string; icon: typeof Calendar }[] = [
     { key: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { key: 'control', label: 'Control Panel', icon: SlidersHorizontal },
     { key: 'clients', label: 'Clients', icon: Users },
     { key: 'accounting', label: 'Accounting', icon: DollarSign },
     { key: 'bookings', label: 'Bookings', icon: Calendar },
@@ -97,6 +99,7 @@ export default function AdminDashboard({ user }: { user: SessionUser }) {
             {/* Main Content */}
             <div className="flex-1 min-w-0">
           {tab === 'overview' && <AdminOverview onNavigate={(t) => setTab(t)} />}
+          {tab === 'control' && <StudioControlPanel />}
           {tab === 'clients' && <ClientCRM />}
           {tab === 'accounting' && <Accounting />}
           {tab === 'bookings' && <BookingManager />}

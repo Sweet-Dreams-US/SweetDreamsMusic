@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { SITE_URL, ENGINEERS, PRICING } from '@/lib/constants';
+import { SITE_URL, ENGINEERS } from '@/lib/constants';
 import { parseTimeSlot } from '@/lib/utils';
+import { getStudioConfig } from '@/lib/studio-config-server';
 import { verifyEngineerAccess } from '@/lib/admin-auth';
 import { sendSessionInvite } from '@/lib/email';
 import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
@@ -39,6 +40,8 @@ export async function POST(request: NextRequest) {
 
     // Use service client for DB operations (bypasses RLS — auth already verified above)
     const serviceClient = createServiceClient();
+    // DB-driven deposit % (studio_rooms), constants fallback baked in.
+    const studioConfig = await getStudioConfig(serviceClient, room);
 
     // Auto-assign engineer from the creating user
     const engineerConfig = ENGINEERS.find(e => e.email.toLowerCase() === user.email!.toLowerCase());
@@ -57,7 +60,7 @@ export async function POST(request: NextRequest) {
       // mirroring the online flow; the engineer can record any amount.
       const cashDeposit = depositAmount && depositAmount > 0
         ? depositAmount
-        : Math.round(totalAmount * PRICING.depositPercent / 100);
+        : Math.round(totalAmount * studioConfig.depositPercent / 100);
       const { data: booking, error } = await serviceClient
         .from('bookings')
         .insert({

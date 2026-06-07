@@ -2,8 +2,8 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Calendar, Clock, Home, User, Users, ChevronLeft, ChevronRight, AlertTriangle, Star, Video, Music2 } from 'lucide-react';
-import { PRICING, ROOMS, ROOM_LABELS, ROOM_RATES, ROOM_RATES_SINGLE, SWEET_4, ENGINEERS, STUDIO_A_WEEKDAY_START, GUEST_FEE_PER_HOUR, FREE_GUESTS, MAX_GUESTS, BAND_PRICING, type Room } from '@/lib/constants';
-import { formatCents, cn, isSameDay, calculateSessionTotal, calculateBandSessionTotal, formatTime, getHourSurcharge, parseTimeSlot, decimalToTimeStr } from '@/lib/utils';
+import { formatCents, cn, isSameDay, formatTime, parseTimeSlot, decimalToTimeStr } from '@/lib/utils';
+import { priceSessionFromConfig, priceBandFromConfig, hourSurchargeFromConfig, sweetSpotAddonCents, type StudioConfig } from '@/lib/studio-config';
 
 // Self-serve band tiers. As of 2026-04-28 the 24h ("3 Days") tier is
 // self-serve bookable — checkout creates 3 linked bookings rows and the
@@ -51,10 +51,21 @@ function tierColor(tier: 'regular' | 'lateNight' | 'deepNight'): string {
 export default function BookingFlow({
   userName,
   userEmail,
+  studios,
+  engineers,
   band = null,
 }: {
   userName: string;
   userEmail: string;
+  /** DB-driven engineer roster (active), filtered to the selected room for the picker. */
+  engineers: readonly { name: string; displayName: string; specialties: string[]; studios: string[] }[];
+  /**
+   * DB-driven room configs (studio_rooms) loaded server-side and passed in, so
+   * admin edits to rates / hours / guest rules / surcharges / tiers cascade to
+   * the booking UI AND match what /api/booking/create charges (same config layer,
+   * proven byte-identical to the old constants by the golden round-trip).
+   */
+  studios: StudioConfig[];
   /**
    * When provided, the flow runs in "band mode":
    *   - room is locked to Studio A
@@ -70,6 +81,14 @@ export default function BookingFlow({
 }) {
   const isBandMode = !!band;
 
+  // ── DB-driven config accessors (replace the old lib/constants reads) ──
+  // `cfg` (current room) is derived just after the room state is declared below.
+  const studioBySlug = useMemo(() => new Map(studios.map((s) => [s.slug, s])), [studios]);
+  // Band tiers live on the band-enabled room (Studio A).
+  const bandCfg = studioBySlug.get('studio_a') ?? studios.find((s) => s.bandEnabled) ?? studios[0];
+  const bandTier = (h: number) => bandCfg.tiers.find((t) => t.kind === `band_${h}h`);
+  const sweet4HoursFor = (c: StudioConfig) => c.tiers.find((t) => t.kind === 'sweet_4')?.hours ?? 4;
+
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   // Default duration depends on mode: solo defaults to 2h (classic);
@@ -77,7 +96,16 @@ export default function BookingFlow({
   const [duration, setDuration] = useState<number>(isBandMode ? 4 : 2);
   // Band sessions are Studio A only — the state is locked below, but we
   // still initialize to studio_a to keep the initial pricing calc correct.
-  const [room, setRoom] = useState<Room>('studio_a');
+  const [room, setRoom] = useState<string>('studio_a');
+  // Current room's full config + derived weekday-restriction helpers.
+  const cfg = studioBySlug.get(room) ?? studios[0];
+  const weekdayStart = cfg.weekdayStartHour; // null = no weekday restriction
+  const weekdayStartLabel = weekdayStart != null ? formatTime(decimalToTimeStr(weekdayStart)) : null;
+  // Surcharge amounts (cents) for this room — drive the legend + banners so an
+  // admin's surcharge edits cascade everywhere, not just into the totals.
+  const lateNightCents = cfg.surcharges.find((s) => s.kind === 'late_night')?.amountCents ?? 0;
+  const deepNightCents = cfg.surcharges.find((s) => s.kind === 'deep_night')?.amountCents ?? 0;
+  const sameDayCents = cfg.surcharges.find((s) => s.kind === 'same_day')?.amountCents ?? 0;
 
   // ── Band-only: Sweet Spot filming add-on ──────────────────────────
   // Toggle is shown when the band picks the 8hr or 24hr tier. For 24hr
@@ -138,8 +166,8 @@ export default function BookingFlow({
   // from needing to know which mode it's in — it just reads pricing.*.
   const pricing = useMemo(() => {
     if (isBandMode && (duration === 4 || duration === 8 || duration === 24)) {
-      // Sweet Spot only attaches to 8hr / 24hr tiers; 4hr ignores the
-      // add-on state. The helper validates this internally too.
+      // Sweet Spot only attaches to 8hr / 24hr tiers; 4hr ignores the add-on
+      // state. priceBandFromConfig validates the addon/duration match internally.
       const addon = sweetSpotAddon
         ? duration === 8
           ? { kind: '8hr-addon' as const }
@@ -147,21 +175,10 @@ export default function BookingFlow({
             ? { kind: '3day-addon' as const, filmingDayIndex: sweetSpotFilmingDay }
             : null
         : null;
-      const bp = calculateBandSessionTotal(duration, addon);
-      return {
-        subtotal: bp.subtotal,
-        hourBreakdown: [] as ReturnType<typeof calculateSessionTotal>['hourBreakdown'],
-        nightFees: 0,
-        sameDayFee: 0,
-        guestFee: 0,
-        guestCount: 1,
-        sweetSpot: false,
-        total: bp.total,
-        deposit: bp.deposit,
-      };
+      return priceBandFromConfig(bandCfg, duration, addon);
     }
-    return calculateSessionTotal(room, duration, startHour, isSameDayBooking, guestCount);
-  }, [isBandMode, room, duration, startHour, isSameDayBooking, guestCount, sweetSpotAddon, sweetSpotFilmingDay]);
+    return priceSessionFromConfig(cfg, { hours: duration, startHour, sameDay: isSameDayBooking, guests: guestCount });
+  }, [isBandMode, cfg, bandCfg, duration, startHour, isSameDayBooking, guestCount, sweetSpotAddon, sweetSpotFilmingDay]);
 
   // Fetch month-level availability for heat map coloring
   useEffect(() => {
@@ -206,15 +223,16 @@ export default function BookingFlow({
     ? bookedSlots[selectedDate.toISOString().split('T')[0]] || []
     : [];
 
-  // Studio A weekday restriction: only available 6 PM+ on Mon-Fri
+  // Per-room weekday restriction: a room with weekdayStartHour set is only
+  // bookable from that hour onward Mon-Fri (Studio A = 6:30 PM+ today).
   const isWeekday = selectedDate ? [1, 2, 3, 4, 5].includes(selectedDate.getDay()) : false;
-  const studioARestricted = room === 'studio_a' && isWeekday;
+  const studioARestricted = weekdayStart != null && isWeekday;
 
   // Check if a half-hour slot would conflict (slot is decimal, e.g. 18.5)
   function isSlotBooked(slot: number): boolean {
     if (currentBookedSlots.includes(slot)) return true;
-    // Studio A blocked before 6:30 PM on weekdays
-    if (studioARestricted && slot < STUDIO_A_WEEKDAY_START) return true;
+    // Room blocked before its weekday start hour on weekdays
+    if (studioARestricted && weekdayStart != null && slot < weekdayStart) return true;
     return false;
   }
 
@@ -464,7 +482,7 @@ export default function BookingFlow({
               {isSameDay(selectedDate) && (
                 <span className="block text-amber-600 text-xs mt-1">
                   <AlertTriangle className="w-3 h-3 inline mr-1" />
-                  Same-day booking: +$10/hr surcharge applies
+                  Same-day booking: +{formatCents(sameDayCents)}/hr surcharge applies
                 </span>
               )}
             </div>
@@ -495,42 +513,45 @@ export default function BookingFlow({
             <div className="p-6 border-2 border-black bg-black text-white font-mono max-w-sm">
               <Home className="w-6 h-6 mb-3 text-accent" />
               <p className="font-bold text-sm uppercase tracking-wider flex items-center gap-2">
-                {ROOM_LABELS.studio_a}
+                {bandCfg.displayName}
                 <span className="text-[10px] bg-accent/20 text-accent px-2 py-0.5 rounded">BAND</span>
               </p>
               <p className="text-xs mt-1 text-white/80">
                 Flat-rate package — all-in pricing, no surcharges
               </p>
-              <p className="text-[10px] mt-2 text-amber-300">
-                Weekdays 6:30 PM+ only
-              </p>
+              {bandCfg.weekdayStartHour != null && (
+                <p className="text-[10px] mt-2 text-amber-300">
+                  Weekdays {formatTime(decimalToTimeStr(bandCfg.weekdayStartHour))}+ only
+                </p>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {ROOMS.map((r) => (
+              {studios.map((s) => (
                 <button
-                  key={r}
+                  key={s.slug}
                   onClick={() => {
-                    setRoom(r);
+                    setRoom(s.slug);
                     setEngineer('any');
-                    // Clear time if switching to Studio A and current time is restricted
-                    if (r === 'studio_a' && isWeekday && selectedTime) {
-                      if (parseTimeSlot(selectedTime) < STUDIO_A_WEEKDAY_START) setSelectedTime(null);
+                    // Clear the selected time if switching to a room whose weekday
+                    // start hour would make the current pick unavailable.
+                    if (s.weekdayStartHour != null && isWeekday && selectedTime) {
+                      if (parseTimeSlot(selectedTime) < s.weekdayStartHour) setSelectedTime(null);
                     }
                   }}
                   className={cn(
                     'p-6 border-2 font-mono text-left transition-colors',
-                    room === r ? 'border-black bg-black text-white' : 'border-black/20 hover:border-black'
+                    room === s.slug ? 'border-black bg-black text-white' : 'border-black/20 hover:border-black'
                   )}
                 >
-                  <Home className={cn('w-6 h-6 mb-3', room === r ? 'text-accent' : 'text-black/40')} />
-                  <p className="font-bold text-sm uppercase tracking-wider">{ROOM_LABELS[r]}</p>
-                  <p className={cn('text-xs mt-1', room === r ? 'text-white/80' : 'text-black/60')}>
-                    {formatCents(ROOM_RATES[r])}/hour
-                    <span className="block text-[10px] mt-0.5">1hr: {formatCents(ROOM_RATES_SINGLE[r])}</span>
-                    {r === 'studio_a' && (
-                      <span className={cn('block text-[10px] mt-1', room === r ? 'text-amber-300' : 'text-amber-600')}>
-                        Weekdays 6:30 PM+ only
+                  <Home className={cn('w-6 h-6 mb-3', room === s.slug ? 'text-accent' : 'text-black/40')} />
+                  <p className="font-bold text-sm uppercase tracking-wider">{s.displayName}</p>
+                  <p className={cn('text-xs mt-1', room === s.slug ? 'text-white/80' : 'text-black/60')}>
+                    {formatCents(s.hourlyRateCents)}/hour
+                    <span className="block text-[10px] mt-0.5">1hr: {formatCents(s.singleHourRateCents)}</span>
+                    {s.weekdayStartHour != null && (
+                      <span className={cn('block text-[10px] mt-1', room === s.slug ? 'text-amber-300' : 'text-amber-600')}>
+                        Weekdays {formatTime(decimalToTimeStr(s.weekdayStartHour))}+ only
                       </span>
                     )}
                   </p>
@@ -571,7 +592,7 @@ export default function BookingFlow({
                   We&apos;ll match you
                 </p>
               </button>
-              {ENGINEERS.filter((eng) => eng.studios.includes(room)).map((eng) => (
+              {engineers.filter((eng) => eng.studios.includes(room)).map((eng) => (
                 <button
                   key={eng.name}
                   onClick={() => setEngineer(eng.name)}
@@ -612,13 +633,13 @@ export default function BookingFlow({
           </p>
           {studioARestricted && (
             <p className="font-mono text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 mb-4">
-              Studio A is available 6:30 PM and later on weekdays. Available all day on weekends.
+              {cfg.displayName} is available {weekdayStartLabel} and later on weekdays. Available all day on weekends.
             </p>
           )}
           <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
             {timeSlots.map((slot) => {
               const slotDec = parseTimeSlot(slot);
-              const surcharge = getHourSurcharge(slotDec);
+              const surcharge = hourSurchargeFromConfig(cfg, slotDec);
               const booked = isSlotBooked(slotDec);
               return (
                 <button
@@ -636,13 +657,13 @@ export default function BookingFlow({
                   )}
                 >
                   {booked
-                    ? (studioARestricted && slotDec < STUDIO_A_WEEKDAY_START ? 'Unavail.' : 'Booked')
+                    ? (studioARestricted && weekdayStart != null && slotDec < weekdayStart ? 'Unavail.' : 'Booked')
                     : formatTime(slot)}
                   {!booked && surcharge.tier === 'lateNight' && (
-                    <span className="block text-[9px] text-amber-600 font-semibold mt-0.5">+$10/hr</span>
+                    <span className="block text-[9px] text-amber-600 font-semibold mt-0.5">+{formatCents(surcharge.amount)}/hr</span>
                   )}
                   {!booked && surcharge.tier === 'deepNight' && (
-                    <span className="block text-[9px] text-red-500 font-semibold mt-0.5">+$30/hr</span>
+                    <span className="block text-[9px] text-red-500 font-semibold mt-0.5">+{formatCents(surcharge.amount)}/hr</span>
                   )}
                 </button>
               );
@@ -652,8 +673,8 @@ export default function BookingFlow({
           {/* Legend */}
           <div className="flex flex-wrap gap-4 mt-4 font-mono text-[10px] uppercase tracking-wider">
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 border border-black/20 inline-block" /> Regular</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-amber-50 border border-amber-400/50 inline-block" /> Late Night +$10/hr</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-red-50 border border-red-400/50 inline-block" /> After Hours +$30/hr</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-amber-50 border border-amber-400/50 inline-block" /> Late Night +{formatCents(lateNightCents)}/hr</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-red-50 border border-red-400/50 inline-block" /> After Hours +{formatCents(deepNightCents)}/hr</span>
           </div>
         </div>
 
@@ -663,11 +684,11 @@ export default function BookingFlow({
             Duration: {duration} hour{duration > 1 ? 's' : ''}
             {isBandMode ? (
               <span className="text-accent ml-2 inline-flex items-center gap-1">
-                <Music2 className="w-3 h-3" /> Band Tier ({formatCents(BAND_PRICING.find((t) => t.hours === duration)?.price || 0)})
+                <Music2 className="w-3 h-3" /> Band Tier ({formatCents(bandTier(duration)?.priceCents || 0)})
               </span>
             ) : (
               <>
-                {duration === SWEET_4[room].hours && (
+                {duration === sweet4HoursFor(cfg) && (
                   <span className="text-accent ml-2 inline-flex items-center gap-1"><Star className="w-3 h-3" /> The Sweet 4!</span>
                 )}
                 {duration === 3 && (
@@ -682,7 +703,7 @@ export default function BookingFlow({
                 their pick is Day 1 of three. Solo path: 1..maxHours. */}
             {isBandMode
               ? BAND_DURATIONS.map((h) => {
-                  const tier = BAND_PRICING.find((t) => t.hours === h);
+                  const tier = bandTier(h);
                   const headline = h === 24 ? '3 Days' : `${h} hours`;
                   return (
                     <button
@@ -695,12 +716,12 @@ export default function BookingFlow({
                     >
                       <p className="text-lg font-bold">{headline}</p>
                       <p className={cn('text-xs mt-0.5', duration === h ? 'text-white/80' : 'text-black/60')}>
-                        {formatCents(tier?.price || 0)} · {tier?.note}
+                        {formatCents(tier?.priceCents || 0)} · {tier?.note}
                       </p>
                     </button>
                   );
                 })
-              : Array.from({ length: PRICING.maxHours }, (_, i) => i + 1).map((h) => (
+              : Array.from({ length: cfg.maxHours }, (_, i) => i + 1).map((h) => (
                   <button
                     key={h}
                     onClick={() => setDuration(h)}
@@ -710,7 +731,7 @@ export default function BookingFlow({
                     )}
                   >
                     {h}
-                    {h === SWEET_4[room].hours && duration !== h && (
+                    {h === sweet4HoursFor(cfg) && duration !== h && (
                       <span className="absolute -top-1 -right-1 w-2 h-2 bg-accent rounded-full" />
                     )}
                   </button>
@@ -786,9 +807,7 @@ export default function BookingFlow({
                   <p className="font-mono text-sm font-bold uppercase tracking-wider mb-1">
                     Add Sweet Spot filming &nbsp;
                     <span className="text-accent">
-                      {duration === 8
-                        ? '+ $2,000'
-                        : '+ $1,000'}
+                      + {formatCents(sweetSpotAddonCents(bandCfg, duration))}
                     </span>
                   </p>
                   <p className="font-mono text-xs text-black/70">
@@ -906,7 +925,7 @@ export default function BookingFlow({
             </div>
             <div className="flex justify-between">
               <span className="text-black/60">Studio</span>
-              <span className="font-semibold">{ROOM_LABELS[room]}</span>
+              <span className="font-semibold">{cfg.displayName}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-black/60">Engineer</span>
@@ -920,15 +939,15 @@ export default function BookingFlow({
           <h4 className="font-mono text-xs font-semibold uppercase tracking-wider text-black/70 mb-3">Price Breakdown</h4>
           <div className="space-y-2 font-mono text-sm">
             {/* Base rate — different copy per mode. Band shows the tier
-                label from BAND_PRICING ("8 Hours · $85/hour") because
-                that's what the customer was quoted on /pricing. */}
+                label from the band-room config tier ("8 Hours · $85/hour")
+                because that's what the customer was quoted on /pricing. */}
             <div className="flex justify-between">
               <span className="text-black/60">
                 {isBandMode
-                  ? `Band Session — ${BAND_PRICING.find((t) => t.hours === duration)?.label} (${BAND_PRICING.find((t) => t.hours === duration)?.note})`
+                  ? `Band Session — ${bandTier(duration)?.label} (${bandTier(duration)?.note})`
                   : pricing.sweetSpot
-                    ? `${ROOM_LABELS[room]} The Sweet 4 (${duration}hr flat rate)`
-                    : `${ROOM_LABELS[room]} (${duration}hr × ${formatCents(duration === 1 ? ROOM_RATES_SINGLE[room] : ROOM_RATES[room])})`
+                    ? `${cfg.displayName} The Sweet 4 (${duration}hr flat rate)`
+                    : `${cfg.displayName} (${duration}hr × ${formatCents(duration === 1 ? cfg.singleHourRateCents : cfg.hourlyRateCents)})`
                 }
               </span>
               <span>{formatCents(pricing.subtotal)}</span>
@@ -936,7 +955,7 @@ export default function BookingFlow({
             {pricing.sweetSpot && !isBandMode && (
               <div className="flex justify-between text-green-700">
                 <span className="flex items-center gap-1"><Star className="w-3 h-3" /> The Sweet 4 savings</span>
-                <span>-{formatCents(ROOM_RATES[room] * duration - pricing.subtotal)}</span>
+                <span>-{formatCents(cfg.hourlyRateCents * duration - pricing.subtotal)}</span>
               </div>
             )}
 
@@ -964,7 +983,7 @@ export default function BookingFlow({
               <div className="flex justify-between text-amber-700">
                 <span className="flex items-center gap-1">
                   <AlertTriangle className="w-3 h-3" />
-                  Same-day surcharge ({duration}hr × {formatCents(PRICING.sameDaySurcharge)})
+                  Same-day surcharge ({duration}hr × {formatCents(sameDayCents)})
                 </span>
                 <span>+{formatCents(pricing.sameDayFee)}</span>
               </div>
@@ -975,7 +994,7 @@ export default function BookingFlow({
               <div className="flex justify-between text-amber-700">
                 <span className="flex items-center gap-1">
                   <Users className="w-3 h-3" />
-                  Extra guest fee ({guestCount - FREE_GUESTS} extra × {duration}hr × {formatCents(GUEST_FEE_PER_HOUR)})
+                  Extra guest fee ({guestCount - cfg.freeGuests} extra × {duration}hr × {formatCents(cfg.guestFeeCents)})
                 </span>
                 <span>+{formatCents(pricing.guestFee)}</span>
               </div>
@@ -991,7 +1010,7 @@ export default function BookingFlow({
               <span className="font-bold">{formatCents(pricing.total)}</span>
             </div>
             <div className="flex justify-between text-xl font-bold">
-              <span>Deposit Due Now (50%)</span>
+              <span>Deposit Due Now ({cfg.depositPercent}%)</span>
               <span className="text-accent">{formatCents(pricing.deposit)}</span>
             </div>
             <p className="text-xs text-black/60 mt-2">
@@ -1028,24 +1047,24 @@ export default function BookingFlow({
               </label>
               <select id="guestCount" value={guestCount} onChange={(e) => setGuestCount(Number(e.target.value))}
                 className="w-full border-2 border-black px-4 py-3 font-mono text-sm bg-transparent focus:border-accent focus:outline-none">
-                {Array.from({ length: MAX_GUESTS }, (_, i) => i).map((guests) => {
+                {Array.from({ length: cfg.maxGuests }, (_, i) => i).map((guests) => {
                   const totalPeople = guests + 1; // artist + guests
-                  const extraPeople = Math.max(0, totalPeople - FREE_GUESTS);
+                  const extraPeople = Math.max(0, totalPeople - cfg.freeGuests);
                   return (
                     <option key={guests} value={totalPeople}>
                       {guests === 0
                         ? 'No guests — just me'
-                        : guests <= 2
+                        : totalPeople <= cfg.freeGuests
                           ? `${guests} guest${guests > 1 ? 's' : ''} (free)`
-                          : `${guests} guests (+${formatCents(GUEST_FEE_PER_HOUR * extraPeople)}/hr for ${extraPeople} extra)`
+                          : `${guests} guests (+${formatCents(cfg.guestFeeCents * extraPeople)}/hr for ${extraPeople} extra)`
                       }
                     </option>
                   );
                 })}
               </select>
-              {guestCount > FREE_GUESTS && (
+              {guestCount > cfg.freeGuests && (
                 <p className="font-mono text-xs text-amber-700 mt-1">
-                  {guestCount - FREE_GUESTS} extra guest{guestCount - FREE_GUESTS > 1 ? 's' : ''} beyond the included 2 — {formatCents(GUEST_FEE_PER_HOUR)}/hr each = {formatCents(pricing.guestFee)} added to your session
+                  {guestCount - cfg.freeGuests} extra guest{guestCount - cfg.freeGuests > 1 ? 's' : ''} beyond the included {cfg.freeGuests - 1} — {formatCents(cfg.guestFeeCents)}/hr each = {formatCents(pricing.guestFee)} added to your session
                 </p>
               )}
             </div>

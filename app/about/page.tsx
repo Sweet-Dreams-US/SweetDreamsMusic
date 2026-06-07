@@ -2,8 +2,15 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { MapPin, Clock } from 'lucide-react';
-import { SITE_URL, BRAND } from '@/lib/constants';
+import { SITE_URL } from '@/lib/constants';
 import { STUDIO_IMAGES } from '@/lib/images';
+import { requireHref } from '@/lib/site-settings-server';
+import { getSiteContent } from '@/lib/site-content-server';
+import { content } from '@/lib/site-content';
+import { getBrand } from '@/lib/brand-server';
+
+// Reads the site's nav flags at request time so the page can 404 when disabled.
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'About Sweet Dreams Music — Fort Wayne Recording Studio',
@@ -17,7 +24,10 @@ export const metadata: Metadata = {
   },
 };
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  await requireHref('/about'); // 404 when the About page is disabled
+  const c = await getSiteContent();
+  const brand = await getBrand();
   return (
     <>
       {/* Hero */}
@@ -32,12 +42,11 @@ export default function AboutPage() {
         />
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <p className="font-mono text-accent text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-3">
-            About Us
+            {content(c, 'about.hero.kicker')}
           </p>
-          <h1 className="text-display-md mb-6">THE STUDIO</h1>
+          <h1 className="text-display-md mb-6">{content(c, 'about.hero.title')}</h1>
           <p className="font-mono text-white/70 text-body-md max-w-2xl">
-            Sweet Dreams Music is Fort Wayne&apos;s premier recording studio. We provide a professional,
-            creative environment where artists can bring their vision to life.
+            {content(c, 'about.hero.intro')}
           </p>
         </div>
       </section>
@@ -47,7 +56,7 @@ export default function AboutPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 sm:gap-16">
             <div>
-              <h2 className="text-heading-xl mb-6">TWO STUDIOS. ONE MISSION.</h2>
+              <h2 className="text-heading-xl mb-6">{content(c, 'about.body.heading')}</h2>
               <div className="font-mono text-body-sm text-black/70 space-y-4">
                 <p>
                   Our facility features two fully-equipped recording studios — Studio A and Studio B —
@@ -135,7 +144,7 @@ export default function AboutPage() {
                 <h3 className="text-heading-sm">LOCATION</h3>
               </div>
               <div className="font-mono text-black/60 text-sm space-y-2">
-                <p>{BRAND.address.city}, {BRAND.address.state}</p>
+                <p>{brand.address.city}, {brand.address.state}</p>
                 <p className="text-accent text-xs mt-4">
                   Full address provided upon booking confirmation
                 </p>

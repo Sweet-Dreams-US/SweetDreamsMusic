@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { createServiceClient } from '@/lib/supabase/server';
 import { SITE_URL } from '@/lib/constants';
+import { requireHref } from '@/lib/site-settings-server';
 import BlogPostCard from '@/components/blog/BlogPostCard';
 import { fmtStampDate } from '@/lib/studio-time';
 
@@ -23,6 +24,7 @@ interface BlogPageProps {
 }
 
 export default async function BlogPage({ searchParams }: BlogPageProps) {
+  await requireHref('/blog'); // 404 when the Blog is disabled
   const params = await searchParams;
   const currentCategory = params.category || '';
   const searchQuery = params.search || '';

@@ -9,12 +9,28 @@ import { fmtSessionDate, fmtStampDate } from '@/lib/studio-time';
 const ENGINEER_SPLIT = ENGINEER_SESSION_SPLIT;
 const MEDIA_COMMISSION = MEDIA_SELLER_COMMISSION;
 
+// Per-row split resolution: the frozen snapshot % stamped on the row at
+// completion/sale ?? the standard constant. Mirrors lib/earnings-core.ts EXACTLY
+// (which admin payroll uses with constants, no live overrides) so an engineer's
+// self-view nets to the same cents as the admin Accounting tab — including after
+// an admin edits a revenue share (future rows carry the new snapshot; historical
+// rows stay frozen on the constant). Pay is on the VALUE of the work
+// (service_value_cents ?? total_amount) so comped/reward sessions still pay.
+const engSplitFrac = (b: { engineer_split_pct?: number | null }) =>
+  b.engineer_split_pct != null ? Number(b.engineer_split_pct) / 100 : ENGINEER_SPLIT;
+const sellerFrac = (m: { seller_pct?: number | null }) =>
+  m.seller_pct != null ? Number(m.seller_pct) / 100 : MEDIA_COMMISSION;
+const sessionValue = (b: { service_value_cents?: number | null; total_amount: number }) =>
+  b.service_value_cents ?? b.total_amount;
+
 interface Booking {
   id: string;
   customer_name: string;
   start_time: string;
   duration: number;
   total_amount: number;
+  service_value_cents: number | null;
+  engineer_split_pct: number | null;
   deposit_amount: number;
   remainder_amount: number;
   actual_deposit_paid: number | null;
@@ -30,6 +46,7 @@ interface MediaSale {
   id: string;
   description: string;
   amount: number;
+  seller_pct: number | null;
   created_at: string;
 }
 
@@ -163,16 +180,19 @@ export default function EngineerAccounting() {
     completed.reduce((s, b) => s + b.total_amount, 0),
   [completed]);
 
-  const engineerSessionPay = Math.round(sessionRevenue * ENGINEER_SPLIT);
+  // Per-row (snapshot ?? constant) on service value — byte-identical to admin payroll.
+  const engineerSessionPay = useMemo(() =>
+    completed.reduce((s, b) => s + Math.round(sessionValue(b) * engSplitFrac(b)), 0),
+  [completed]);
 
   const totalDeposits = useMemo(() =>
     bookings.reduce((s, b) => s + (b.actual_deposit_paid || 0), 0),
   [bookings]);
 
-  const mediaTotal = useMemo(() =>
-    mediaSales.reduce((s, m) => s + m.amount, 0),
+  // Per-row (seller snapshot ?? constant) — matches admin's per-row media seller math.
+  const mediaCommission = useMemo(() =>
+    mediaSales.reduce((s, m) => s + Math.round(m.amount * sellerFrac(m)), 0),
   [mediaSales]);
-  const mediaCommission = Math.round(mediaTotal * MEDIA_COMMISSION);
 
   // Phase E: media session payouts. Unlike legacy media_sales (which tracks
   // gross sale amount and applies a commission percentage), media_session_bookings
@@ -317,7 +337,7 @@ export default function EngineerAccounting() {
                     </div>
                     <div className="text-right">
                       <span className="text-black/70">{formatCents(sale.amount)}</span>
-                      <span className="font-bold ml-3 text-accent">{formatCents(Math.round(sale.amount * MEDIA_COMMISSION))}</span>
+                      <span className="font-bold ml-3 text-accent">{formatCents(Math.round(sale.amount * sellerFrac(sale)))}</span>
                     </div>
                   </div>
                 ))}
@@ -389,7 +409,7 @@ function SessionTable({ sessions }: { sessions: Booking[] }) {
           <div className="col-span-1 text-black/60">{ROOM_LABELS[b.room || ''] || '—'}</div>
           <div className="col-span-1">{formatDuration(b.duration)}</div>
           <div className="col-span-2 text-right">{formatCents(b.total_amount)}</div>
-          <div className="col-span-2 text-right font-bold text-accent">{formatCents(Math.round(b.total_amount * 0.6))}</div>
+          <div className="col-span-2 text-right font-bold text-accent">{formatCents(Math.round(sessionValue(b) * engSplitFrac(b)))}</div>
           <div className="col-span-2 text-right">
             <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 ${STATUS_COLORS[b.status] || 'bg-black/5 text-black/50'}`}>
               {b.status}

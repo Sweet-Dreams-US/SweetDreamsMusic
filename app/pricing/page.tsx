@@ -2,8 +2,11 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Clock, AlertCircle, Check, Star, Users, Moon, Video } from 'lucide-react';
-import { SITE_URL, PRICING, ROOM_RATES, SWEET_4, BAND_PRICING } from '@/lib/constants';
-import { formatCents, calculateSessionTotal } from '@/lib/utils';
+import { SITE_URL } from '@/lib/constants';
+import { formatCents } from '@/lib/utils';
+import { createServiceClient } from '@/lib/supabase/server';
+import { getStudioConfigs } from '@/lib/studio-config-server';
+import { priceSessionFromConfig, type StudioConfig } from '@/lib/studio-config';
 import { STUDIO_IMAGES } from '@/lib/images';
 
 export const metadata: Metadata = {
@@ -27,7 +30,23 @@ const included = [
   'Comfortable lounge area',
 ];
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  // DB-driven pricing (studio_rooms) so this page always matches the booking
+  // engine + what the customer is charged. Constants fallback baked into the loader.
+  const studios = await getStudioConfigs(createServiceClient());
+  const bySlug = new Map(studios.map((s) => [s.slug, s]));
+  const cfgA = bySlug.get('studio_a') ?? studios[0];
+  const cfgB = bySlug.get('studio_b') ?? studios[1] ?? studios[0];
+  const bandCfg = bySlug.get('studio_a') ?? studios.find((s) => s.bandEnabled) ?? studios[0];
+  const sweet4 = (c: StudioConfig) => c.tiers.find((t) => t.kind === 'sweet_4');
+  const surcharge = (kind: 'late_night' | 'deep_night' | 'same_day') => cfgA.surcharges.find((s) => s.kind === kind)?.amountCents ?? 0;
+  const bandTiers = bandCfg.tiers.filter((t) => t.kind.startsWith('band_')).sort((a, b) => a.hours - b.hours);
+  // Worked "how surcharges stack" example — computed from config so the numbers
+  // can never drift from the real rates (4hr Studio A, midnight start, same-day).
+  const stackEx = priceSessionFromConfig(cfgA, { hours: 4, startHour: 0, sameDay: true, guests: 1 });
+  const tierName = (t: string) => (t === 'deepNight' ? 'after hours' : t === 'lateNight' ? 'late night' : 'regular');
+  const hourLabel = (h: number) => { const hr = Math.floor(h) % 24; const disp = hr % 12 === 0 ? 12 : hr % 12; return `${disp} ${hr < 12 ? 'AM' : 'PM'}`; };
+
   return (
     <>
       {/* Hero */}
@@ -60,10 +79,10 @@ export default function PricingPage() {
               <h2 className="text-heading-lg mb-2">STUDIO A</h2>
               <p className="font-mono text-sm text-black/50 mb-6">Premium room — top-tier acoustics and equipment</p>
               <div className="flex items-baseline gap-1 mb-2">
-                <span className="font-heading text-display-md">{formatCents(ROOM_RATES.studio_a)}</span>
+                <span className="font-heading text-display-md">{formatCents(cfgA.hourlyRateCents)}</span>
                 <span className="font-mono text-lg text-black/50">/hour</span>
               </div>
-              <p className="font-mono text-xs text-black/40 mb-6">Single hour: {formatCents(PRICING.studioASingleHour)}</p>
+              <p className="font-mono text-xs text-black/40 mb-6">Single hour: {formatCents(cfgA.singleHourRateCents)}</p>
               <hr className="my-6 border-black/10" />
               <h3 className="text-heading-sm mb-4">INCLUDED</h3>
               <div className="space-y-3">
@@ -81,10 +100,10 @@ export default function PricingPage() {
               <h2 className="text-heading-lg mb-2">STUDIO B</h2>
               <p className="font-mono text-sm text-black/50 mb-6">Versatile room — great for all session types</p>
               <div className="flex items-baseline gap-1 mb-2">
-                <span className="font-heading text-display-md">{formatCents(ROOM_RATES.studio_b)}</span>
+                <span className="font-heading text-display-md">{formatCents(cfgB.hourlyRateCents)}</span>
                 <span className="font-mono text-lg text-black/50">/hour</span>
               </div>
-              <p className="font-mono text-xs text-black/40 mb-6">Single hour: {formatCents(PRICING.studioBSingleHour)}</p>
+              <p className="font-mono text-xs text-black/40 mb-6">Single hour: {formatCents(cfgB.singleHourRateCents)}</p>
               <hr className="my-6 border-black/10" />
               <h3 className="text-heading-sm mb-4">INCLUDED</h3>
               <div className="space-y-3">
@@ -118,12 +137,12 @@ export default function PricingPage() {
               </div>
               <div className="space-y-3 mb-3">
                 <div>
-                  <p className="font-heading text-display-sm text-accent">{formatCents(SWEET_4.studio_a.price)}</p>
-                  <p className="font-mono text-xs text-black/50">Studio A — 4 hours ({formatCents(SWEET_4.studio_a.perHour)}/hr)</p>
+                  <p className="font-heading text-display-sm text-accent">{formatCents(sweet4(cfgA)?.priceCents ?? 0)}</p>
+                  <p className="font-mono text-xs text-black/50">{cfgA.displayName} — {sweet4(cfgA)?.hours} hours ({formatCents(sweet4(cfgA)?.perHourCents ?? 0)}/hr)</p>
                 </div>
                 <div>
-                  <p className="font-heading text-display-sm text-accent">{formatCents(SWEET_4.studio_b.price)}</p>
-                  <p className="font-mono text-xs text-black/50">Studio B — 4 hours ({formatCents(SWEET_4.studio_b.perHour)}/hr)</p>
+                  <p className="font-heading text-display-sm text-accent">{formatCents(sweet4(cfgB)?.priceCents ?? 0)}</p>
+                  <p className="font-mono text-xs text-black/50">{cfgB.displayName} — {sweet4(cfgB)?.hours} hours ({formatCents(sweet4(cfgB)?.perHourCents ?? 0)}/hr)</p>
                 </div>
               </div>
               <p className="font-mono text-sm text-black/60">Best value. Book 4 hours at a discounted flat rate.</p>
@@ -135,7 +154,7 @@ export default function PricingPage() {
                 <h3 className="text-heading-sm">LATE NIGHT</h3>
               </div>
               <div className="flex items-baseline gap-1 mb-3">
-                <span className="font-heading text-display-sm">+{formatCents(PRICING.lateNightSurcharge)}</span>
+                <span className="font-heading text-display-sm">+{formatCents(surcharge('late_night'))}</span>
                 <span className="font-mono text-sm text-black/50">/hour</span>
               </div>
               <p className="font-mono text-sm text-black/60">10 PM – 2 AM. Per-hour surcharge applies to each hour in this window.</p>
@@ -147,7 +166,7 @@ export default function PricingPage() {
                 <h3 className="text-heading-sm">AFTER HOURS</h3>
               </div>
               <div className="flex items-baseline gap-1 mb-3">
-                <span className="font-heading text-display-sm">+{formatCents(PRICING.deepNightSurcharge)}</span>
+                <span className="font-heading text-display-sm">+{formatCents(surcharge('deep_night'))}</span>
                 <span className="font-mono text-sm text-black/50">/hour</span>
               </div>
               <p className="font-mono text-sm text-black/60">2 AM – 9 AM. Per-hour surcharge applies to each hour in this window.</p>
@@ -159,7 +178,7 @@ export default function PricingPage() {
                 <h3 className="text-heading-sm">SAME-DAY</h3>
               </div>
               <div className="flex items-baseline gap-1 mb-3">
-                <span className="font-heading text-display-sm">+{formatCents(PRICING.sameDaySurcharge)}</span>
+                <span className="font-heading text-display-sm">+{formatCents(surcharge('same_day'))}</span>
                 <span className="font-mono text-sm text-black/50">/hour</span>
               </div>
               <p className="font-mono text-sm text-black/60">Booking and recording on the same day. Applies to every hour.</p>
@@ -174,12 +193,16 @@ export default function PricingPage() {
               Surcharges stack — a same-day session starting at 1 AM would have both the late night/after hours surcharge AND the same-day surcharge.
             </p>
             <div className="font-mono text-xs text-black/40 space-y-1">
-              <p>Example: 4hr session starting at midnight, same-day booking</p>
-              <p>12 AM: $70 base + $10 late night + $10 same-day = <strong className="text-black">$90</strong></p>
-              <p>1 AM: $70 base + $10 late night + $10 same-day = <strong className="text-black">$90</strong></p>
-              <p>2 AM: $70 base + $30 after hours + $10 same-day = <strong className="text-black">$110</strong></p>
-              <p>3 AM: $70 base + $30 after hours + $10 same-day = <strong className="text-black">$110</strong></p>
-              <p className="pt-1 text-black font-semibold">Total: $400 — Deposit: $200</p>
+              <p>Example: {stackEx.hourBreakdown.length}hr session starting at midnight, same-day booking</p>
+              {stackEx.hourBreakdown.map((hb, i) => (
+                <p key={i}>
+                  {hourLabel(hb.hour)}: {formatCents(hb.baseRate)} base
+                  {hb.nightFee > 0 && ` + ${formatCents(hb.nightFee)} ${tierName(hb.tier)}`}
+                  {hb.sameDayFee > 0 && ` + ${formatCents(hb.sameDayFee)} same-day`}
+                  {' = '}<strong className="text-black">{formatCents(hb.hourTotal)}</strong>
+                </p>
+              ))}
+              <p className="pt-1 text-black font-semibold">Total: {formatCents(stackEx.total)} — Deposit: {formatCents(stackEx.deposit)}</p>
             </div>
           </div>
         </div>
@@ -194,14 +217,14 @@ export default function PricingPage() {
           </div>
           <h2 className="text-heading-xl mb-12 sm:mb-16">BAND RECORDING</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {BAND_PRICING.map((pkg) => (
+            {bandTiers.map((pkg) => (
               <div key={pkg.hours} className="border border-white/10 p-8">
                 <h3 className="text-heading-sm mb-2">{pkg.label}</h3>
                 <p className="font-mono text-xs text-white/70 mb-4">{pkg.note}</p>
                 <div className="flex items-baseline gap-1 mb-4">
-                  <span className="font-heading text-display-sm text-accent">{formatCents(pkg.price)}</span>
+                  <span className="font-heading text-display-sm text-accent">{formatCents(pkg.priceCents)}</span>
                 </div>
-                <p className="font-mono text-sm text-white/80">{formatCents(pkg.perHour)}/hour</p>
+                <p className="font-mono text-sm text-white/80">{formatCents(pkg.perHourCents)}/hour</p>
               </div>
             ))}
           </div>
@@ -221,7 +244,7 @@ export default function PricingPage() {
               { title: 'THE SWEET 4 — STUDIO A', room: 'studio_a' as const, hours: 4, startHour: 12, sameDay: false },
               { title: '3 HOURS — STUDIO A (11 PM START)', room: 'studio_a' as const, hours: 3, startHour: 23, sameDay: false },
             ].map((ex) => {
-              const p = calculateSessionTotal(ex.room, ex.hours, ex.startHour, ex.sameDay);
+              const p = priceSessionFromConfig(bySlug.get(ex.room) ?? cfgA, { hours: ex.hours, startHour: ex.startHour, sameDay: ex.sameDay, guests: 1 });
               return (
                 <div key={ex.title} className="border-2 border-black p-8">
                   <h3 className="text-heading-sm mb-4">{ex.title}</h3>

@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Copy, Check, Link as LinkIcon, Search, UserPlus, X, Video, Trash2, ChevronDown, ChevronUp, Plus } from 'lucide-react';
-import { ROOMS, ROOM_LABELS, ROOM_RATES, ROOM_RATES_SINGLE, PRICING, ENGINEERS, type Room } from '@/lib/constants';
-import { formatCents, formatTime, calculateSessionTotal, parseTimeSlot } from '@/lib/utils';
+import { formatCents, formatTime, parseTimeSlot } from '@/lib/utils';
+import { priceSessionFromConfig, type StudioConfig } from '@/lib/studio-config';
+
+type EngineerOpt = { name: string; displayName: string };
 
 interface Client {
   id: string;
@@ -13,11 +15,11 @@ interface Client {
   profile_picture_url: string | null;
 }
 
-export default function CreateInvite() {
+export default function CreateInvite({ studios, engineers }: { studios: StudioConfig[]; engineers: readonly EngineerOpt[] }) {
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('11:00');
   const [duration, setDuration] = useState(2);
-  const [room, setRoom] = useState<Room>('studio_a');
+  const [room, setRoom] = useState<string>(studios[0]?.slug ?? 'studio_a');
   const [clientEmail, setClientEmail] = useState('');
   const [clientName, setClientName] = useState('');
   const [artistName, setArtistName] = useState('');
@@ -92,17 +94,20 @@ export default function CreateInvite() {
     setClientSearch('');
   }
 
+  // Current room's DB-driven config (rates / hours / surcharges / deposit %).
+  const cfg = useMemo(() => studios.find((s) => s.slug === room) ?? studios[0], [studios, room]);
+  const sameDayCents = cfg.surcharges.find((s) => s.kind === 'same_day')?.amountCents ?? 0;
   const startHour = parseTimeSlot(startTime);
   // Check if the selected date is today (Fort Wayne time) for same-day surcharge
   const todayLocal = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Indiana/Indianapolis' });
   const isSameDay = date === todayLocal;
-  const pricing = calculateSessionTotal(room, duration, startHour, isSameDay);
+  const pricing = priceSessionFromConfig(cfg, { hours: duration, startHour, sameDay: isSameDay, guests: 1 });
   const useCustomPrice = customPrice.trim() !== '';
   const customPriceCents = useCustomPrice ? Math.round(parseFloat(customPrice) * 100) : 0;
   const finalTotal = useCustomPrice ? customPriceCents : pricing.total;
   const mediaTotalCents = mediaAddons.reduce((s, a) => s + Math.round(parseFloat(a.amount || '0') * 100), 0);
   const combinedTotal = finalTotal + mediaTotalCents;
-  const finalDeposit = chargeFullAmount ? combinedTotal : Math.round(combinedTotal * (PRICING.depositPercent / 100));
+  const finalDeposit = chargeFullAmount ? combinedTotal : Math.round(combinedTotal * (cfg.depositPercent / 100));
 
   // Generate 30-min time slots
   const timeSlots: string[] = [];
@@ -381,7 +386,7 @@ export default function CreateInvite() {
       <div>
         <label className="block font-mono text-xs font-semibold uppercase tracking-wider mb-1">Duration: {duration} hours</label>
         <div className="flex gap-2">
-          {Array.from({ length: PRICING.maxHours }, (_, i) => i + 1).map((h) => (
+          {Array.from({ length: cfg.maxHours }, (_, i) => i + 1).map((h) => (
             <button key={h} onClick={() => setDuration(h)}
               className={`w-12 h-12 font-mono text-sm font-bold border transition-colors ${
                 duration === h ? 'bg-black text-white border-black' : 'border-black/20 hover:border-black'
@@ -395,12 +400,12 @@ export default function CreateInvite() {
       <div>
         <label className="block font-mono text-xs font-semibold uppercase tracking-wider mb-1">Studio</label>
         <div className="flex gap-3">
-          {ROOMS.map((r) => (
-            <button key={r} onClick={() => setRoom(r)}
+          {studios.map((s) => (
+            <button key={s.slug} onClick={() => setRoom(s.slug)}
               className={`flex-1 p-3 border-2 font-mono text-xs font-bold uppercase transition-colors ${
-                room === r ? 'bg-black text-white border-black' : 'border-black/20 hover:border-black'
+                room === s.slug ? 'bg-black text-white border-black' : 'border-black/20 hover:border-black'
               }`}>
-              {ROOM_LABELS[r]} — {formatCents(ROOM_RATES[r])}/hr
+              {s.displayName} — {formatCents(s.hourlyRateCents)}/hr
             </button>
           ))}
         </div>
@@ -547,7 +552,7 @@ export default function CreateInvite() {
                       className="w-full border border-black/20 px-3 py-2 font-mono text-xs focus:border-accent focus:outline-none"
                     >
                       <option value="">--</option>
-                      {ENGINEERS.map((eng) => (
+                      {engineers.map((eng) => (
                         <option key={eng.name} value={eng.name}>{eng.displayName}</option>
                       ))}
                     </select>
@@ -564,7 +569,7 @@ export default function CreateInvite() {
                       className="w-full border border-black/20 px-3 py-2 font-mono text-xs focus:border-accent focus:outline-none"
                     >
                       <option value="">--</option>
-                      {ENGINEERS.map((eng) => (
+                      {engineers.map((eng) => (
                         <option key={eng.name} value={eng.name}>{eng.displayName}</option>
                       ))}
                     </select>
@@ -581,7 +586,7 @@ export default function CreateInvite() {
                       className="w-full border border-black/20 px-3 py-2 font-mono text-xs focus:border-accent focus:outline-none"
                     >
                       <option value="">--</option>
-                      {ENGINEERS.map((eng) => (
+                      {engineers.map((eng) => (
                         <option key={eng.name} value={eng.name}>{eng.displayName}</option>
                       ))}
                     </select>
@@ -606,13 +611,13 @@ export default function CreateInvite() {
       <div className="border-2 border-black p-4 font-mono text-sm space-y-2">
         {useCustomPrice ? (
           <div className="flex justify-between">
-            <span className="text-black/60">Custom deal — {ROOM_LABELS[room]} × {duration}hr</span>
+            <span className="text-black/60">Custom deal — {cfg.displayName} × {duration}hr</span>
             <span>{formatCents(customPriceCents)}</span>
           </div>
         ) : (
           <>
             <div className="flex justify-between text-black/60">
-              <span>{ROOM_LABELS[room]} × {duration}hr @ {formatCents(duration === 1 ? ROOM_RATES_SINGLE[room] : ROOM_RATES[room])}/hr</span>
+              <span>{cfg.displayName} × {duration}hr @ {formatCents(duration === 1 ? cfg.singleHourRateCents : cfg.hourlyRateCents)}/hr</span>
               <span>{formatCents(pricing.subtotal)}</span>
             </div>
             {pricing.nightFees > 0 && (
@@ -623,7 +628,7 @@ export default function CreateInvite() {
             )}
             {pricing.sameDayFee > 0 && (
               <div className="flex justify-between text-red-600">
-                <span>Same-day booking (+$10/hr)</span>
+                <span>Same-day booking (+{formatCents(sameDayCents)}/hr)</span>
                 <span>+{formatCents(pricing.sameDayFee)}</span>
               </div>
             )}
@@ -649,7 +654,7 @@ export default function CreateInvite() {
         )}
         {paymentMethod === 'online' ? (
           <div className="flex justify-between font-bold">
-            <span>{chargeFullAmount ? 'Full Payment Due' : 'Client Deposit (50%)'}</span>
+            <span>{chargeFullAmount ? 'Full Payment Due' : `Client Deposit (${cfg.depositPercent}%)`}</span>
             <span className="text-accent">{formatCents(finalDeposit)}</span>
           </div>
         ) : (

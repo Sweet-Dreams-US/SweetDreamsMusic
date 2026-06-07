@@ -5,6 +5,7 @@ import { ArrowRight, Package as PackageIcon, Sparkles } from 'lucide-react';
 import { SITE_URL } from '@/lib/constants';
 import { STUDIO_IMAGES } from '@/lib/images';
 import { getActiveOfferings } from '@/lib/media-server';
+import { requireHref } from '@/lib/site-settings-server';
 import { groupOfferings, isOfferingVisibleTo } from '@/lib/media';
 import { getSessionUser } from '@/lib/auth';
 import { getUserBands } from '@/lib/bands-server';
@@ -63,6 +64,7 @@ const PORTFOLIO_VIDEOS = [
  *     studio_credits "gift card" balance (visible only inside the dashboard).
  */
 export default async function MediaPage() {
+  await requireHref('/media'); // 404 when Media is disabled in the control panel
   const user = await getSessionUser();
   const bandMemberships = user ? await getUserBands(user.id) : [];
   const viewer: 'anonymous' | 'solo' | 'band' = !user

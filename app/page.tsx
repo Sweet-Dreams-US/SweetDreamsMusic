@@ -2,8 +2,13 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Mic, Music, Headphones, Clock, DollarSign, Users } from 'lucide-react';
-import { ROOM_RATES, ENGINEERS, SITE_URL } from '@/lib/constants';
+import { ENGINEERS, SITE_URL } from '@/lib/constants';
 import { formatCents } from '@/lib/utils';
+import { createServiceClient } from '@/lib/supabase/server';
+import { getStudioConfigs } from '@/lib/studio-config-server';
+import { getSiteSettings } from '@/lib/site-settings-server';
+import { getSiteContent } from '@/lib/site-content-server';
+import { content } from '@/lib/site-content';
 import { STUDIO_IMAGES } from '@/lib/images';
 import HeroTitle from '@/components/home/HeroTitle';
 import BuiltForBands from '@/components/marketing/BuiltForBands';
@@ -55,13 +60,26 @@ const services = [
   },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  // DB-driven headline rates (studio_rooms) so the homepage matches the booking
+  // engine + pricing page. Constants fallback baked into the loader.
+  const studios = await getStudioConfigs(createServiceClient());
+  const bySlug = new Map(studios.map((s) => [s.slug, s]));
+  const rateA = bySlug.get('studio_a')?.hourlyRateCents ?? studios[0]?.hourlyRateCents ?? 0;
+  const rateB = bySlug.get('studio_b')?.hourlyRateCents ?? studios[1]?.hourlyRateCents ?? rateA;
+  const surchCfg = bySlug.get('studio_a') ?? studios[0];
+  const lateNight = surchCfg?.surcharges.find((s) => s.kind === 'late_night')?.amountCents ?? 0;
+  const deepNight = surchCfg?.surcharges.find((s) => s.kind === 'deep_night')?.amountCents ?? 0;
+  // Hide the bands marketing section when Bands is turned off (its CTA would 404).
+  const flags = await getSiteSettings();
+  const c = await getSiteContent();
+
   return (
     <>
       {/* Hero */}
       <section className="relative bg-black text-white min-h-[90vh] flex items-center justify-center overflow-hidden">
         <Image
-          src={STUDIO_IMAGES.studioBSideLowAngleWide}
+          src={content(c, 'home.hero.image')}
           alt="Sweet Dreams Music Studio"
           fill
           className="object-cover opacity-40"
@@ -71,11 +89,11 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/20 to-black" />
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center py-20">
           <p className="font-mono text-accent text-sm sm:text-base font-semibold tracking-[0.3em] uppercase mb-6">
-            Fort Wayne Recording Studio
+            {content(c, 'home.hero.kicker')}
           </p>
           <HeroTitle />
           <p className="font-mono text-white/70 text-body-md max-w-2xl mx-auto mb-10">
-            Professional recording sessions starting at {formatCents(ROOM_RATES.studio_b)}/hour.
+            Professional recording sessions starting at {formatCents(rateB)}/hour.
             Two studios. Four engineers. 30+ years of mixing experience combined.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -120,7 +138,7 @@ export default function HomePage() {
       </section>
 
       {/* Built For Bands — yellow break between Services and equipment showcase */}
-      <BuiltForBands />
+      {flags.bandsEnabled && <BuiltForBands />}
 
       {/* Equipment Showcase - White */}
       <section className="bg-white text-black py-20 sm:py-28">
@@ -161,7 +179,7 @@ export default function HomePage() {
               <div className="p-8 sm:p-10">
                 <h3 className="text-heading-sm mb-2">STUDIO A</h3>
                 <div className="flex items-baseline gap-1 mb-3">
-                  <span className="font-heading text-display-sm text-accent">{formatCents(ROOM_RATES.studio_a)}</span>
+                  <span className="font-heading text-display-sm text-accent">{formatCents(rateA)}</span>
                   <span className="font-mono text-sm text-white/80">/hour</span>
                 </div>
                 <p className="font-mono text-sm text-white/60">Our primary recording room. Premium acoustics and equipment.</p>
@@ -174,7 +192,7 @@ export default function HomePage() {
               <div className="p-8 sm:p-10">
                 <h3 className="text-heading-sm mb-2">STUDIO B</h3>
                 <div className="flex items-baseline gap-1 mb-3">
-                  <span className="font-heading text-display-sm text-accent">{formatCents(ROOM_RATES.studio_b)}</span>
+                  <span className="font-heading text-display-sm text-accent">{formatCents(rateB)}</span>
                   <span className="font-mono text-sm text-white/80">/hour</span>
                 </div>
                 <p className="font-mono text-sm text-white/60">Versatile second studio. Perfect for all session types.</p>
@@ -186,7 +204,7 @@ export default function HomePage() {
             <span className="text-white/20">|</span>
             <span>Open 24 hours</span>
             <span className="text-white/20">|</span>
-            <span>Late night +$10/hr · After hours +$30/hr</span>
+            <span>Late night +{formatCents(lateNight)}/hr · After hours +{formatCents(deepNight)}/hr</span>
             <span className="text-white/20">|</span>
             <span>Band recording available</span>
           </div>
@@ -205,7 +223,7 @@ export default function HomePage() {
               { icon: Users, value: String(ENGINEERS.length), label: 'Engineers' },
               { icon: DollarSign, value: '$60', label: 'Starting Rate' },
               { icon: Clock, value: '7', label: 'Days a Week' },
-              { icon: Mic, value: '2', label: 'Studios' },
+              { icon: Mic, value: String(studios.length), label: 'Studios' },
             ].map((stat) => (
               <div key={stat.label}>
                 <stat.icon className="w-8 h-8 text-accent mx-auto mb-3" strokeWidth={1.5} />

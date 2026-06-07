@@ -14,6 +14,10 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { SITE_URL } from '@/lib/constants';
+import { formatCents } from '@/lib/utils';
+import { createServiceClient } from '@/lib/supabase/server';
+import { getStudioConfigs } from '@/lib/studio-config-server';
+import { requireHref } from '@/lib/site-settings-server';
 
 export const metadata: Metadata = {
   title: 'The Sweet Spot & Band Recording — Sweet Dreams Music',
@@ -89,10 +93,12 @@ const SWEET_SPOT_INCLUDES = [
 // blocks a 5hr window, an 8hr blocks 9hr. The 3×8 day package only adds the
 // setup hour to day one (the rest of the studio is already on hold for those
 // dates). Pricing on `/book` and the band booking flow needs to follow.
-const BAND_PRICING = [
-  { label: '4 Hours', price: '$440', note: 'Includes free 1-hr setup before' },
-  { label: '8 Hours', price: '$700', note: 'Flat rate. Free 1-hr setup before' },
-  { label: '3 × 8hr Days', price: '$1,800', note: '$75 / hr · setup hr on day 1 only' },
+// Bespoke marketing copy (label + note). The headline PRICE is pulled live from
+// the band room's config tiers below, so /bands matches the booking engine + /pricing.
+const BAND_TIERS = [
+  { label: '4 Hours', hours: 4, note: 'Includes free 1-hr setup before' },
+  { label: '8 Hours', hours: 8, note: 'Flat rate. Free 1-hr setup before' },
+  { label: '3 × 8hr Days', hours: 24, note: 'setup hr on day 1 only' },
 ] as const;
 
 // Quick pitch tiles for the new "What bands do here" section. Sweet Spot is
@@ -128,7 +134,13 @@ const BAND_FEATURES = [
   },
 ] as const;
 
-export default function BandsPage() {
+export default async function BandsPage() {
+  await requireHref('/bands'); // 404 when Bands is disabled in the control panel
+  // DB-driven band prices (studio_rooms band tiers) so this page matches the
+  // booking engine + /pricing. Constants fallback baked into the loader.
+  const studios = await getStudioConfigs(createServiceClient());
+  const bandCfg = studios.find((s) => s.slug === 'studio_a') ?? studios.find((s) => s.bandEnabled) ?? studios[0];
+  const bandPrice = (hours: number) => formatCents(bandCfg?.tiers.find((t) => t.kind === `band_${hours}h`)?.priceCents ?? 0);
   return (
     <>
       {/* ═══════════════════════════════════════════════════════════════
@@ -383,13 +395,13 @@ export default function BandsPage() {
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6 mb-12">
-            {BAND_PRICING.map((tier) => (
+            {BAND_TIERS.map((tier) => (
               <div
                 key={tier.label}
                 className="border-2 border-white/10 hover:border-accent transition-colors p-8"
               >
                 <p className="font-mono text-xs text-white/50 uppercase tracking-wider mb-2">{tier.label}</p>
-                <p className="text-display-sm text-accent mb-2">{tier.price}</p>
+                <p className="text-display-sm text-accent mb-2">{bandPrice(tier.hours)}</p>
                 <p className="font-mono text-sm text-white/70">{tier.note}</p>
               </div>
             ))}

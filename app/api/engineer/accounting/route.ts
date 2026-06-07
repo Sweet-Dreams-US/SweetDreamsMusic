@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
   // correctly when they're working a 3-day block or a Sweet Spot add-on.
   let bookingsQuery = supabase
     .from('bookings')
-    .select('id, customer_name, customer_email, customer_phone, artist_name, start_time, end_time, duration, total_amount, deposit_amount, remainder_amount, actual_deposit_paid, status, room, requested_engineer, engineer_name, claimed_at, created_at, admin_notes, deposit_method, stripe_customer_id, stripe_payment_intent_id, booking_group_id, sweet_spot_addon, setup_minutes_before, band_id')
+    .select('id, customer_name, customer_email, customer_phone, artist_name, start_time, end_time, duration, total_amount, service_value_cents, engineer_split_pct, deposit_amount, remainder_amount, actual_deposit_paid, status, room, requested_engineer, engineer_name, claimed_at, created_at, admin_notes, deposit_method, stripe_customer_id, stripe_payment_intent_id, booking_group_id, sweet_spot_addon, setup_minutes_before, band_id')
     .not('status', 'eq', 'cancelled')
     .order('start_time', { ascending: false });
 

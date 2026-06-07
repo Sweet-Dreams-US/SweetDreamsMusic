@@ -4,11 +4,13 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X, User } from 'lucide-react';
-import { NAV_LINKS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 
-export default function Header() {
+// navLinks are pre-filtered by the server (HeaderSlot) per the site's feature/nav
+// flags, so disabled features/pages never render. Locked items (Book, Beats,
+// Pricing) always survive the filter.
+export default function Header({ navLinks, brandName }: { navLinks: readonly { href: string; label: string }[]; brandName: string }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [user, setUser] = useState<{ email: string } | null>(null);
   const pathname = usePathname();
@@ -25,12 +27,12 @@ export default function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
           <Link href="/" className="flex items-center gap-2 no-underline">
-            <span className="font-heading text-white text-xl sm:text-2xl tracking-wider">SWEET DREAMS</span>
+            <span className="font-heading text-white text-xl sm:text-2xl tracking-wider">{brandName}</span>
           </Link>
 
           {/* Desktop Nav */}
           <nav aria-label="Primary" className="hidden lg:flex items-center gap-1">
-            {NAV_LINKS.map((link) => (
+            {navLinks.map((link) => (
               <Link key={link.href} href={link.href}
                 aria-current={pathname === link.href ? 'page' : undefined}
                 className={cn(
@@ -77,7 +79,7 @@ export default function Header() {
       {mobileOpen && (
         <nav id="mobile-nav" aria-label="Mobile" className="lg:hidden bg-black border-t border-white/10">
           <div className="px-4 py-4 flex flex-col gap-1">
-            {NAV_LINKS.map((link) => (
+            {navLinks.map((link) => (
               <Link key={link.href} href={link.href} onClick={() => setMobileOpen(false)}
                 aria-current={pathname === link.href ? 'page' : undefined}
                 className={cn(

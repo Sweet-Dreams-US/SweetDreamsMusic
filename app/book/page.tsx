@@ -7,6 +7,8 @@ import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import { memberHasFlag } from '@/lib/bands';
 import { getMembership } from '@/lib/bands-server';
+import { getStudioConfigs } from '@/lib/studio-config-server';
+import { getEngineers } from '@/lib/engineers-server';
 import BookingFlow from '@/components/booking/BookingFlow';
 
 export const metadata: Metadata = {
@@ -39,6 +41,12 @@ export default async function BookPage({
 }) {
   const user = await getSessionUser();
   const { bandId } = await searchParams;
+
+  // DB-driven room configs (rates / hours / guest rules / tiers / surcharges).
+  // Same config the charge uses, so the booking UI and /api/booking/create can
+  // never disagree. Constants fallback is baked into getStudioConfigs.
+  const studios = await getStudioConfigs(createServiceClient());
+  const engineers = await getEngineers();
 
   // Resolve band mode if ?bandId present. Four outcomes:
   //   - no bandId             → solo mode (band = null)
@@ -128,6 +136,8 @@ export default async function BookPage({
             <BookingFlow
               userName={user.profile?.display_name || ''}
               userEmail={user.email}
+              studios={studios}
+              engineers={engineers}
               band={band}
             />
           ) : (
