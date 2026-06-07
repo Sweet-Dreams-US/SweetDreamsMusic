@@ -5,6 +5,7 @@ import { Eye } from 'lucide-react';
 import { formatCents, formatDuration } from '@/lib/utils';
 import { ENGINEERS } from '@/lib/constants';
 import CashCorrectionModal from '@/components/booking/CashCorrectionModal';
+import ReassignCustomerButton from '@/components/booking/ReassignCustomerButton';
 import { fmtSessionDate, fmtSessionTime, fmtSessionDateTime, fmtStampDateTime } from '@/lib/studio-time';
 
 interface Booking {
@@ -998,6 +999,15 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Wrong customer account? (multi-account fix) — engineer can move the
+          session onto the account where the customer's files/login live so
+          completion (which counts files under the booking's account) works. */}
+      {!completed && !unclaimed && booking.engineer_name && (
+        <div className="mt-3 pt-3 border-t border-black/10">
+          <ReassignCustomerButton bookingId={booking.id} currentEmail={booking.customer_email || ''} currentName={booking.customer_name} onDone={onUpdate} />
         </div>
       )}
 

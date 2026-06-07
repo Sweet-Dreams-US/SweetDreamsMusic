@@ -6,6 +6,7 @@ import { formatCents, formatDuration } from '@/lib/utils';
 import { fmtStampDateTime } from '@/lib/studio-time';
 import { ENGINEERS, ROOM_LABELS } from '@/lib/constants';
 import CashCorrectionModal from '@/components/booking/CashCorrectionModal';
+import ReassignCustomerButton from '@/components/booking/ReassignCustomerButton';
 import AdminMediaSessionsPanel from '@/components/admin/AdminMediaSessionsPanel';
 import { depositCollectedCents } from '@/lib/deposit';
 import { bookingStatusLabel } from '@/lib/booking-status';
@@ -607,6 +608,11 @@ export default function BookingManager() {
                         <p className="text-black/60 uppercase tracking-wider">Duration</p>
                         <p className="font-semibold">{formatDuration(b.duration)}</p>
                       </div>
+                    </div>
+
+                    {/* Move session to another customer account (multi-account fix) */}
+                    <div className="pt-1">
+                      <ReassignCustomerButton bookingId={b.id} currentEmail={b.customer_email} currentName={b.customer_name} onDone={fetchBookings} />
                     </div>
 
                     {/* Financial Info */}

@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         .from('bookings')
         .insert({
           customer_name: clientName,
-          customer_email: clientEmail,
+          customer_email: String(clientEmail).trim().toLowerCase(), // normalize so it matches the account's (lowercased) auth email
           artist_name: artistName || null,
           start_time: `${date}T${startTime}:00+00:00`,
           end_time: `${date}T${endTime}:00+00:00`,
