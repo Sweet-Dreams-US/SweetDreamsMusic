@@ -41,16 +41,23 @@ export default async function FilesPage() {
     (showcaseItems || []).filter(s => s.is_public).map(s => s.deliverable_id)
   );
 
-  // Generate signed download URLs
+  // Generate signed download URLs. Each call is isolated in a try/catch: a single
+  // transient storage error must NOT 500 the whole page (supabase-js re-throws
+  // non-StorageErrors like network/timeout from createSignedUrl, and a Promise.all
+  // would otherwise reject on the first one — worse the more files a user has).
   const filesWithUrls = await Promise.all(
     (deliverables || []).map(async (file) => {
-      if (file.file_path) {
+      const isPublic = publicDeliverableIds.has(file.id);
+      if (!file.file_path) return { ...file, downloadUrl: null, isPublic };
+      try {
         const { data } = await serviceClient.storage
           .from('client-audio-files')
           .createSignedUrl(file.file_path, 3600, { download: file.file_name || true });
-        return { ...file, downloadUrl: data?.signedUrl || null, isPublic: publicDeliverableIds.has(file.id) };
+        return { ...file, downloadUrl: data?.signedUrl || null, isPublic };
+      } catch (e) {
+        console.error('[files] signed URL failed for', file.file_path, e);
+        return { ...file, downloadUrl: null, isPublic };
       }
-      return { ...file, downloadUrl: null, isPublic: publicDeliverableIds.has(file.id) };
     })
   );
 

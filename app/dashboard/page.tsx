@@ -73,15 +73,21 @@ export default async function DashboardPage() {
     (showcaseItems || []).filter(s => s.is_public).map(s => s.deliverable_id)
   );
 
+  // Isolate each signed-URL call — a single transient storage error (supabase-js
+  // re-throws network/timeout from createSignedUrl) must not 500 the dashboard.
   const filesWithUrls = await Promise.all(
     (deliverables || []).map(async (file) => {
-      if (file.file_path) {
+      const isPublic = publicDeliverableIds.has(file.id);
+      if (!file.file_path) return { ...file, downloadUrl: null, isPublic };
+      try {
         const { data } = await serviceClient.storage
           .from('client-audio-files')
           .createSignedUrl(file.file_path, 3600, { download: file.file_name || true }); // 1 hour, force download
-        return { ...file, downloadUrl: data?.signedUrl || null, isPublic: publicDeliverableIds.has(file.id) };
+        return { ...file, downloadUrl: data?.signedUrl || null, isPublic };
+      } catch (e) {
+        console.error('[dashboard] signed URL failed for', file.file_path, e);
+        return { ...file, downloadUrl: null, isPublic };
       }
-      return { ...file, downloadUrl: null, isPublic: publicDeliverableIds.has(file.id) };
     })
   );
 
