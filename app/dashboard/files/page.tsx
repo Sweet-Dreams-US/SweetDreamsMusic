@@ -1,21 +1,13 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { FileAudio, Download, ArrowLeft } from 'lucide-react';
+import { FileAudio, ArrowLeft } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth';
-import { fmtStampDate } from '@/lib/studio-time';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import DashboardNav from '@/components/layout/DashboardNav';
-import FileShowcaseToggle from '@/components/dashboard/FileShowcaseToggle';
 import FilesFilter from '@/components/dashboard/FilesFilter';
 
 export const metadata: Metadata = { title: 'My Files' };
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 export default async function FilesPage() {
   const user = await getSessionUser();
@@ -43,8 +35,7 @@ export default async function FilesPage() {
 
   // Generate signed download URLs. Each call is isolated in a try/catch: a single
   // transient storage error must NOT 500 the whole page (supabase-js re-throws
-  // non-StorageErrors like network/timeout from createSignedUrl, and a Promise.all
-  // would otherwise reject on the first one — worse the more files a user has).
+  // non-StorageErrors like network/timeout from createSignedUrl).
   const filesWithUrls = await Promise.all(
     (deliverables || []).map(async (file) => {
       const isPublic = publicDeliverableIds.has(file.id);
@@ -60,14 +51,6 @@ export default async function FilesPage() {
       }
     })
   );
-
-  // Group files by date
-  const filesByDate: Record<string, typeof filesWithUrls> = {};
-  filesWithUrls.forEach(file => {
-    const dateKey = fmtStampDate(file.created_at, { month: 'long', day: 'numeric', year: 'numeric' });
-    if (!filesByDate[dateKey]) filesByDate[dateKey] = [];
-    filesByDate[dateKey].push(file);
-  });
 
   const profileSlug = user.profile?.public_profile_slug || undefined;
 
@@ -104,86 +87,10 @@ export default async function FilesPage() {
               <p className="font-mono text-xs text-black/60">Files from your recording sessions will appear here for download.</p>
             </div>
           ) : (
-            <FilesFilter files={filesWithUrls}>
-              {(filtered) => {
-                // Build a map of download URLs and public status by ID
-                const urlMap = new Map(filesWithUrls.map(f => [f.id, { downloadUrl: f.downloadUrl, isPublic: f.isPublic }]));
-
-                // Group filtered files by date
-                const grouped: Record<string, typeof filtered> = {};
-                filtered.forEach(file => {
-                  const dateKey = fmtStampDate(file.created_at, { month: 'long', day: 'numeric', year: 'numeric' });
-                  if (!grouped[dateKey]) grouped[dateKey] = [];
-                  grouped[dateKey].push(file);
-                });
-
-                if (filtered.length === 0) {
-                  return (
-                    <div className="border-2 border-black/10 p-8 text-center">
-                      <p className="font-mono text-sm text-black/70">No files match your search</p>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="space-y-8">
-                    {Object.entries(grouped).map(([date, files]) => (
-                      <div key={date}>
-                        <h3 className="font-mono text-xs text-black/60 uppercase tracking-wider mb-3 border-b border-black/10 pb-2">
-                          {date} — {files.length} file{files.length > 1 ? 's' : ''}
-                        </h3>
-                        <div className="space-y-2">
-                          {files.map(file => {
-                            const extra = urlMap.get(file.id);
-                            const downloadUrl = (extra as { downloadUrl?: string })?.downloadUrl;
-                            const isPublic = (extra as { isPublic?: boolean })?.isPublic || false;
-                            return (
-                              <div key={file.id} className="border-2 border-black/10 p-4 hover:border-black/30 transition-colors">
-                                <div className="flex items-center justify-between gap-4">
-                                  <div className="min-w-0 flex-1">
-                                    <p className="font-mono text-sm font-bold truncate">
-                                      {file.display_name || file.file_name}
-                                    </p>
-                                    <div className="font-mono text-xs text-black/60 mt-1 flex items-center gap-3 flex-wrap">
-                                      <span>by {file.uploaded_by_name}</span>
-                                      <span className="uppercase">{file.file_type?.split('/')[1] || 'file'}</span>
-                                      {file.file_size > 0 && <span>{formatFileSize(file.file_size)}</span>}
-                                    </div>
-                                    {file.description && (
-                                      <p className="font-mono text-[10px] text-black/60 mt-1">{file.description}</p>
-                                    )}
-                                  </div>
-                                  {downloadUrl ? (
-                                    <a
-                                      href={downloadUrl}
-                                      download={file.file_name}
-                                      className="bg-accent text-black font-mono text-xs font-bold uppercase tracking-wider px-4 py-2.5 hover:bg-accent/90 transition-colors inline-flex items-center gap-2 flex-shrink-0 no-underline"
-                                    >
-                                      <Download className="w-4 h-4" /> Download
-                                    </a>
-                                  ) : (
-                                    <span className="font-mono text-xs text-black/60">Unavailable</span>
-                                  )}
-                                </div>
-                                {file.file_type?.startsWith('audio/') && (
-                                  <div className="mt-3 pt-3 border-t border-black/5">
-                                    <FileShowcaseToggle
-                                      deliverableId={file.id}
-                                      initialEnabled={isPublic}
-                                      profileSlug={profileSlug}
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              }}
-            </FilesFilter>
+            // FilesFilter is a Client Component that renders the list itself —
+            // we pass plain serializable data (downloadUrl + isPublic resolved),
+            // NOT a render-prop function (which can't cross the RSC boundary).
+            <FilesFilter files={filesWithUrls} profileSlug={profileSlug} />
           )}
         </div>
       </section>

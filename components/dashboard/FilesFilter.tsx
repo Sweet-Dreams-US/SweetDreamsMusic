@@ -1,7 +1,16 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, SlidersHorizontal, ArrowUpDown, X } from 'lucide-react';
+import { Search, SlidersHorizontal, ArrowUpDown, X, Download } from 'lucide-react';
+import { fmtStampDate } from '@/lib/studio-time';
+import FileShowcaseToggle from '@/components/dashboard/FileShowcaseToggle';
+
+// NOTE: this is a Client Component that renders the file list ITSELF. It must NOT
+// take a render-prop / function child — the parent (app/dashboard/files/page.tsx)
+// is a Server Component, and a function can't be serialized across the RSC
+// boundary (Next throws "Functions cannot be passed directly to Client
+// Components" → a server-side exception). So the page passes plain serializable
+// data (downloadUrl + isPublic already resolved) and we own all the rendering.
 
 interface FileItem {
   id: string;
@@ -12,6 +21,8 @@ interface FileItem {
   uploaded_by_name: string | null;
   description: string | null;
   created_at: string;
+  downloadUrl: string | null;
+  isPublic: boolean;
 }
 
 type SortField = 'date' | 'name' | 'size' | 'type';
@@ -20,10 +31,16 @@ type FileTypeFilter = 'all' | 'audio' | 'stems' | 'other';
 
 interface FilesFilterProps {
   files: FileItem[];
-  children: (filtered: FileItem[]) => React.ReactNode;
+  profileSlug?: string;
 }
 
-export default function FilesFilter({ files, children }: FilesFilterProps) {
+function formatFileSize(bytes: number): string {
+  if (!bytes || bytes < 1024) return `${bytes || 0} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export default function FilesFilter({ files, profileSlug }: FilesFilterProps) {
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -33,7 +50,6 @@ export default function FilesFilter({ files, children }: FilesFilterProps) {
   const filtered = useMemo(() => {
     let result = [...files];
 
-    // Search
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(f =>
@@ -43,7 +59,6 @@ export default function FilesFilter({ files, children }: FilesFilterProps) {
       );
     }
 
-    // Type filter
     if (typeFilter === 'audio') {
       result = result.filter(f => f.file_type?.startsWith('audio/') && !f.file_name?.toLowerCase().includes('stem'));
     } else if (typeFilter === 'stems') {
@@ -56,7 +71,6 @@ export default function FilesFilter({ files, children }: FilesFilterProps) {
       result = result.filter(f => !f.file_type?.startsWith('audio/') && !f.file_type?.includes('zip'));
     }
 
-    // Sort
     result.sort((a, b) => {
       let cmp = 0;
       switch (sortField) {
@@ -78,6 +92,14 @@ export default function FilesFilter({ files, children }: FilesFilterProps) {
 
     return result;
   }, [files, search, sortField, sortDir, typeFilter]);
+
+  // Group the filtered files by date for display.
+  const grouped: Record<string, FileItem[]> = {};
+  filtered.forEach(file => {
+    const dateKey = fmtStampDate(file.created_at, { month: 'long', day: 'numeric', year: 'numeric' }) || 'Recent';
+    if (!grouped[dateKey]) grouped[dateKey] = [];
+    grouped[dateKey].push(file);
+  });
 
   function toggleSort(field: SortField) {
     if (sortField === field) {
@@ -122,7 +144,6 @@ export default function FilesFilter({ files, children }: FilesFilterProps) {
       {/* Filter/sort controls */}
       {showFilters && (
         <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b border-black/10">
-          {/* Type filter */}
           <div className="flex gap-1">
             {([
               { key: 'all', label: 'All' },
@@ -142,7 +163,6 @@ export default function FilesFilter({ files, children }: FilesFilterProps) {
             ))}
           </div>
 
-          {/* Sort buttons */}
           <div className="flex gap-1 ml-auto">
             {([
               { key: 'date', label: 'Date' },
@@ -157,14 +177,11 @@ export default function FilesFilter({ files, children }: FilesFilterProps) {
                 }`}
               >
                 {opt.label}
-                {sortField === opt.key && (
-                  <ArrowUpDown className="w-3 h-3" />
-                )}
+                {sortField === opt.key && <ArrowUpDown className="w-3 h-3" />}
               </button>
             ))}
           </div>
 
-          {/* Clear */}
           {hasActiveFilters && (
             <button
               onClick={() => { setSearch(''); setTypeFilter('all'); setSortField('date'); setSortDir('desc'); }}
@@ -185,8 +202,63 @@ export default function FilesFilter({ files, children }: FilesFilterProps) {
         </p>
       </div>
 
-      {/* Render filtered files */}
-      {children(filtered)}
+      {/* File list (grouped by date) */}
+      {filtered.length === 0 ? (
+        <div className="border-2 border-black/10 p-8 text-center">
+          <p className="font-mono text-sm text-black/70">No files match your search</p>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {Object.entries(grouped).map(([date, dateFiles]) => (
+            <div key={date}>
+              <h3 className="font-mono text-xs text-black/60 uppercase tracking-wider mb-3 border-b border-black/10 pb-2">
+                {date} — {dateFiles.length} file{dateFiles.length > 1 ? 's' : ''}
+              </h3>
+              <div className="space-y-2">
+                {dateFiles.map(file => (
+                  <div key={file.id} className="border-2 border-black/10 p-4 hover:border-black/30 transition-colors">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-mono text-sm font-bold truncate">
+                          {file.display_name || file.file_name}
+                        </p>
+                        <div className="font-mono text-xs text-black/60 mt-1 flex items-center gap-3 flex-wrap">
+                          <span>by {file.uploaded_by_name || 'Sweet Dreams'}</span>
+                          <span className="uppercase">{file.file_type?.split('/')[1] || 'file'}</span>
+                          {file.file_size > 0 && <span>{formatFileSize(file.file_size)}</span>}
+                        </div>
+                        {file.description && (
+                          <p className="font-mono text-[10px] text-black/60 mt-1">{file.description}</p>
+                        )}
+                      </div>
+                      {file.downloadUrl ? (
+                        <a
+                          href={file.downloadUrl}
+                          download={file.file_name}
+                          className="bg-accent text-black font-mono text-xs font-bold uppercase tracking-wider px-4 py-2.5 hover:bg-accent/90 transition-colors inline-flex items-center gap-2 flex-shrink-0 no-underline"
+                        >
+                          <Download className="w-4 h-4" /> Download
+                        </a>
+                      ) : (
+                        <span className="font-mono text-xs text-black/60">Unavailable</span>
+                      )}
+                    </div>
+                    {file.file_type?.startsWith('audio/') && (
+                      <div className="mt-3 pt-3 border-t border-black/5">
+                        <FileShowcaseToggle
+                          deliverableId={file.id}
+                          initialEnabled={file.isPublic}
+                          profileSlug={profileSlug}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
