@@ -30,7 +30,7 @@ interface WorkPlatform {
   key: string; label: string;
   fields: { column: AgentMetricColumn; label: string }[];
   connection: { url: string | null; displayName: string | null; lastFetchedAt: string | null; fetchError: string | null } | null;
-  lastAgent: { date: string; values: Partial<Record<AgentMetricColumn, number | null>> } | null;
+  lastAgent: { date: string; values: Partial<Record<AgentMetricColumn, number | null>>; anomaly: boolean } | null;
   prefill: { source: string; values: Partial<Record<AgentMetricColumn, number | null>> } | null;
 }
 interface ArtistWork {
@@ -184,10 +184,29 @@ export default function AgentStatsConsole() {
     } catch { /* leave the run open */ }
   }
 
-  // ── render ─────────────────────────────────────────────────────────────────
+  async function clearFlag(platform: string, metricDate: string) {
+    if (!artist) return;
+    try {
+      const res = await fetch('/api/agent/anomaly', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: artist.userId, platform, metricDate }),
+      });
+      if (res.ok) openArtist(artist.userId); // re-pull so the badge drops
+      else setNotice('Could not clear the flag');
+    } catch { setNotice('Network error clearing the flag'); }
+  }
 
-  if (loading) return <p className="font-mono text-sm text-black/40">Loading queue…</p>;
-  if (error) {
+  // ── render ─────────────────────────────────────────────────────────────────
+  // ORDER MATTERS: the work-screen branch must precede the queue-loading branch —
+  // nextArtist() refreshes the queue in the background while the next artist
+  // loads, and `if (loading)` first would flash "Loading queue…" mid-walk.
+
+  if (artistLoading || (artist && !summary)) {
+    // fall through to the work screen below
+  } else if (loading) {
+    return <p className="font-mono text-sm text-black/40">Loading queue…</p>;
+  }
+  if (!artist && !artistLoading && error) {
     return (
       <div className="border-2 border-red-300 bg-red-50/40 p-4">
         <p className="font-mono text-xs text-red-600 uppercase tracking-wider font-bold mb-1">Error</p>
@@ -277,6 +296,18 @@ export default function AgentStatsConsole() {
                   ) : (
                     <span className="font-mono text-[10px] text-black/40">link saved without URL</span>
                   )}
+                  {p.lastAgent?.anomaly && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="font-mono text-[10px] font-bold uppercase px-1.5 py-0.5 bg-amber-100 text-amber-800">
+                        {p.lastAgent.date} flagged
+                      </span>
+                      <button onClick={() => clearFlag(p.key, p.lastAgent!.date)}
+                        className="font-mono text-[10px] text-amber-700 underline hover:text-amber-900"
+                        title="Reviewed and legitimate — restore chart eligibility">
+                        clear
+                      </button>
+                    </span>
+                  )}
                   <select
                     value={f?.status ?? 'recorded'}
                     onChange={(e) => setForm((x) => ({ ...x, [p.key]: { ...x[p.key], status: e.target.value as AgentStatus } }))}
@@ -298,10 +329,15 @@ export default function AgentStatsConsole() {
                         <input
                           inputMode="numeric"
                           value={f.values[field.column] ?? ''}
-                          onChange={(e) => setForm((x) => ({
-                            ...x,
-                            [p.key]: { ...x[p.key], values: { ...x[p.key].values, [field.column]: e.target.value } },
-                          }))}
+                          onChange={(e) => {
+                            // Any edit invalidates a pending anomaly confirm —
+                            // the listed deltas no longer match the inputs.
+                            setAnomalies(null);
+                            setForm((x) => ({
+                              ...x,
+                              [p.key]: { ...x[p.key], values: { ...x[p.key].values, [field.column]: e.target.value } },
+                            }));
+                          }}
                           placeholder="—"
                           className="w-36 border-2 border-black/15 px-2.5 py-1.5 font-mono text-sm focus:border-accent focus:outline-none"
                         />
@@ -343,7 +379,8 @@ export default function AgentStatsConsole() {
         {notice && <p className="font-mono text-xs text-red-600 mb-3">{notice}</p>}
 
         <div className="flex items-center gap-3">
-          <button onClick={() => save(false)} disabled={saving}
+          <button onClick={() => save(false)} disabled={saving || (anomalies != null && anomalies.length > 0)}
+            title={anomalies?.length ? 'Resolve the anomaly confirm above first (or edit the values)' : undefined}
             className="bg-black text-white font-mono text-xs font-bold uppercase tracking-wider px-5 py-2.5 hover:bg-black/80 disabled:opacity-50 inline-flex items-center gap-2">
             <Check className="w-4 h-4" /> {saving ? 'Saving…' : 'Save & next'}
           </button>

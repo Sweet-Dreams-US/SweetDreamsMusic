@@ -67,14 +67,35 @@ export async function POST(request: NextRequest) {
     reposts: e.reposts || null,
     comments: e.comments || null,
     impressions: e.impressions || null,
-    source: e.source || 'manual',
+    // ALWAYS 'manual' — never trust a client-supplied source. Chart eligibility
+    // (chart_eligible_metrics, migration 075) keys off source ∈ agent/spotify_api/
+    // youtube_api; honoring e.source would let an artist self-write 'agent' rows
+    // and fake their way onto DreamSuite Charts. Verified sources are written
+    // only by the agent console route + the fetch-metrics cron (service-side).
+    source: 'manual',
   }));
 
-  // Upsert (unique on user_id, metric_date, platform)
-  const { error } = await supabase
+  // Never let a manual log OVERWRITE a verified row (agent / API source) for the
+  // same day+platform — that would erase the chart-eligible snapshot. Manual
+  // entries only fill days the verified pipeline didn't cover.
+  const dates = Array.from(new Set(records.map((r) => r.metric_date)));
+  const platforms = Array.from(new Set(records.map((r) => r.platform)));
+  const { data: verifiedRows } = await supabase
     .from('artist_metrics')
-    .upsert(records, { onConflict: 'user_id,metric_date,platform' });
+    .select('metric_date,platform')
+    .eq('user_id', user.id)
+    .in('metric_date', dates as string[])
+    .in('platform', platforms as string[])
+    .in('source', ['agent', 'spotify_api', 'youtube_api']);
+  const verifiedKeys = new Set((verifiedRows ?? []).map((r) => `${r.metric_date}|${r.platform}`));
+  const writable = records.filter((r) => !verifiedKeys.has(`${r.metric_date}|${r.platform}`));
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ saved: true });
+  if (writable.length > 0) {
+    // Upsert (unique on user_id, metric_date, platform)
+    const { error } = await supabase
+      .from('artist_metrics')
+      .upsert(writable, { onConflict: 'user_id,metric_date,platform' });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ saved: true, written: writable.length, skippedVerified: records.length - writable.length });
 }

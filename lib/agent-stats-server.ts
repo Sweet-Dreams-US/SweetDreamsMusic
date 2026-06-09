@@ -126,7 +126,7 @@ export interface WorkPlatform {
   label: string;
   fields: { column: AgentMetricColumn; label: string }[];
   connection: { url: string | null; displayName: string | null; lastFetchedAt: string | null; fetchError: string | null } | null;
-  lastAgent: { date: string; values: Partial<Record<AgentMetricColumn, number | null>> } | null;
+  lastAgent: { date: string; values: Partial<Record<AgentMetricColumn, number | null>>; anomaly: boolean } | null;
   prefill: { source: string; values: Partial<Record<AgentMetricColumn, number | null>> } | null;
 }
 
@@ -156,6 +156,11 @@ export async function getArtistWork(db: Client, userId: string, now: Date = new 
       .in('source', ['spotify_api', 'youtube_api']),
   ]);
   if (!prof) return null;
+  // Authz bound: the agent's read access stops at the tracking program. A user
+  // with zero platform links is not the agent's business — returning null keeps
+  // off-program profiles (admins, engineers, plain customers) unreadable even
+  // though the route runs on the service client.
+  if (((conns ?? []) as any[]).length === 0) return null;
 
   const connByPlatform = new Map<string, any>(((conns ?? []) as any[]).map((c) => [c.platform, c]));
   const lastAgentByPlatform = new Map<string, any>();
@@ -174,7 +179,11 @@ export async function getArtistWork(db: Client, userId: string, now: Date = new 
         url: conn.platform_url ?? null, displayName: conn.display_name ?? null,
         lastFetchedAt: conn.last_fetched_at ?? null, fetchError: conn.fetch_error ?? null,
       } : null,
-      lastAgent: last ? { date: last.metric_date, values: pickValues(last, p.fields) } : null,
+      lastAgent: last ? {
+        date: last.metric_date,
+        values: pickValues(last, p.fields),
+        anomaly: !!(last.metadata as Record<string, unknown> | null)?.anomaly,
+      } : null,
       prefill: pre ? { source: pre.source, values: pickValues(pre, p.fields) } : null,
     };
   });
@@ -333,22 +342,48 @@ export async function saveAgentMetrics(db: Client, args: {
     if (!error) stamped.push(e.platform);
   }
 
-  // Run counters (single operator — read-modify-write is fine).
+  // Run counters (single operator — read-modify-write is fine). artists_processed
+  // is deduped per artist via metadata.processed_user_ids so a partial-platform
+  // revisit or an anomaly confirm→retry doesn't inflate the end-of-day report.
   if (args.runId) {
     const { data: run } = await db.from('agent_runs').select('*').eq('id', args.runId).maybeSingle();
     if (run) {
+      const md = ((run as any).metadata ?? {}) as Record<string, unknown>;
+      const processed: string[] = Array.isArray(md.processed_user_ids) ? (md.processed_user_ids as string[]) : [];
+      const firstVisit = !processed.includes(args.userId);
       await db.from('agent_runs').update({
-        artists_processed: ((run as any).artists_processed || 0) + 1,
+        artists_processed: ((run as any).artists_processed || 0) + (firstVisit ? 1 : 0),
         platforms_recorded: ((run as any).platforms_recorded || 0) + saved.length,
         blocked_count: ((run as any).blocked_count || 0)
           + entries.filter((e) => e.status === 'blocked' || e.status === 'page_not_found').length,
         skipped_count: ((run as any).skipped_count || 0) + entries.filter((e) => e.status === 'skipped').length,
         anomaly_count: ((run as any).anomaly_count || 0) + anomalousPlatforms.size,
+        metadata: { ...md, processed_user_ids: firstVisit ? [...processed, args.userId] : processed },
       } as never).eq('id', args.runId);
     }
   }
 
   return { needsConfirmation: false, saved, stamped, rejected, anomaliesFlagged: anomalousPlatforms.size };
+}
+
+/**
+ * Clears the anomaly hold on a past agent snapshot (after review), restoring its
+ * chart eligibility. Without this, a confirmed-legitimate spike (artist went
+ * viral) would keep that snapshot dark forever — the duplicate window blocks a
+ * same-platform re-save for 6 days, so same-day correction alone can't fix it.
+ */
+export async function clearAnomalyFlag(db: Client, args: {
+  userId: string; platform: string; metricDate: string;
+}): Promise<boolean> {
+  const { data: row } = await db.from('artist_metrics')
+    .select('id,metadata').eq('user_id', args.userId).eq('platform', args.platform)
+    .eq('metric_date', args.metricDate).eq('source', 'agent').maybeSingle();
+  if (!row) return false;
+  const md = { ...(((row as any).metadata ?? {}) as Record<string, unknown>) };
+  delete md.anomaly;
+  md.anomaly_cleared_at = new Date().toISOString();
+  const { error } = await db.from('artist_metrics').update({ metadata: md } as never).eq('id', (row as any).id);
+  return !error;
 }
 
 // ── runs ─────────────────────────────────────────────────────────────────────
@@ -398,11 +433,17 @@ export async function sweepPauseNotices(
   });
   if (pausedIds.length === 0) return { candidates: 0, notified: 0 };
 
-  const [{ data: profs }, { data: notices }] = await Promise.all([
+  const [{ data: profs }, noticesRes] = await Promise.all([
     db.from('profiles').select('user_id,email,display_name').in('user_id', pausedIds),
     db.from('agent_pause_notices').select('user_id,last_paid_at_at_notice').in('user_id', pausedIds),
   ]);
-  const noticeByUser = new Map<string, any>(((notices ?? []) as any[]).map((n) => [n.user_id, n]));
+  // If the dedup read fails we CANNOT tell who was already notified — abort the
+  // sweep rather than risk re-emailing every paused artist.
+  if (noticesRes.error) {
+    console.error('[agent-stats] pause-notice dedup read failed — sweep aborted:', noticesRes.error.message);
+    return { candidates: pausedIds.length, notified: 0 };
+  }
+  const noticeByUser = new Map<string, any>(((noticesRes.data ?? []) as any[]).map((n) => [n.user_id, n]));
 
   let notified = 0;
   for (const p of (profs ?? []) as any[]) {
@@ -413,17 +454,20 @@ export async function sweepPauseNotices(
     // Already notified for this pause episode (no payment since the notice)?
     if (prior && (!s.lastPaidAt || !prior.last_paid_at_at_notice
         || new Date(prior.last_paid_at_at_notice) >= new Date(s.lastPaidAt))) continue;
-    try {
-      await send(p.email, { name: p.display_name || 'there' });
-      await db.from('agent_pause_notices').upsert({
-        user_id: p.user_id,
-        notified_at: new Date().toISOString(),
-        last_paid_at_at_notice: s.lastPaidAt,
-      } as never, { onConflict: 'user_id' });
-      notified++;
-    } catch (e) {
-      console.error('[agent-stats] pause email failed for', p.user_id, e);
+    // Record the notice BEFORE sending: a recorded-but-unsent notice costs one
+    // win-back email; a sent-but-unrecorded notice re-spams the artist daily
+    // until the write succeeds. (send() logs its own failures, never throws.)
+    const { error: noticeErr } = await db.from('agent_pause_notices').upsert({
+      user_id: p.user_id,
+      notified_at: new Date().toISOString(),
+      last_paid_at_at_notice: s.lastPaidAt,
+    } as never, { onConflict: 'user_id' });
+    if (noticeErr) {
+      console.error('[agent-stats] pause notice write failed for', p.user_id, noticeErr.message);
+      continue;
     }
+    await send(p.email, { name: p.display_name || 'there' });
+    notified++;
   }
   return { candidates: pausedIds.length, notified };
 }

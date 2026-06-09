@@ -85,7 +85,13 @@ export function computeDue(input: DueInput, today: { dateStr: string; dayIdx: nu
 
   if (today.dayIdx <= 4) {
     const dueToday = slot === today.dayIdx;
-    const missed = !dueToday && slot < today.dayIdx && !recent;
+    // Missed = an earlier slot this week, OR a cross-week miss: a Friday-slot
+    // artist whose Friday AND weekend catch-up were skipped would otherwise be
+    // invisible Mon–Thu (slot 4 is never < dayIdx) and silently gap two weeks.
+    // Never-recorded artists still wait for their first slot day.
+    const crossWeekStale = input.lastAgentDate != null
+      && daysBetween(input.lastAgentDate, today.dateStr) >= 7;
+    const missed = !dueToday && !recent && (slot < today.dayIdx || crossWeekStale);
     return { include: dueToday || missed, dueToday, missed, done, slot };
   }
   // Weekend: nobody is "due", everything stale this week is catch-up.

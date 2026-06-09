@@ -15,6 +15,7 @@ import {
 } from '../lib/agent-stats';
 import {
   buildAgentQueue, getArtistWork, saveAgentMetrics, startAgentRun, finishAgentRun,
+  clearAnomalyFlag,
 } from '../lib/agent-stats-server';
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -69,6 +70,13 @@ async function main() {
   ok('weekend = catch-up for any stale slot',
     computeDue({ userId: idFor(4), lastAgentDate: null }, sat).include);
   ok('weekend excludes recent', !computeDue({ userId: idFor(4), lastAgentDate: '2026-06-12' }, sat).include);
+  // Cross-week blind spot (review finding): a Friday-slot artist missed on
+  // Friday + weekend must surface MONDAY, not vanish until next Friday.
+  const mon = { dateStr: '2026-06-15', dayIdx: 0 };
+  const fridaySlotStale = computeDue({ userId: idFor(4), lastAgentDate: '2026-06-05' }, mon);
+  ok('cross-week miss surfaces Monday', fridaySlotStale.include && fridaySlotStale.missed);
+  ok('never-recorded later slot still waits for its first day',
+    !computeDue({ userId: idFor(4), lastAgentDate: null }, mon).include);
 
   console.log('\n— Pure: anomaly + field map —');
   ok('+60% is anomalous', isAnomalous(100, 160));
@@ -205,15 +213,35 @@ async function main() {
   console.log('\n— Live: run counters + finish —');
   const finished = await finishAgentRun(db as never, (run as { id: string }).id);
   const f = finished as { artists_processed: number; platforms_recorded: number; blocked_count: number; anomaly_count: number; finished_at: string | null };
-  ok('artists_processed counted', f.artists_processed >= 3);
+  ok('artists_processed deduped across revisits (3 saves, 1 artist)', f.artists_processed === 1);
   ok('platforms_recorded counted', f.platforms_recorded >= 3);
   ok('blocked counted', f.blocked_count >= 1);
   ok('anomaly counted', f.anomaly_count >= 1);
   ok('finished_at stamped', !!f.finished_at);
 
+  console.log('\n— Live: anomaly clear path (review finding) —');
+  const cleared = await clearAnomalyFlag(db as never, { userId: testUserId, platform: 'tiktok', metricDate: today.dateStr });
+  ok('clearAnomalyFlag succeeds on flagged row', cleared);
+  const { data: tkRow3 } = await db.from('artist_metrics').select('metadata')
+    .eq('user_id', testUserId).eq('platform', 'tiktok').eq('metric_date', today.dateStr).maybeSingle();
+  const md3 = (tkRow3 as { metadata?: Record<string, unknown> })?.metadata;
+  ok('flag removed + audit stamp left', md3?.anomaly === undefined && !!md3?.anomaly_cleared_at);
+  ok('clear is a no-op on unknown rows',
+    !(await clearAnomalyFlag(db as never, { userId: testUserId, platform: 'tiktok', metricDate: '1999-01-01' })));
+
   console.log('\n— Live: queue exclusions + tracking view —');
   const queue = await buildAgentQueue(db as never);
   ok('test account NEVER appears in the queue', !queue.artists.some((a) => a.userId === testUserId));
+  // Authz bound (review finding): an off-program user (no platform links) must
+  // be unreadable through getArtistWork even on the service client.
+  const { data: offProgram } = await db.from('profiles').select('user_id')
+    .neq('user_id', testUserId).limit(50);
+  const { data: connectedIds } = await db.from('platform_connections').select('user_id');
+  const connectedSet = new Set(((connectedIds ?? []) as { user_id: string }[]).map((c) => c.user_id));
+  const offUser = ((offProgram ?? []) as { user_id: string }[]).find((p) => !connectedSet.has(p.user_id));
+  if (offUser) {
+    ok('off-program user is unreadable (null)', (await getArtistWork(db as never, offUser.user_id)) === null);
+  }
   const { data: tsRow } = await db.from('artist_tracking_status').select('*').eq('user_id', testUserId).maybeSingle();
   ok('tracking view returns a row with boolean is_active', typeof (tsRow as { is_active?: boolean })?.is_active === 'boolean');
   const { data: inactiveSample } = await db.from('artist_tracking_status').select('user_id').eq('is_active', false).limit(1);
