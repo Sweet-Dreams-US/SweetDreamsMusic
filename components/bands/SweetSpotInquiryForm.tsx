@@ -16,7 +16,7 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
 import { Send, MessageCircle } from 'lucide-react';
 
-const TURNSTILE_SITE_KEY = '0x4AAAAAAC-NKDZ6-U5VzVto';
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '0x4AAAAAAC-NKDZ6-U5VzVto';
 
 export default function SweetSpotInquiryForm() {
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
@@ -59,10 +59,8 @@ export default function SweetSpotInquiryForm() {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!turnstileToken) {
-      alert('Please complete the verification check');
-      return;
-    }
+    // Submit even without a Turnstile token (widget may be broken/blocked); the
+    // server verifies when present + configured but never hard-blocks a lead.
     setStatus('sending');
 
     const formData = new FormData(e.currentTarget);
@@ -241,7 +239,7 @@ export default function SweetSpotInquiryForm() {
 
       <button
         type="submit"
-        disabled={status === 'sending' || !turnstileToken}
+        disabled={status === 'sending'}
         className="w-full bg-accent text-black font-mono text-base font-bold tracking-wider uppercase px-8 py-4 hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-3"
       >
         <Send className="w-5 h-5" />

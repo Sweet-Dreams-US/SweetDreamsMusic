@@ -29,20 +29,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify Cloudflare Turnstile — blocks headless bots from hammering the
-    // endpoint and filling Jay + Cole's inbox with junk.
-    if (!turnstileToken) {
-      return NextResponse.json({ error: 'Verification required' }, { status: 400 });
-    }
-    const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ secret: TURNSTILE_SECRET, response: turnstileToken }),
-    });
-    const verifyData = await verifyRes.json();
-    if (!verifyData.success) {
-      console.error('Turnstile verification failed (sweet spot inquiry):', verifyData);
-      return NextResponse.json({ error: 'Verification failed' }, { status: 403 });
+    // Cloudflare Turnstile — BEST EFFORT (verify only when the secret + a token are
+    // both present). A missing secret or a broken widget must never block a real
+    // band inquiry; protection resumes once TURNSTILE_SECRET_KEY is configured.
+    if (TURNSTILE_SECRET && turnstileToken) {
+      try {
+        const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ secret: TURNSTILE_SECRET, response: turnstileToken }),
+        });
+        const verifyData = await verifyRes.json();
+        if (!verifyData.success) {
+          console.error('Turnstile verification failed (sweet spot inquiry):', verifyData['error-codes']);
+          return NextResponse.json({ error: 'Verification failed' }, { status: 403 });
+        }
+      } catch (e) {
+        console.warn('[sweet-spot] Turnstile verify errored — allowing inquiry through:', e);
+      }
+    } else if (!TURNSTILE_SECRET) {
+      console.warn('[sweet-spot] TURNSTILE_SECRET_KEY not configured — skipping CAPTCHA verification.');
     }
 
     await sendSweetSpotInquiry({

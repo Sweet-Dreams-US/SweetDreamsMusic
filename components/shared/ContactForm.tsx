@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
 import { Send } from 'lucide-react';
 
-const TURNSTILE_SITE_KEY = '0x4AAAAAAC-NKDZ6-U5VzVto';
+// Site key is env-overridable so a wrong/rotated key can be fixed without a code
+// change. Falls back to the previously-hardcoded value.
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '0x4AAAAAAC-NKDZ6-U5VzVto';
 
 export default function ContactForm() {
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
@@ -40,10 +42,8 @@ export default function ContactForm() {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!turnstileToken) {
-      alert('Please complete the verification check');
-      return;
-    }
+    // Submit even if Turnstile hasn't issued a token (widget may be broken/blocked).
+    // The server verifies the token when present + configured, but never hard-blocks.
     setStatus('sending');
 
     const formData = new FormData(e.currentTarget);
@@ -158,7 +158,7 @@ export default function ContactForm() {
 
       <button
         type="submit"
-        disabled={status === 'sending' || !turnstileToken}
+        disabled={status === 'sending'}
         className="w-full bg-black text-white font-mono text-base font-bold tracking-wider uppercase px-8 py-4 hover:bg-black/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-3"
       >
         <Send className="w-5 h-5" />
