@@ -1,17 +1,45 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
 import { Send } from 'lucide-react';
 
-// Spam protection is a HONEYPOT (the hidden "company" field below): real people
-// never see or fill it, naive bots fill every field. The server silently drops
-// any submission where it's set. This replaced a Cloudflare Turnstile widget that
-// was never actually configured (no secret in any env + a placeholder site key),
-// so it only ever blocked real customers. To add a real CAPTCHA back, wire a valid
-// Turnstile site key + TURNSTILE_SECRET_KEY and re-add the widget.
+// Two layers of spam protection: Cloudflare Turnstile (CAPTCHA) + a honeypot (the
+// hidden "company" field). Turnstile is BEST EFFORT on the client — a broken or
+// blocked widget never disables Send; the server verifies the token when it's
+// present + the secret is configured, and the honeypot is the always-on backstop.
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '0x4AAAAAAC-NKDZ6-U5VzVto';
 
 export default function ContactForm() {
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileRef = useRef<HTMLDivElement>(null);
+  const widgetIdRef = useRef<string | null>(null);
+
+  const renderTurnstile = useCallback(() => {
+    if (!turnstileRef.current || widgetIdRef.current) return;
+    const w = window as unknown as { turnstile?: { render: (el: HTMLElement, opts: Record<string, unknown>) => string; reset: (id: string) => void } };
+    if (w.turnstile) {
+      widgetIdRef.current = w.turnstile.render(turnstileRef.current, {
+        sitekey: TURNSTILE_SITE_KEY,
+        callback: (token: string) => setTurnstileToken(token),
+        'expired-callback': () => setTurnstileToken(null),
+        theme: 'light',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (document.getElementById('cf-turnstile-script')) {
+      renderTurnstile();
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'cf-turnstile-script';
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.onload = () => setTimeout(renderTurnstile, 100);
+    document.head.appendChild(script);
+  }, [renderTurnstile]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -24,6 +52,7 @@ export default function ContactForm() {
       phone: formData.get('phone'),
       message: formData.get('message'),
       company: formData.get('company'), // honeypot
+      turnstileToken,
     };
 
     try {
@@ -32,7 +61,18 @@ export default function ContactForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error('Failed to send');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        if (err.error === 'Verification failed') {
+          // CAPTCHA failed — reset the widget so they can retry.
+          setStatus('error');
+          setTurnstileToken(null);
+          const w = window as unknown as { turnstile?: { reset: (id: string) => void } };
+          if (w.turnstile && widgetIdRef.current) w.turnstile.reset(widgetIdRef.current);
+          return;
+        }
+        throw new Error('Failed to send');
+      }
       setStatus('sent');
     } catch {
       setStatus('error');
@@ -116,6 +156,9 @@ export default function ContactForm() {
         aria-hidden="true"
         className="absolute -left-[9999px] top-0 h-0 w-0 opacity-0"
       />
+
+      {/* Cloudflare Turnstile verification */}
+      <div ref={turnstileRef} className="flex justify-center" />
 
       {status === 'error' && (
         <p className="font-mono text-sm text-red-600">
