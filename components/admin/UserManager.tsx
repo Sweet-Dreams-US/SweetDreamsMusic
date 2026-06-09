@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Search, ExternalLink, Shield, Wrench, Music, User, Check, Users as UsersIcon, Eye, EyeOff, Film } from 'lucide-react';
+import { Search, ExternalLink, Shield, Wrench, Music, User, Check, Users as UsersIcon, Eye, EyeOff, Film, ClipboardList } from 'lucide-react';
 import { fmtStampDate } from '@/lib/studio-time';
 
 interface Profile {
@@ -40,10 +40,13 @@ const ROLE_OPTIONS = [
   { value: 'user', label: 'User', icon: User },
   { value: 'engineer', label: 'Engineer', icon: Wrench },
   { value: 'media_manager', label: 'Media Manager', icon: Film },
+  // Stats Agent — the Cowork service account that records weekly artist
+  // numbers in /agent/stats. Locked to that console; no customer surfaces.
+  { value: 'agent', label: 'Stats Agent', icon: ClipboardList },
   { value: 'admin', label: 'Admin', icon: Shield },
 ];
 
-type FilterKey = 'all' | 'user' | 'engineer' | 'media_manager' | 'admin' | 'producer' | 'bands';
+type FilterKey = 'all' | 'user' | 'engineer' | 'media_manager' | 'agent' | 'admin' | 'producer' | 'bands';
 
 export default function UserManager() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -127,6 +130,7 @@ export default function UserManager() {
     user: profiles.filter((p) => p.role === 'user').length,
     engineer: profiles.filter((p) => p.role === 'engineer').length,
     media_manager: profiles.filter((p) => p.role === 'media_manager').length,
+    agent: profiles.filter((p) => p.role === 'agent').length,
     admin: profiles.filter((p) => p.role === 'admin').length,
     producer: profiles.filter((p) => p.is_producer).length,
     // Count uses the eager-loaded value when present; null = "not yet
@@ -167,6 +171,7 @@ export default function UserManager() {
           { key: 'user', label: 'Users' },
           { key: 'engineer', label: 'Engineers' },
           { key: 'media_manager', label: 'Media Mgrs' },
+          { key: 'agent', label: 'Agents' },
           { key: 'admin', label: 'Admins' },
           { key: 'producer', label: 'Producers' },
           { key: 'bands', label: 'Bands' },

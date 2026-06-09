@@ -89,6 +89,14 @@ export const METRIC_PLATFORMS = [
   { key: 'audiomack', label: 'Audiomack', color: '#FFA200', icon: '🎧',
     fields: ['followers', 'plays'],
     primaryField: 'followers', autoFetchable: false },
+  // Facebook + Deezer round out the agent-console field map (Plan 1): artists
+  // save the link, the Cowork agent records followers weekly.
+  { key: 'facebook', label: 'Facebook', color: '#1877F2', icon: '📘',
+    fields: ['followers'],
+    primaryField: 'followers', autoFetchable: false },
+  { key: 'deezer', label: 'Deezer', color: '#A238FF', icon: '🎶',
+    fields: ['followers'],
+    primaryField: 'followers', autoFetchable: false },
 ] as const;
 
 export type MetricPlatform = (typeof METRIC_PLATFORMS)[number]['key'];

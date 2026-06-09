@@ -298,7 +298,7 @@ export const FOOTER_EXTRA_LINKS = [
   { href: '/blog', label: 'Blog' },
 ] as const;
 
-export type UserRole = 'user' | 'engineer' | 'admin' | 'media_manager';
+export type UserRole = 'user' | 'engineer' | 'admin' | 'media_manager' | 'agent';
 
 // Beat agreement
 export const BEAT_AGREEMENT_VERSION = '1.1';

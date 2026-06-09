@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
   const updates: Record<string, unknown> = {};
 
   if (role !== undefined) {
-    if (!['user', 'engineer', 'admin', 'media_manager'].includes(role)) {
+    if (!['user', 'engineer', 'admin', 'media_manager', 'agent'].includes(role)) {
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
     }
     updates.role = role;

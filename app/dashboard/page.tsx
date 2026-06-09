@@ -22,6 +22,10 @@ export const metadata: Metadata = {
 export default async function DashboardPage() {
   const user = await getSessionUser();
   if (!user) redirect('/login');
+  // The Cowork stats agent is a single-purpose service account: its whole world
+  // is /agent/stats. Login lands on /dashboard, so bounce it to the console
+  // (and every other role-gated page already redirects non-matching roles here).
+  if (user.role === 'agent') redirect('/agent/stats');
 
   const supabase = await createClient();
 

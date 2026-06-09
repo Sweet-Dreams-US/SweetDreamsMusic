@@ -227,6 +227,10 @@ export function getUserRole(email: string | undefined, profileRole?: string): Us
   // for the studio side). DB-driven role — assigned via Admin → Users — not a
   // hardcoded roster, so the media crew can change without a deploy.
   if (profileRole === 'media_manager') return 'media_manager';
+  // Agent = the Cowork service account that records weekly artist stats in the
+  // /agent/stats console. DB-driven role; without this branch profiles.role
+  // 'agent' would fall through to 'user' and the console would be unreachable.
+  if (profileRole === 'agent') return 'agent';
   return 'user';
 }
 

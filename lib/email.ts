@@ -752,6 +752,26 @@ export async function sendContactForm(details: {
   } catch (e) { console.error('Email error (contact form):', e); }
 }
 
+/**
+ * Tracking paused (win-back, not a punishment notice). Sent ONCE per pause
+ * episode by the fetch-metrics cron when an artist with platform links has no
+ * paid activity in 90 days. Resume is automatic on their next payment.
+ */
+export async function sendTrackingPausedEmail(to: string, details: { name: string }) {
+  try {
+    await resend.emails.send({
+      from: FROM, to,
+      subject: 'Your weekly stat tracking is paused',
+      html: wrap(`
+        ${h1('Stat Tracking Paused')}
+        ${p(`Hey ${escapeHtml(details.name)} — your weekly fan + follower tracking is paused for now.`)}
+        ${p('Book any session or make a purchase and it resumes automatically — no setup, your history stays right where you left it.')}
+        ${btn('Book a Session', `${SITE_URL}/book`)}
+      `),
+    });
+  } catch (e) { console.error('Email error (tracking paused):', e); }
+}
+
 // ── Private Beat Sale Emails ──────────────────────────────────────────
 
 export async function sendPrivateBeatSaleInvite(to: string, details: {

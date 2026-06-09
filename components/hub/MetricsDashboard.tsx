@@ -69,16 +69,24 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connectSuccess, setConnectSuccess] = useState<string | null>(null);
+  // Weekly tracking program state (agent console): paused = has links but no
+  // paid activity in 90 days. Best-effort — the tab works fine without it.
+  const [tracking, setTracking] = useState<{ paused: boolean } | null>(null);
 
   const loadData = useCallback(async () => {
-    const [metricsRes, connectionsRes] = await Promise.all([
+    const [metricsRes, connectionsRes, trackingRes] = await Promise.all([
       fetch('/api/hub/metrics?days=90'),
       fetch('/api/hub/connections'),
+      fetch('/api/hub/tracking-status'),
     ]);
     const metricsData = await metricsRes.json();
     const connectionsData = await connectionsRes.json();
     setMetrics(metricsData.metrics || []);
     setConnections(connectionsData.connections || []);
+    try {
+      const t = await trackingRes.json();
+      if (trackingRes.ok) setTracking({ paused: !!t.paused });
+    } catch { /* banner is optional */ }
     setLoading(false);
   }, []);
 
@@ -226,6 +234,17 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
         </div>
       </div>
 
+      {/* Tracking paused — win-back, resumes automatically on the next payment. */}
+      {tracking?.paused && (
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-4 py-3 mb-4">
+          <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <span className="font-mono text-xs text-amber-800">
+            Your weekly stat tracking is paused. Book any session or make a purchase and it resumes
+            automatically — your history stays put.
+          </span>
+        </div>
+      )}
+
       {/* Success/error banners */}
       {connectSuccess && (
         <div className="flex items-center gap-2 bg-green-50 border border-green-200 px-4 py-3 mb-4 transition-all duration-300">
@@ -308,6 +327,11 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
                 {conn.display_name && (
                   <span className="font-mono text-[10px] text-black/50">{conn.display_name}</span>
                 )}
+                {conn.last_fetched_at && (
+                  <span className="font-mono text-[10px] text-black/30">
+                    updated {new Date(conn.last_fetched_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                )}
                 {conn.auto_fetch_enabled && (
                   <RefreshCw className="w-3 h-3 text-green-500" />
                 )}
@@ -347,15 +371,16 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
                 </p>
                 <p className="font-mono text-xs text-black/20 mb-3">No data</p>
 
-                {/* Connect button for auto-fetchable platforms */}
-                {isAutoFetchable && !conn && (
+                {/* Connect (spotify/youtube auto-sync) or save-your-link (all other
+                    platforms — feeds the weekly agent tracking queue). */}
+                {!conn && (
                   showConnectForm === platform.key ? (
                     <div className="space-y-2">
                       <input
                         type="text"
                         value={connectUrl}
                         onChange={(e) => { setConnectUrl(e.target.value); setConnectError(null); }}
-                        placeholder={platform.key === 'spotify' ? 'Paste Spotify artist URL...' : 'Paste YouTube channel URL...'}
+                        placeholder={platform.key === 'spotify' ? 'Paste Spotify artist URL...' : platform.key === 'youtube' ? 'Paste YouTube channel URL...' : `Paste your ${platform.label} URL...`}
                         className="w-full border border-black/10 px-2 py-1.5 font-mono text-[10px] focus:border-accent focus:outline-none transition-colors"
                       />
                       {connectError && (
@@ -365,7 +390,7 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
                         <button onClick={() => connectPlatform(platform.key)} disabled={connecting || !connectUrl.trim()}
                           className="bg-black text-white font-mono text-[10px] uppercase tracking-wider px-3 py-1.5 hover:bg-black/80 disabled:opacity-30 transition-colors inline-flex items-center gap-1">
                           {connecting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Link2 className="w-3 h-3" />}
-                          Connect
+                          {isAutoFetchable ? 'Connect' : 'Save link'}
                         </button>
                         <button onClick={() => { setShowConnectForm(null); setConnectUrl(''); setConnectError(null); }}
                           className="font-mono text-[10px] text-black/40 px-2 py-1.5 hover:text-black transition-colors">
@@ -376,7 +401,7 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
                   ) : (
                     <button onClick={() => { setShowConnectForm(platform.key); setConnectUrl(''); setConnectError(null); }}
                       className="font-mono text-[10px] uppercase tracking-wider text-accent hover:text-accent/80 transition-colors inline-flex items-center gap-1">
-                      <Link2 className="w-3 h-3" /> Auto-Connect
+                      <Link2 className="w-3 h-3" /> {isAutoFetchable ? 'Auto-Connect' : `Add your ${platform.label} link`}
                     </button>
                   )
                 )}
@@ -410,15 +435,16 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
                   <span className="font-mono text-[10px] text-black/30 uppercase tracking-wider">Lv {platLevel.level}</span>
                 </div>
 
-                {/* Connect button if auto-fetchable but not connected */}
-                {isAutoFetchable && !conn && (
+                {/* Connect / save-link if not connected (all platforms — non-auto
+                    links feed the weekly agent tracking queue). */}
+                {!conn && (
                   showConnectForm === platform.key ? (
                     <div className="space-y-2 mb-3">
                       <input
                         type="text"
                         value={connectUrl}
                         onChange={(e) => { setConnectUrl(e.target.value); setConnectError(null); }}
-                        placeholder={platform.key === 'spotify' ? 'Spotify artist URL...' : 'YouTube channel URL...'}
+                        placeholder={platform.key === 'spotify' ? 'Spotify artist URL...' : platform.key === 'youtube' ? 'YouTube channel URL...' : `${platform.label} profile URL...`}
                         className="w-full border border-black/10 px-2 py-1.5 font-mono text-[10px] focus:border-accent focus:outline-none transition-colors"
                       />
                       {connectError && <p className="font-mono text-[10px] text-red-500">{connectError}</p>}
@@ -426,7 +452,7 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
                         <button onClick={() => connectPlatform(platform.key)} disabled={connecting || !connectUrl.trim()}
                           className="bg-black text-white font-mono text-[10px] uppercase tracking-wider px-2 py-1 hover:bg-black/80 disabled:opacity-30 transition-colors inline-flex items-center gap-1">
                           {connecting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Link2 className="w-3 h-3" />}
-                          Connect
+                          {isAutoFetchable ? 'Connect' : 'Save link'}
                         </button>
                         <button onClick={() => { setShowConnectForm(null); setConnectUrl(''); setConnectError(null); }}
                           className="font-mono text-[10px] text-black/40 px-2 py-1 hover:text-black transition-colors">✕</button>
@@ -435,7 +461,7 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
                   ) : (
                     <button onClick={() => { setShowConnectForm(platform.key); setConnectUrl(''); setConnectError(null); }}
                       className="font-mono text-[10px] text-accent/70 hover:text-accent transition-colors inline-flex items-center gap-1 mb-2">
-                      <Link2 className="w-3 h-3" /> Connect for auto-sync
+                      <Link2 className="w-3 h-3" /> {isAutoFetchable ? 'Connect for auto-sync' : 'Add your link for weekly tracking'}
                     </button>
                   )
                 )}

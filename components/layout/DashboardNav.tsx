@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Shield, Wrench, User, Music, Rocket, Bell, Inbox, Film } from 'lucide-react';
+import { LayoutDashboard, Shield, Wrench, User, Music, Rocket, Bell, Inbox, Film, ClipboardList } from 'lucide-react';
 import type { UserRole } from '@/lib/constants';
 import SignOutButton from '@/components/auth/SignOutButton';
 import UnreadBell from '@/components/messaging/UnreadBell';
@@ -33,6 +33,9 @@ export default function DashboardNav({ role, isProducer, displayName, email, pro
     // (Phase 4). The standalone /dashboard/media|events|bands routes still
     // resolve by URL for deep links, but they're no longer top-level nav.
     { href: '/producer', label: 'Producer', icon: Music, show: isProducer === true },
+    // Agent Stats Console — the Cowork service account's only surface (admins
+    // can reach it too for spot checks).
+    { href: '/agent/stats', label: 'Stats Console', icon: ClipboardList, show: role === 'agent' || role === 'admin' },
     { href: '/admin', label: 'Admin', icon: Shield, show: role === 'admin' },
   ].filter((t) => t.show);
 

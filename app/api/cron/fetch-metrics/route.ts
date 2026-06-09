@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { fetchSpotifyArtist, fetchYouTubeChannel } from '@/lib/platform-fetch';
+import { sweepPauseNotices } from '@/lib/agent-stats-server';
+import { sendTrackingPausedEmail } from '@/lib/email';
 
 // Vercel Cron: Auto-fetch metrics from connected platforms
-// Runs daily at 6am UTC
+// Runs daily at 6am UTC. Doubles as the agent-console prefill (the console shows
+// today's spotify_api/youtube_api values in its input boxes) and runs the
+// tracking-paused win-back email sweep.
 export async function GET(request: NextRequest) {
   // Verify cron secret
   const authHeader = request.headers.get('authorization');
@@ -24,12 +28,16 @@ export async function GET(request: NextRequest) {
     .in('platform', ['spotify', 'youtube'])
     .or(`last_fetched_at.is.null,last_fetched_at.lt.${today}T00:00:00Z`);
 
-  if (!connections || connections.length === 0) {
-    return NextResponse.json({ message: 'No connections to fetch', fetched: 0 });
-  }
-
-  for (const conn of connections) {
+  for (const conn of connections ?? []) {
     try {
+      // Never clobber a human-verified row: if the agent already recorded this
+      // platform today, the api prefill is redundant (the agent save merged any
+      // api-only fields it didn't enter).
+      const { data: existing } = await supabase.from('artist_metrics')
+        .select('source').eq('user_id', conn.user_id).eq('platform', conn.platform)
+        .eq('metric_date', today).maybeSingle();
+      if (existing?.source === 'agent') continue;
+
       if (conn.platform === 'spotify' && conn.platform_id) {
         const artist = await fetchSpotifyArtist(conn.platform_id);
         if (artist) {
@@ -87,5 +95,15 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ fetched, errors, total: connections.length });
+  // Tracking-paused win-back sweep: artists with links whose 90-day paid window
+  // lapsed get ONE email per pause episode ("book anything and it resumes").
+  // Non-fatal — a Resend hiccup must not fail the metrics fetch.
+  let pauseSweep: { candidates: number; notified: number } = { candidates: 0, notified: 0 };
+  try {
+    pauseSweep = await sweepPauseNotices(supabase, sendTrackingPausedEmail);
+  } catch (e) {
+    console.error('[fetch-metrics] pause sweep failed:', e);
+  }
+
+  return NextResponse.json({ fetched, errors, total: connections?.length ?? 0, pauseSweep });
 }

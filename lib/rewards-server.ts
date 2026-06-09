@@ -18,7 +18,9 @@ import {
   type RewardRule, type RewardWindow, type RewardCounter,
 } from '@/lib/rewards';
 
-const TEST_EMAILS = new Set(['cole@sweetdreams.us']);
+// Exported: the agent stats console (lib/agent-stats-server.ts) excludes the same
+// internal test accounts from its work queue + pause emails.
+export const TEST_EMAILS = new Set(['cole@sweetdreams.us']);
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
 // Only these windows are evaluable from historical data; per_purchase/per_event/
