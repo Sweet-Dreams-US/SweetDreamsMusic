@@ -1,49 +1,20 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Send } from 'lucide-react';
 
-// Site key is env-overridable so a wrong/rotated key can be fixed without a code
-// change. Falls back to the previously-hardcoded value.
-const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '0x4AAAAAAC-NKDZ6-U5VzVto';
+// Spam protection is a HONEYPOT (the hidden "company" field below): real people
+// never see or fill it, naive bots fill every field. The server silently drops
+// any submission where it's set. This replaced a Cloudflare Turnstile widget that
+// was never actually configured (no secret in any env + a placeholder site key),
+// so it only ever blocked real customers. To add a real CAPTCHA back, wire a valid
+// Turnstile site key + TURNSTILE_SECRET_KEY and re-add the widget.
 
 export default function ContactForm() {
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
-  const turnstileRef = useRef<HTMLDivElement>(null);
-  const widgetIdRef = useRef<string | null>(null);
-
-  const renderTurnstile = useCallback(() => {
-    if (!turnstileRef.current || widgetIdRef.current) return;
-    const w = window as unknown as { turnstile?: { render: (el: HTMLElement, opts: Record<string, unknown>) => string; reset: (id: string) => void } };
-    if (w.turnstile) {
-      widgetIdRef.current = w.turnstile.render(turnstileRef.current, {
-        sitekey: TURNSTILE_SITE_KEY,
-        callback: (token: string) => setTurnstileToken(token),
-        'expired-callback': () => setTurnstileToken(null),
-        theme: 'light',
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    // Load Turnstile script
-    if (document.getElementById('cf-turnstile-script')) {
-      renderTurnstile();
-      return;
-    }
-    const script = document.createElement('script');
-    script.id = 'cf-turnstile-script';
-    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-    script.async = true;
-    script.onload = () => setTimeout(renderTurnstile, 100);
-    document.head.appendChild(script);
-  }, [renderTurnstile]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    // Submit even if Turnstile hasn't issued a token (widget may be broken/blocked).
-    // The server verifies the token when present + configured, but never hard-blocks.
     setStatus('sending');
 
     const formData = new FormData(e.currentTarget);
@@ -52,7 +23,7 @@ export default function ContactForm() {
       email: formData.get('email'),
       phone: formData.get('phone'),
       message: formData.get('message'),
-      turnstileToken,
+      company: formData.get('company'), // honeypot
     };
 
     try {
@@ -61,18 +32,7 @@ export default function ContactForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        if (err.error === 'Verification failed') {
-          setStatus('error');
-          setTurnstileToken(null);
-          const w = window as unknown as { turnstile?: { reset: (id: string) => void } };
-          if (w.turnstile && widgetIdRef.current) w.turnstile.reset(widgetIdRef.current);
-          return;
-        }
-        throw new Error('Failed to send');
-      }
+      if (!res.ok) throw new Error('Failed to send');
       setStatus('sent');
     } catch {
       setStatus('error');
@@ -147,8 +107,15 @@ export default function ContactForm() {
         />
       </div>
 
-      {/* Cloudflare Turnstile verification */}
-      <div ref={turnstileRef} className="flex justify-center" />
+      {/* Honeypot — visually hidden + off-screen; humans never fill it, bots do. */}
+      <input
+        type="text"
+        name="company"
+        tabIndex={-1}
+        autoComplete="off"
+        aria-hidden="true"
+        className="absolute -left-[9999px] top-0 h-0 w-0 opacity-0"
+      />
 
       {status === 'error' && (
         <p className="font-mono text-sm text-red-600">
