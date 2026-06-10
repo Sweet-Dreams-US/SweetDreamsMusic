@@ -26,3 +26,17 @@ ALTER TABLE public.tax_estimate_snapshots
 ALTER TABLE public.tax_estimate_snapshots
   ADD CONSTRAINT tax_estimate_snapshots_period_key
   UNIQUE NULLS NOT DISTINCT (studio_id, tax_year, quarter);
+
+-- 3. FIX (business-sim finding): business_expenses shipped with a HIDDEN
+--    dashboard-era CHECK whose category list predates the Tax Center —
+--    'software_subscriptions' and 'meals' (among others) were rejected at
+--    insert. Widen to the union of the old values (kept valid) + the
+--    Schedule-C set in lib/tax.ts. Same dashboard-CHECK gotcha as the
+--    booking-status incident — found by running the owner simulation.
+ALTER TABLE public.business_expenses DROP CONSTRAINT IF EXISTS business_expenses_category_check;
+ALTER TABLE public.business_expenses ADD CONSTRAINT business_expenses_category_check CHECK (
+  category = ANY (ARRAY[
+    'rent','utilities','equipment','software','marketing','insurance','supplies','professional_services','other',
+    'advertising','contract_labor','software_subscriptions','repairs_maintenance','legal_professional','travel','meals'
+  ]::text[])
+);
