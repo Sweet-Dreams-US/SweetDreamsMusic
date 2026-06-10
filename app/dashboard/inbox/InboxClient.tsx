@@ -83,6 +83,11 @@ export default function InboxClient() {
       .catch(() => {});
   }, []);
 
+  // One-shot auto-select guard: keeping selectedId OUT of load's deps avoids
+  // the mount double-fetch (load → setSelectedId → new load identity → refetch)
+  // the review fleet flagged. The first fetch auto-selects the user's OWN
+  // studio thread exactly once per mount.
+  const autoSelectedRef = useRef(false);
   const load = useCallback(async () => {
     try {
       const res = await fetch('/api/messages/threads', { cache: 'no-store' });
@@ -95,17 +100,20 @@ export default function InboxClient() {
       setThreads(data.threads as InboxThread[]);
       if (data.viewer_role) setViewerRole(data.viewer_role as ViewerRole);
       setError(null);
-      // If no thread selected via URL, default to the user's OWN studio thread.
-      if (!selectedId && (data.threads as InboxThread[]).length > 0) {
-        const sd = (data.threads as InboxThread[]).find((t) => t.kind === 'sweet_dreams' && t.mine !== false);
-        if (sd) setSelectedId(sd.id);
+      if (!autoSelectedRef.current && (data.threads as InboxThread[]).length > 0) {
+        autoSelectedRef.current = true;
+        setSelectedId((current) => {
+          if (current) return current; // URL deep-link wins
+          const sd = (data.threads as InboxThread[]).find((t) => t.kind === 'sweet_dreams' && t.mine !== false);
+          return sd ? sd.id : current;
+        });
       }
     } catch {
       setError('Network error.');
     } finally {
       setLoading(false);
     }
-  }, [selectedId]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -114,6 +122,9 @@ export default function InboxClient() {
     const next = new URLSearchParams(params.toString());
     next.set('thread', id);
     router.replace(`/dashboard/inbox?${next.toString()}`, { scroll: false });
+    // Refresh the list so unread dots clear as threads get read (same cadence
+    // the old per-selection refetch provided, now explicit + single).
+    load();
   };
 
   // Debounced recipient search.

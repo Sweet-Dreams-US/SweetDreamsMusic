@@ -257,9 +257,15 @@ export async function resolveAudience(db: Client, sender: Party, segment: Broadc
       userIds = (await allProfiles()).filter((p) => p.isProducer).map((p) => p.userId);
       break;
     case 'active_90d': {
-      // artist_tracking_status (075): paid activity in the last 90 days.
-      const { data } = await db.from('artist_tracking_status')
+      // artist_tracking_status (075): paid activity in the last 90 days. Surface
+      // a missing view LOUDLY — silently returning "audience is empty" would
+      // mask a schema-reproducibility failure.
+      const { data, error } = await db.from('artist_tracking_status')
         .select('user_id,email,is_active').eq('is_active', true);
+      if (error) {
+        console.error('[messaging] artist_tracking_status read failed (is migration 075 applied?):', error.message);
+        throw new Error('active_90d audience unavailable — tracking view missing');
+      }
       userIds = ((data ?? []) as any[])
         .filter((r) => r.email && !TEST_EMAILS.has(String(r.email).toLowerCase()))
         .map((r) => r.user_id);

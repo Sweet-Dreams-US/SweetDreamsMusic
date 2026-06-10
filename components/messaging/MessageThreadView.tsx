@@ -300,7 +300,7 @@ function MessageBubble({
           </span>
           <span
             className={`font-mono text-[9px] uppercase tracking-wider px-1.5 py-0.5 ${
-              message.author_role === 'admin' || message.author_role === 'engineer'
+              message.author_role === 'admin' || message.author_role === 'engineer' || message.author_role === 'media_manager'
                 ? 'bg-accent/30 text-black'
                 : message.author_role === 'producer'
                 ? 'bg-blue-100 text-blue-900'

@@ -61,7 +61,7 @@ export function bubbleStyleFor(message: Pick<Message, 'kind' | 'author_role'>): 
   if (message.kind === 'update') return 'gray';
   if (message.kind === 'booking_notification') return 'white-outline';
   // chat-style: studio (admin/engineer) is yellow, others are black
-  if (message.author_role === 'admin' || message.author_role === 'engineer') return 'yellow';
+  if (message.author_role === 'admin' || message.author_role === 'engineer' || message.author_role === 'media_manager') return 'yellow';
   return 'black';
 }
 
