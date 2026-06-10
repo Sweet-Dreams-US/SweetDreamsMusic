@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const body = await request.json();
-  const { title, description, category, target_value, target_date } = body;
+  const { title, description, category, target_value, target_date, linked_platform } = body;
 
   if (!title?.trim()) return NextResponse.json({ error: 'Title required' }, { status: 400 });
 
@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
       category: category || 'other',
       target_value: target_value || null,
       target_date: target_date || null,
+      linked_platform: linked_platform || null,
     })
     .select()
     .single();

@@ -87,7 +87,7 @@ async function main() {
   });
   ok('nothing met = 0', nothing.score === 0);
   ok('20 days ahead misses the 21-day item (exact boundary)',
-    computeRolloutScore({ ...allMet as never, releaseDateSetDaysAhead: 20, hasCoverArt: true, photoshootBooked: true, videoBookedOrLinked: true, hasPresave: true, preReleaseContentCount: 6, shareLinkPlays: 5, hasAdBudget: true, postReleaseContentCount: 1 } as never).score === 80);
+    computeRolloutScore({ releaseDateSetDaysAhead: 20, hasCoverArt: true, photoshootBooked: true, videoBookedOrLinked: true, hasPresave: true, preReleaseContentCount: 6, shareLinkPlays: 5, hasAdBudget: true, postReleaseContentCount: 1 }).score === 80);
   ok('5 calendar entries misses the 6+ item',
     computeRolloutScore({ releaseDateSetDaysAhead: 21, hasCoverArt: true, photoshootBooked: true, videoBookedOrLinked: true, hasPresave: true, preReleaseContentCount: 5, shareLinkPlays: 5, hasAdBudget: true, postReleaseContentCount: 1 }).score === 85);
   ok('4 plays misses the 5+ item',

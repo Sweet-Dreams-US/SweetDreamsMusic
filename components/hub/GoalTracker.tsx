@@ -27,6 +27,7 @@ export default function GoalTracker({ onXpEarned }: { onXpEarned?: () => void })
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('other');
+  const [linkedPlatform, setLinkedPlatform] = useState('');
   const [targetValue, setTargetValue] = useState('');
   const [targetDate, setTargetDate] = useState('');
   const [creating, setCreating] = useState(false);
@@ -36,6 +37,7 @@ export default function GoalTracker({ onXpEarned }: { onXpEarned?: () => void })
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editCategory, setEditCategory] = useState('');
+  const [editLinkedPlatform, setEditLinkedPlatform] = useState('');
   const [editTargetValue, setEditTargetValue] = useState('');
   const [editTargetDate, setEditTargetDate] = useState('');
   const [filter, setFilter] = useState<'active' | 'completed' | 'all'>('active');
@@ -66,9 +68,14 @@ export default function GoalTracker({ onXpEarned }: { onXpEarned?: () => void })
     await fetch('/api/hub/goals', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, description, category, target_value: targetValue ? parseFloat(targetValue) : null, target_date: targetDate || null }),
+      body: JSON.stringify({
+        title, description, category,
+        target_value: targetValue ? parseFloat(targetValue) : null,
+        target_date: targetDate || null,
+        linked_platform: (category === 'streaming' || category === 'social') && linkedPlatform ? linkedPlatform : null,
+      }),
     });
-    setTitle(''); setDescription(''); setCategory('other'); setTargetValue(''); setTargetDate('');
+    setTitle(''); setDescription(''); setCategory('other'); setLinkedPlatform(''); setTargetValue(''); setTargetDate('');
     setShowForm(false);
     await loadGoals();
     awardXp('set_goal');
@@ -109,6 +116,7 @@ export default function GoalTracker({ onXpEarned }: { onXpEarned?: () => void })
         category: editCategory,
         target_value: editTargetValue ? parseFloat(editTargetValue) : null,
         target_date: editTargetDate || null,
+        linked_platform: (editCategory === 'streaming' || editCategory === 'social') && editLinkedPlatform ? editLinkedPlatform : null,
       }),
     });
     setEditingId(null);
@@ -120,6 +128,7 @@ export default function GoalTracker({ onXpEarned }: { onXpEarned?: () => void })
     setEditTitle(goal.title);
     setEditDescription(goal.description || '');
     setEditCategory(goal.category);
+    setEditLinkedPlatform(goal.linked_platform || '');
     setEditTargetValue(goal.target_value ? String(goal.target_value) : '');
     setEditTargetDate(goal.target_date || '');
   }
@@ -169,6 +178,16 @@ export default function GoalTracker({ onXpEarned }: { onXpEarned?: () => void })
                 {GOAL_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
             </div>
+            {(category === 'streaming' || category === 'social') && (
+              <div>
+                <label className="block font-mono text-xs text-black/60 uppercase tracking-wider mb-1">Linked Platform</label>
+                <select value={linkedPlatform} onChange={(e) => setLinkedPlatform(e.target.value)}
+                  className="w-full border border-black/20 px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none bg-white">
+                  <option value="">None (manual updates)</option>
+                  {METRIC_PLATFORMS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block font-mono text-xs text-black/60 uppercase tracking-wider mb-1">Target Number</label>
               <input type="number" value={targetValue} onChange={(e) => setTargetValue(e.target.value)}
@@ -222,6 +241,13 @@ export default function GoalTracker({ onXpEarned }: { onXpEarned?: () => void })
                         className="border border-black/20 px-3 py-2 font-mono text-sm bg-white focus:border-accent focus:outline-none">
                         {GOAL_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                       </select>
+                      {(editCategory === 'streaming' || editCategory === 'social') && (
+                        <select value={editLinkedPlatform} onChange={(e) => setEditLinkedPlatform(e.target.value)}
+                          className="border border-black/20 px-3 py-2 font-mono text-sm bg-white focus:border-accent focus:outline-none">
+                          <option value="">No linked platform</option>
+                          {METRIC_PLATFORMS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                        </select>
+                      )}
                       <input type="number" value={editTargetValue} onChange={(e) => setEditTargetValue(e.target.value)}
                         className="border border-black/20 px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none" placeholder="Target" />
                       <input type="date" value={editTargetDate} onChange={(e) => setEditTargetDate(e.target.value)}
@@ -255,8 +281,14 @@ export default function GoalTracker({ onXpEarned }: { onXpEarned?: () => void })
                         {goal.target_value != null && (
                           <div className="mt-3">
                             <div className="flex items-center justify-between mb-1">
-                              <span className="font-mono text-[10px] text-black/40">
+                              <span className="font-mono text-[10px] text-black/40 inline-flex items-center gap-2">
                                 {goal.current_value.toLocaleString()} / {goal.target_value.toLocaleString()}
+                                {goal.linked_platform && (
+                                  <span className="bg-accent text-black font-bold px-1.5 py-0.5 uppercase tracking-wider"
+                                    title={METRIC_PLATFORMS.find((p) => p.key === goal.linked_platform)?.label}>
+                                    auto-syncs weekly
+                                  </span>
+                                )}
                               </span>
                               <span className="font-mono text-[10px] font-bold text-accent">{pct}%</span>
                             </div>

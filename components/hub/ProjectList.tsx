@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Folder, ChevronRight, Check, X, Trash2, Edit3, Link, Music } from 'lucide-react';
+import NextLink from 'next/link';
+import { Plus, Folder, ChevronRight, Check, X, Trash2, Edit3, Link, Music, Gauge, AlertTriangle, Info, Camera } from 'lucide-react';
 import { PROJECT_PHASES, PROJECT_TYPES } from '@/lib/hub-constants';
+import { ROLLOUT_ITEMS, RUSHED_RELEASE_DAYS } from '@/lib/career';
 import { formatDuration } from '@/lib/utils';
 import { fmtSessionDate } from '@/lib/studio-time';
 import { SkeletonList } from './LoadingSkeleton';
@@ -27,6 +29,13 @@ interface Project {
   status: string;
   created_at: string;
   artist_project_tasks: Task[];
+  rollout_score?: number | null;
+  rollout_breakdown?: Record<string, boolean | number> | null; // item keys → met; extra date_ahead_days (number) ignored
+  presave_url?: string | null;
+  video_url?: string | null;
+  ad_budget_cents?: number | null;
+  released_at?: string | null;
+  slug?: string | null;
 }
 
 interface LinkedSession {
@@ -53,6 +62,12 @@ export default function ProjectList({ onXpEarned }: { onXpEarned?: () => void })
   const [creating, setCreating] = useState(false);
   const [newTaskText, setNewTaskText] = useState('');
   const [linkedSessions, setLinkedSessions] = useState<Record<string, LinkedSession[]>>({});
+
+  // Rollout detail inputs (seeded for the expanded project)
+  const [rolloutPresave, setRolloutPresave] = useState('');
+  const [rolloutVideo, setRolloutVideo] = useState('');
+  const [rolloutAdBudget, setRolloutAdBudget] = useState(''); // dollars; ×100 on save
+  const [savingRollout, setSavingRollout] = useState(false);
 
   // Edit form state
   const [editTitle, setEditTitle] = useState('');
@@ -180,7 +195,30 @@ export default function ProjectList({ onXpEarned }: { onXpEarned?: () => void })
     const isExpanding = expandedId !== projectId;
     setExpandedId(isExpanding ? projectId : null);
     setEditingId(null);
-    if (isExpanding) loadLinkedSessions(projectId);
+    if (isExpanding) {
+      loadLinkedSessions(projectId);
+      const p = projects.find((pr) => pr.id === projectId);
+      setRolloutPresave(p?.presave_url || '');
+      setRolloutVideo(p?.video_url || '');
+      setRolloutAdBudget(p?.ad_budget_cents != null ? String(p.ad_budget_cents / 100) : '');
+    }
+  }
+
+  async function saveRolloutDetails(projectId: string) {
+    setSavingRollout(true);
+    const dollars = parseFloat(rolloutAdBudget);
+    await fetch('/api/hub/projects', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: projectId,
+        presave_url: rolloutPresave.trim() || null,
+        video_url: rolloutVideo.trim() || null,
+        ad_budget_cents: !isNaN(dollars) && dollars > 0 ? Math.round(dollars * 100) : null,
+      }),
+    });
+    await loadProjects(); // server recomputes the rollout score
+    setSavingRollout(false);
   }
 
   const filtered = projects.filter((p) => filter === 'all' ? true : p.status === filter);
@@ -387,6 +425,85 @@ export default function ProjectList({ onXpEarned }: { onXpEarned?: () => void })
                             </div>
                           </div>
                         )}
+
+                        {/* Rollout score */}
+                        {project.status === 'active' && (() => {
+                          const score = project.rollout_score ?? 0;
+                          const scoreColor = score < 40 ? 'text-red-500' : score < 70 ? 'text-amber-600' : 'text-green-600';
+                          const breakdown = project.rollout_breakdown || {};
+                          const isRushed = days !== null && days < RUSHED_RELEASE_DAYS;
+                          const isMultiTrack = project.project_type === 'album' || project.project_type === 'ep';
+                          return (
+                            <div className="border-t border-black/10 pt-4">
+                              <p className="font-mono text-[10px] text-black/40 uppercase tracking-wider mb-2 inline-flex items-center gap-1">
+                                <Gauge className="w-3 h-3" /> Rollout Score
+                              </p>
+                              <div className="flex items-baseline gap-1 mb-3">
+                                <span className={`font-mono text-3xl font-bold ${scoreColor}`}>{score}</span>
+                                <span className="font-mono text-xs text-black/30">/100</span>
+                              </div>
+
+                              {isMultiTrack && (
+                                <div className="flex items-start gap-2 border border-black/10 bg-black/[0.02] p-3 mb-3">
+                                  <Info className="w-3.5 h-3.5 text-black/40 flex-shrink-0 mt-0.5" />
+                                  <p className="font-mono text-xs text-black/60">Singles build followings — albums reward them. Consider 3-4 singles first.</p>
+                                </div>
+                              )}
+
+                              {isRushed && (
+                                <div className="flex items-start gap-2 border border-amber-300 bg-amber-50 p-3 mb-3">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+                                  <p className="font-mono text-xs text-amber-700">Rushed release: under 2 weeks of runway. The Playbook&apos;s Release Strategy explains why 21+ days wins.</p>
+                                </div>
+                              )}
+
+                              {/* Checklist */}
+                              <div className="space-y-1 mb-4">
+                                {ROLLOUT_ITEMS.map((item) => {
+                                  const met = breakdown[item.key] === true;
+                                  return (
+                                    <div key={item.key} className="flex items-center gap-2 py-1">
+                                      <div className={`w-4 h-4 border flex items-center justify-center flex-shrink-0 ${
+                                        met ? 'bg-accent border-accent' : 'border-black/20'
+                                      }`}>{met && <Check className="w-3 h-3 text-black" />}</div>
+                                      <span className={`font-mono text-xs ${met ? 'text-black/70' : 'text-black/40'}`}>{item.label}</span>
+                                      <span className="font-mono text-[10px] text-black/30 ml-auto flex-shrink-0">+{item.weight}</span>
+                                      {!met && (item.key === 'photoshoot' || item.key === 'video') && (
+                                        <NextLink href="/media"
+                                          className="font-mono text-[10px] text-accent hover:underline flex-shrink-0 inline-flex items-center gap-1">
+                                          <Camera className="w-3 h-3" /> Book a {item.key === 'photoshoot' ? 'photoshoot' : 'video'}
+                                        </NextLink>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Inline rollout details */}
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div>
+                                  <label className="block font-mono text-[10px] text-black/40 uppercase tracking-wider mb-1">Pre-save Link</label>
+                                  <input type="url" value={rolloutPresave} onChange={(e) => setRolloutPresave(e.target.value)}
+                                    className="w-full border border-black/20 px-2 py-1.5 font-mono text-xs focus:border-accent focus:outline-none transition-colors" placeholder="https://..." />
+                                </div>
+                                <div>
+                                  <label className="block font-mono text-[10px] text-black/40 uppercase tracking-wider mb-1">Video Link</label>
+                                  <input type="url" value={rolloutVideo} onChange={(e) => setRolloutVideo(e.target.value)}
+                                    className="w-full border border-black/20 px-2 py-1.5 font-mono text-xs focus:border-accent focus:outline-none transition-colors" placeholder="https://..." />
+                                </div>
+                                <div>
+                                  <label className="block font-mono text-[10px] text-black/40 uppercase tracking-wider mb-1">Ad Budget ($)</label>
+                                  <input type="number" min="0" step="1" value={rolloutAdBudget} onChange={(e) => setRolloutAdBudget(e.target.value)}
+                                    className="w-full border border-black/20 px-2 py-1.5 font-mono text-xs focus:border-accent focus:outline-none transition-colors" placeholder="0" />
+                                </div>
+                              </div>
+                              <button onClick={() => saveRolloutDetails(project.id)} disabled={savingRollout}
+                                className="mt-3 font-mono text-xs font-bold uppercase tracking-wider bg-accent text-black px-4 py-2 hover:bg-accent/90 disabled:opacity-50 transition-colors">
+                                {savingRollout ? 'Saving...' : 'Save Rollout Details'}
+                              </button>
+                            </div>
+                          );
+                        })()}
                       </>
                     )}
 
