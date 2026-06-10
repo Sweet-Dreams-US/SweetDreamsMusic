@@ -127,6 +127,25 @@ async function main() {
   ok('cash is tracked first-class', cards.every((c) => typeof c.cashCents === 'number'));
   ok('YTD over $600 trips the 1099 flag', cards.filter((c) => c.ytdPaidCents >= 60000).every((c) => c.needs1099));
 
+  // Review-fleet critical regression: a payout with contractor_id NULL (e.g. an
+  // older write path) must STILL count toward the named contractor's YTD —
+  // the merge-safe aggregation sums FK-linked + name-matched-unlinked buckets.
+  const target = cards[0];
+  const { data: seeded } = await db.from('payroll_payouts').insert({
+    person_name: target.displayName, amount: 101, method: 'cash', note: 'tax-test (ignore)',
+  } as never).select('id,contractor_id').single();
+  try {
+    ok('seeded payout is genuinely unlinked', (seeded as { contractor_id: string | null }).contractor_id === null);
+    const cards2 = await contractorDashboard(db as never, year);
+    const after = cards2.find((c) => c.id === target.id);
+    ok('NULL-FK payout still counts toward contractor YTD (+$1.01)',
+      (after?.ytdPaidCents ?? 0) === target.ytdPaidCents + 101,
+      `before ${target.ytdPaidCents} after ${after?.ytdPaidCents}`);
+    ok('and toward the cash column', (after?.cashCents ?? 0) === target.cashCents + 101);
+  } finally {
+    await db.from('payroll_payouts').delete().eq('id', (seeded as { id: string }).id);
+  }
+
   console.log('\n— Live: estimates compute without NaN; constants gate present —');
   const est = await computeEstimates(db as never, year);
   ok('estimates returned (constants seeded)', est != null && est.quarters.length === 4);

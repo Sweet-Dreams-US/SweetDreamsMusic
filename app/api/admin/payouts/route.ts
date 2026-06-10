@@ -36,6 +36,23 @@ export async function POST(request: NextRequest) {
 
   const serviceClient = createServiceClient();
   const amountCents = Math.round(amount * 100);
+
+  // Tax Center (079): link every payout to its contractor row so 1099 YTD
+  // totals are complete. Find-or-create by display name — a brand-new payee
+  // gets a contractor shell the compliance dashboard can flag for a W-9.
+  let contractorId: string | null = null;
+  try {
+    const { data: existing } = await serviceClient.from('contractors')
+      .select('id').eq('display_name', personName).eq('active', true).maybeSingle();
+    if (existing) contractorId = (existing as { id: string }).id;
+    else {
+      const { data: created } = await serviceClient.from('contractors')
+        .insert({ studio_id: null, legal_name: personName, display_name: personName })
+        .select('id').single();
+      contractorId = (created as { id: string } | null)?.id ?? null;
+    }
+  } catch { /* linkage is best-effort — the dashboard's name fallback still counts the payout */ }
+
   const { data, error } = await serviceClient
     .from('payroll_payouts')
     .insert({
@@ -45,6 +62,7 @@ export async function POST(request: NextRequest) {
       note: note || null,
       period_label: periodLabel || null,
       created_by: user?.email || null,
+      contractor_id: contractorId,
     })
     .select()
     .single();

@@ -44,15 +44,22 @@ export async function sweepTaxReminders(
     const adminEmails = ((profs ?? []) as any[]).map((p) => p.email).filter(Boolean);
     if (adminEmails.length === 0) continue;
 
-    await send({ adminEmails, quarter: q.quarter, dueDate: q.dueDate, amountCents: q.suggestedPaymentCents, daysOut: hit });
-
-    await db.from('tax_estimate_snapshots').upsert({
+    // Record the dedup BEFORE sending — a lost reminder costs one nudge, but a
+    // sent-but-unrecorded reminder re-fires daily (same lesson as pause emails).
+    // onConflict resolves against the UNIQUE NULLS NOT DISTINCT constraint (080).
+    const { error: dedupErr } = await db.from('tax_estimate_snapshots').upsert({
       studio_id: null, tax_year: year, quarter: q.quarter,
       ytd_net_cents: q.ytdNetCents, se_tax_cents: q.seTaxCents,
       income_tax_cents: q.incomeTaxCents, suggested_payment_cents: q.suggestedPaymentCents,
       assumptions: { ...((snap as any)?.assumptions ?? {}), reminders: [...reminders, hit] },
       computed_at: new Date().toISOString(),
     } as never, { onConflict: 'studio_id,tax_year,quarter' });
+    if (dedupErr) {
+      console.error('[tax-reminders] dedup write failed — skipping send:', dedupErr.message);
+      continue;
+    }
+
+    await send({ adminEmails, quarter: q.quarter, dueDate: q.dueDate, amountCents: q.suggestedPaymentCents, daysOut: hit });
     fired++; firedWindow = hit;
   }
   return { fired, window: firedWindow };

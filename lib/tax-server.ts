@@ -196,23 +196,32 @@ export async function contractorDashboard(db: Client, year: number): Promise<Con
       .gte('created_at', from).lte('created_at', `${to}T23:59:59`),
   ]);
 
-  // Roll YTD pay up to a contractor: prefer the FK, fall back to name-normalized
-  // match (older rows / manual entries). Cash is tracked first-class.
-  const byContractor = new Map<string, { total: number; cash: number; methods: Set<string> }>();
-  const byName = new Map<string, { total: number; cash: number; methods: Set<string> }>();
+  // Roll YTD pay up to a contractor. The two buckets are DISJOINT by
+  // construction — FK-linked payouts go in byContractor, contractor_id-NULL
+  // payouts in byName — and each contractor SUMS both, so an unlinked payout
+  // can never silently vanish from a 1099 total (review-fleet critical: the old
+  // `??` fallback dropped NULL-FK payouts whenever any FK-linked row existed).
+  type Agg = { total: number; cash: number; methods: Set<string> };
+  const byContractor = new Map<string, Agg>();
+  const byName = new Map<string, Agg>();
   for (const p of (payouts ?? []) as any[]) {
     const amt = Number(p.amount) || 0;
-    const bucket = (m: Map<string, any>, key: string) => {
+    const bucket = (m: Map<string, Agg>, key: string) => {
       if (!m.has(key)) m.set(key, { total: 0, cash: 0, methods: new Set<string>() });
-      const b = m.get(key); b.total += amt; if (p.method === 'cash') b.cash += amt; b.methods.add(p.method); return b;
+      const b = m.get(key)!; b.total += amt; if (p.method === 'cash') b.cash += amt; b.methods.add(p.method);
     };
     if (p.contractor_id) bucket(byContractor, p.contractor_id);
-    bucket(byName, normalizeName(String(p.person_name || '')) ?? '');
+    else bucket(byName, normalizeName(String(p.person_name || '')) ?? '');
   }
 
   return ((contractors ?? []) as any[]).map((c) => {
-    const agg = byContractor.get(c.id) ?? byName.get(normalizeName(String(c.display_name || c.legal_name || '')) ?? '')
-      ?? { total: 0, cash: 0, methods: new Set<string>() };
+    const linked = byContractor.get(c.id);
+    const unlinked = byName.get(normalizeName(String(c.display_name || c.legal_name || '')) ?? '');
+    const agg: Agg = {
+      total: (linked?.total ?? 0) + (unlinked?.total ?? 0),
+      cash: (linked?.cash ?? 0) + (unlinked?.cash ?? 0),
+      methods: new Set<string>([...(linked?.methods ?? []), ...(unlinked?.methods ?? [])]),
+    };
     const hasW9 = !!c.w9_storage_path || !!c.w9_received_at;
     const comp = constants
       ? contractorCompliance({ ytdPaidCents: agg.total, hasW9, constants })
