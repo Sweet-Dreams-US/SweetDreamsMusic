@@ -55,7 +55,6 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
   const [connections, setConnections] = useState<PlatformConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activePlatform, setActivePlatform] = useState<string>('all');
 
   // Log form state
   const [showLogForm, setShowLogForm] = useState(false);
@@ -176,9 +175,6 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
 
   const connectionsByPlatform: Record<string, PlatformConnection> = {};
   for (const c of connections) connectionsByPlatform[c.platform] = c;
-
-  // Filter metrics for chart
-  const chartMetrics = activePlatform === 'all' ? metrics : metrics.filter((m) => m.platform === activePlatform);
 
   // Build DataPoint arrays for chart components
   function buildDataPoints(data: Metric[], field: string): DataPoint[] {
@@ -304,22 +300,6 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
           </button>
         </div>
       )}
-
-      {/* Platform tabs */}
-      <div className="flex gap-0 border-b border-black/10 mb-6 overflow-x-auto">
-        <button onClick={() => setActivePlatform('all')}
-          className={`font-mono text-xs uppercase tracking-wider px-4 py-3 border-b-2 transition-all duration-200 flex-shrink-0 ${
-            activePlatform === 'all' ? 'border-accent text-black font-bold' : 'border-transparent text-black/40 hover:text-black/60'
-          }`}>All</button>
-        {METRIC_PLATFORMS.map((p) => (
-          <button key={p.key} onClick={() => setActivePlatform(p.key)}
-            className={`font-mono text-xs uppercase tracking-wider px-4 py-3 border-b-2 transition-all duration-200 flex-shrink-0 ${
-              activePlatform === p.key ? 'border-accent text-black font-bold' : 'border-transparent text-black/40 hover:text-black/60'
-            }`}>
-            <span className="mr-1">{p.icon}</span>{p.label}
-          </button>
-        ))}
-      </div>
 
       {/* Connected platforms status bar */}
       {connections.length > 0 && (
@@ -574,58 +554,9 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
         </div>
       )}
 
-      {/* Expanded chart view when a specific platform is selected */}
-      {activePlatform !== 'all' && chartMetrics.length >= 2 && (() => {
-        const platform = METRIC_PLATFORMS.find((p) => p.key === activePlatform);
-        if (!platform) return null;
-        const latest = latestByPlatform[platform.key];
-        if (!latest) return null;
-
-        // Show expanded charts for all fields that have data
-        const fieldsWithData = platform.fields.filter((f) =>
-          chartMetrics.some((m) => (m[f] as number) > 0)
-        );
-
-        return (
-          <div className="mt-6 border-2 border-black/10 p-6 transition-all duration-300">
-            <h3 className="font-mono text-xs font-bold uppercase tracking-wider mb-4">
-              {platform.icon} {platform.label} — Detailed Charts
-            </h3>
-            <div className="space-y-8">
-              {fieldsWithData.map((field) => {
-                const dataPoints = buildDataPoints(chartMetrics, field);
-                const growth = calculateGrowthRate(dataPoints, 30);
-                const chartSeries: ChartSeries[] = [{
-                  label: METRIC_FIELD_LABELS[field] || field.replace(/_/g, ' '),
-                  data: dataPoints,
-                  color: platform.color,
-                }];
-                return (
-                  <div key={field}>
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-mono text-[10px] uppercase tracking-wider text-black/40">
-                        {METRIC_FIELD_LABELS[field] || field.replace(/_/g, ' ')}
-                      </h4>
-                      {growth && (
-                        <span className={`font-mono text-[10px] font-bold ${growth.positive ? 'text-green-600' : 'text-red-500'}`}>
-                          {growth.positive ? '+' : ''}{growth.percent}% this month
-                          <span className="text-black/25 font-normal ml-1">
-                            ({growth.positive ? '+' : ''}{growth.absolute.toLocaleString()})
-                          </span>
-                        </span>
-                      )}
-                    </div>
-                    <MetricsChart series={chartSeries} height={180} />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Overview trend charts when "All" is selected */}
-      {activePlatform === 'all' && metrics.length >= 2 && (
+      {/* Trend charts — one per platform with data, all on the one page
+          (the platform tab strip was removed per Cole: no tabs, no "All"). */}
+      {metrics.length >= 2 && (
         <div className="mt-6 space-y-6">
           {METRIC_PLATFORMS.map((platform) => {
             const allSeries = buildChartSeries(platform.key, [platform.primaryField], platform.color);
