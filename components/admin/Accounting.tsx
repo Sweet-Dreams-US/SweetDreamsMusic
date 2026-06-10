@@ -9,6 +9,7 @@ import { computeEarningsCore, normalizeName, revenueConfigFromConstants, type Pe
 import CreditsLiabilityPanel from './CreditsLiabilityPanel';
 import PackageAccounting from './PackageAccounting';
 import CashCorrectionsLog from './CashCorrectionsLog';
+import TaxExpenses from './TaxExpenses';
 import { depositCollectedCents } from '@/lib/deposit';
 
 interface Booking {
@@ -44,7 +45,7 @@ interface BeatPurchase {
   beats: { title: string; producer: string } | null;
 }
 
-type View = 'overview' | 'payroll' | 'sessions' | 'beats' | 'media';
+type View = 'overview' | 'profit' | 'payroll' | 'sessions' | 'beats' | 'media';
 type DatePreset = 'thisMonth' | 'lastMonth' | 'month' | '30d' | '90d' | 'year' | 'custom';
 
 function getMonthOptions(): { value: string; label: string }[] {
@@ -892,6 +893,7 @@ export default function Accounting() {
 
   const views: { key: View; label: string }[] = [
     { key: 'overview', label: 'Overview' },
+    { key: 'profit', label: 'Profit' },
     { key: 'payroll', label: 'Payroll' },
     { key: 'sessions', label: 'Sessions' },
     { key: 'beats', label: 'Beat Sales' },
@@ -2091,6 +2093,17 @@ export default function Accounting() {
             </div>
           )}
 
+          {/* ========= PROFIT (revenue − expenses, the real studio number) ========= */}
+          {view === 'profit' && (() => {
+            // Same range resolution as fetchData: presets via getDateRange,
+            // custom via the two date inputs (fall back to this month).
+            const range = (datePreset === 'custom'
+              ? (customFrom ? { from: customFrom, to: customTo || new Date().toISOString().split('T')[0] } : null)
+              : getDateRange(datePreset, selectedMonth))
+              ?? getDateRange('thisMonth')!;
+            return <ProfitView from={range.from} to={range.to} />;
+          })()}
+
           {/* ========= SESSIONS DETAIL ========= */}
           {view === 'sessions' && (
             <div className="space-y-6">
@@ -2708,6 +2721,86 @@ export default function Accounting() {
           </div>
         );
       })()}
+    </div>
+  );
+}
+
+// ── Profit view — revenue minus expenses for the selected period (Plan 5 §2).
+// Reads the SAME tax P&L endpoint the Tax Center uses (cent-identical by
+// construction) and embeds the shared TaxExpenses entry/list, so logging an
+// expense here IS logging it for taxes. Contract labor auto-feeds from payouts.
+
+interface ProfitPnL {
+  from: string; to: string;
+  revenue: { sessionsCents: number; beatsCents: number; mediaSalesCents: number; keptDepositsCents: number };
+  totalRevenueCents: number; contractLaborCents: number; manualExpensesCents: number;
+  totalExpensesCents: number; netProfitCents: number;
+  expensesByCategory: { key: string; label: string; scheduleCLine: string; amountCents: number }[];
+}
+
+function ProfitView({ from, to }: { from: string; to: string }) {
+  const [pnl, setPnl] = useState<ProfitPnL | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadPnl = async () => {
+    try {
+      const res = await fetch(`/api/admin/tax/pnl?from=${from}&to=${to}`);
+      const j = await res.json();
+      if (res.ok) setPnl(j.pnl);
+    } catch { /* ignore */ }
+    setLoading(false);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setLoading(true); loadPnl(); }, [from, to]);
+
+  if (loading) return <p className="font-mono text-sm text-black/40">Loading profit…</p>;
+  if (!pnl) return <p className="font-mono text-sm text-red-600">Could not load the P&amp;L.</p>;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard icon={DollarSign} label="Revenue (incl. kept deposits)" value={formatCents(pnl.totalRevenueCents)} />
+        <StatCard icon={Filter} label="Expenses (incl. contract labor)" value={formatCents(pnl.totalExpensesCents)} />
+        <StatCard icon={Users} label="Contract labor (auto from payouts)" value={formatCents(pnl.contractLaborCents)} />
+        <StatCard icon={TrendingUp} label="Net profit" value={formatCents(pnl.netProfitCents)} accent />
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        <div className="border-2 border-black/10 p-4">
+          <p className="font-mono text-[10px] uppercase tracking-wider text-black/50 mb-2">Revenue streams</p>
+          <table className="w-full font-mono text-sm">
+            <tbody>
+              <tr className="border-t border-black/5"><td className="py-1">Studio sessions</td><td className="text-right">{formatCents(pnl.revenue.sessionsCents)}</td></tr>
+              <tr className="border-t border-black/5"><td className="py-1">Beat sales</td><td className="text-right">{formatCents(pnl.revenue.beatsCents)}</td></tr>
+              <tr className="border-t border-black/5"><td className="py-1">Media sales</td><td className="text-right">{formatCents(pnl.revenue.mediaSalesCents)}</td></tr>
+              <tr className="border-t border-black/5"><td className="py-1">Kept deposits</td><td className="text-right">{formatCents(pnl.revenue.keptDepositsCents)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div className="border-2 border-black/10 p-4">
+          <p className="font-mono text-[10px] uppercase tracking-wider text-black/50 mb-2">Expenses by category</p>
+          {pnl.expensesByCategory.length === 0 ? (
+            <p className="font-mono text-xs text-black/40">No expenses in this period yet — add them below.</p>
+          ) : (
+            <table className="w-full font-mono text-sm">
+              <tbody>
+                {pnl.expensesByCategory.map((c) => (
+                  <tr key={c.key} className="border-t border-black/5">
+                    <td className="py-1">{c.label} <span className="text-black/30 text-[10px]">{c.scheduleCLine}</span></td>
+                    <td className="text-right">{formatCents(c.amountCents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      <p className="font-mono text-[10px] text-black/40">
+        Same numbers as the Tax Center — quarterly estimates, 1099 compliance, and the CPA packet live in the Tax Center tab.
+      </p>
+
+      <TaxExpenses from={from} to={to} onChanged={loadPnl} />
     </div>
   );
 }

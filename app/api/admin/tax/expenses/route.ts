@@ -17,8 +17,15 @@ async function requireAdmin() {
 export async function GET(request: NextRequest) {
   const g = await requireAdmin();
   if (g.error) return g.error;
-  const year = Number(new URL(request.url).searchParams.get('year')) || new Date().getUTCFullYear();
+  const params = new URL(request.url).searchParams;
   const db = createServiceClient();
+  // Range mode (the Accounting Profit view's period selector)…
+  const from = params.get('from'), to = params.get('to');
+  if (from && to && /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return NextResponse.json({ from, to, expenses: await listExpenses(db, from, to) });
+  }
+  // …or whole-year mode (the Tax Center).
+  const year = Number(params.get('year')) || new Date().getUTCFullYear();
   const [expenses, pnl] = await Promise.all([
     listExpenses(db, `${year}-01-01`, `${year}-12-31`),
     computePnL(db, year),

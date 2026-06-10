@@ -147,7 +147,8 @@ export async function contractorPaidForRange(db: Client, fromIso: string, toIso:
 }
 
 export interface PnL {
-  year: number;
+  year: number;                       // year of the range start (display)
+  from: string; to: string;           // the actual period
   revenue: RevenueBreakdown;
   totalRevenueCents: number;          // gross + kept deposits (the P&L top line)
   expensesByCategory: { key: string; label: string; scheduleCLine: string; amountCents: number }[];
@@ -158,12 +159,12 @@ export interface PnL {
 }
 
 /**
- * Year P&L. Contract labor is auto-filled from payroll_payouts (actual pay), so
- * the contract_labor expense category is IGNORED on manual rows to avoid double
- * counting (the UI tells the admin not to hand-enter payouts).
+ * P&L for an arbitrary period (the Accounting Profit view passes its month/
+ * quarter/custom range; the Tax Center passes whole years). Contract labor is
+ * auto-filled from payroll_payouts (actual pay), so the contract_labor expense
+ * category is IGNORED on manual rows to avoid double counting.
  */
-export async function computePnL(db: Client, year: number): Promise<PnL> {
-  const { from, to } = yearRange(year);
+export async function computePnLRange(db: Client, from: string, to: string): Promise<PnL> {
   const [revenue, expenses, contractLaborCents] = await Promise.all([
     taxRevenueForRange(db, from, to),
     listExpenses(db, from, to),
@@ -186,10 +187,17 @@ export async function computePnL(db: Client, year: number): Promise<PnL> {
   const totalRevenueCents = revenue.grossCents + revenue.keptDepositsCents;
   const totalExpensesCents = manualExpensesCents + contractLaborCents;
   return {
-    year, revenue, totalRevenueCents, expensesByCategory,
+    year: Number(from.slice(0, 4)), from, to,
+    revenue, totalRevenueCents, expensesByCategory,
     contractLaborCents, manualExpensesCents, totalExpensesCents,
     netProfitCents: totalRevenueCents - totalExpensesCents,
   };
+}
+
+/** Whole-year P&L (the Tax Center home + CPA packet basis). */
+export async function computePnL(db: Client, year: number): Promise<PnL> {
+  const { from, to } = yearRange(year);
+  return computePnLRange(db, from, to);
 }
 
 // ── contractor compliance ────────────────────────────────────────────────────
