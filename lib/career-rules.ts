@@ -414,6 +414,70 @@ export function addDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// ── Next-step engine (Plan 6 §6) — same state, advice voice ─────────────────
+// Priority-ordered; the overview shows the top 3. Advice NEVER blocks anything.
+
+export interface NextStep {
+  id: string;
+  priority: number;      // lower = more urgent
+  message: string;
+  href: string;          // deep link (hub tab or page)
+  dismissible: boolean;
+}
+
+export function nextSteps(ctx: CareerContext, opts?: { stage?: number }): NextStep[] {
+  const steps: NextStep[] = [];
+  const add = (id: string, priority: number, message: string, href: string, dismissible = true) =>
+    steps.push({ id, priority, message, href, dismissible });
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Release-imminent urgency (the campaign window is NOW).
+  for (const p of ctx.activeProjects) {
+    if (!p.targetReleaseDate) continue;
+    const days = daysBetweenIso(today, p.targetReleaseDate);
+    if (days < 0 || days > 30) continue;
+    if (p.rolloutScore < 40 && days <= 21) {
+      add(`rollout_low_${p.id}`, 1, `"${p.title}" drops in ${days} days with a ${p.rolloutScore} rollout score. Open the checklist — book the shoot, add the pre-save.`, '?tab=projects', false);
+    } else if (p.rolloutScore < 70 && days <= 14) {
+      add(`rollout_mid_${p.id}`, 2, `${days} days out: "${p.title}" is at ${p.rolloutScore}/100. The last points are the cheap ones — content calendar + private link plays.`, '?tab=projects');
+    }
+    if (days <= 14 && ctx.shareLinks.length > 0 && ctx.shareLinks.every((l) => l.playCount === 0)) {
+      add('share_unused', 2, `Your private listening link has 0 plays and the release is ${days} days out. Send it to 5 people today.`, '?tab=roadmap');
+    }
+  }
+
+  // Foundation gaps (cheap, unlock everything else).
+  if (ctx.platformLinkCount < 4) add('links', 3, `Connect ${4 - ctx.platformLinkCount} more platform link${4 - ctx.platformLinkCount === 1 ? '' : 's'} so your growth gets tracked weekly.`, '?tab=metrics');
+  if (!ctx.brandComplete) add('brand', 3, 'Finish your brand basics — profile photo + bio. Two minutes, permanent first impression.', '/dashboard/profile');
+
+  // Catalog momentum.
+  if (ctx.activeProjects.length === 0 && ctx.releasedProjects.length === 0) {
+    add('first_project', 4, 'Start your first project — even a one-track single. Everything in your roadmap hangs off it.', '?tab=projects', false);
+  }
+  if (ctx.lastReleaseAt) {
+    const weeksSince = Math.floor(daysBetweenIso(ctx.lastReleaseAt.slice(0, 10), today) / 7);
+    if (weeksSince >= 7 && ctx.activeProjects.length === 0) {
+      add('next_single', 4, `${weeksSince} weeks since your last release. Momentum compounds — start the next single.`, '?tab=projects');
+    }
+  }
+  // Singles-first nudge (advice, never a gate).
+  if (ctx.releasedProjects.length < 6 && ctx.activeProjects.some((p) => ['album', 'ep'].includes(p.projectType))) {
+    add('singles_first', 5, 'Singles build followings — albums reward them. Consider 3-4 singles before the big drop.', '?tab=projects');
+  }
+
+  // Audience habits.
+  if (ctx.platformLinkCount >= 4 && ctx.snapshotStreakWeeks === 0) {
+    add('tracking', 5, 'Your links are connected but no stats have landed yet — your first weekly check-in is coming. Watch the Metrics tab.', '?tab=metrics');
+  }
+  if (ctx.shareFeedbackCount === 0 && ctx.releasedProjects.length === 0 && ctx.activeProjects.length > 0) {
+    add('first_share', 5, 'Before you release: share a private listening link and collect honest feedback while changes are still free.', '?tab=roadmap');
+  }
+  if (ctx.contactsCount < 3) add('network', 6, 'Log the creatives you already know — 3 contacts starts your network list.', '?tab=roadmap');
+  if (ctx.completedSessions === 0) add('book', 6, 'Book your first session — your roadmap starts in the studio.', '/book', false);
+
+  return steps.sort((a, b) => a.priority - b.priority);
+}
+
 // ── Career summary (the UI read model) ───────────────────────────────────────
 
 export async function getCareerSummary(db: Client, userId: string) {

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { buildContext, nextSteps, getCareerSummary } from '@/lib/career-rules';
+import { TIER_LADDER } from '@/lib/career';
 
 export async function GET() {
   const supabase = await createClient();
@@ -34,6 +36,54 @@ export async function GET() {
     if (!latestMetrics[m.platform]) latestMetrics[m.platform] = m;
   }
 
+  // Career layer: next steps + stage/tier cards + weekly verified deltas
+  // (deltas, never just totals — Plan 6 §7). All service-client, best-effort.
+  let career: Record<string, unknown> | null = null;
+  try {
+    const db = createServiceClient();
+    const [ctx, summary, weekly] = await Promise.all([
+      buildContext(db, user.id),
+      getCareerSummary(db, user.id),
+      db.from('artist_metrics')
+        .select('platform,metric_date,followers,monthly_listeners,subscribers,metadata')
+        .eq('user_id', user.id).eq('source', 'agent')
+        .order('metric_date', { ascending: false }).limit(20),
+    ]);
+
+    // Week-over-week deltas per platform from the two latest verified rows.
+    const byPlatform = new Map<string, any[]>();
+    for (const m of ((weekly.data ?? []) as any[])) {
+      if (m.metadata?.anomaly === true) continue;
+      if (!byPlatform.has(m.platform)) byPlatform.set(m.platform, []);
+      const arr = byPlatform.get(m.platform)!;
+      if (arr.length < 2) arr.push(m);
+    }
+    const weekDeltas: { platform: string; metric: string; delta: number; current: number }[] = [];
+    let lastUpdated: string | null = null;
+    for (const [platform, rows] of byPlatform) {
+      if (rows.length === 0) continue;
+      lastUpdated = lastUpdated && lastUpdated > rows[0].metric_date ? lastUpdated : rows[0].metric_date;
+      if (rows.length < 2) continue;
+      const field = platform === 'spotify' ? 'monthly_listeners' : platform === 'youtube' ? 'subscribers' : 'followers';
+      const cur = Number(rows[0][field] ?? rows[0].followers) || 0;
+      const prev = Number(rows[1][field] ?? rows[1].followers) || 0;
+      if (cur || prev) weekDeltas.push({ platform, metric: field, delta: cur - prev, current: cur });
+    }
+
+    const nextTier = TIER_LADDER.find((t) => t > (summary.highestTier ?? 0)) ?? null;
+    career = {
+      nextSteps: nextSteps(ctx, { stage: summary.stage }).slice(0, 3),
+      stage: summary.stage,
+      stageLabel: summary.stageLabel,
+      stageGates: summary.requirements.filter((r: any) => r.stage === summary.stage + 1),
+      highestTier: summary.highestTier,
+      nextTier,
+      currentListeners: ctx.latestVerifiedListeners,
+      weekDeltas: weekDeltas.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)),
+      lastUpdated,
+    };
+  } catch (e) { console.error('[overview] career layer failed:', e); }
+
   return NextResponse.json({
     projects: projectsRes.data || [],
     goals: goalsRes.data || [],
@@ -42,5 +92,6 @@ export async function GET() {
     upcomingSessions: sessionsRes.data || [],
     completedSessions: completedSessionsRes.data || [],
     upcomingEvents: calendarRes.data || [],
+    career,
   });
 }
