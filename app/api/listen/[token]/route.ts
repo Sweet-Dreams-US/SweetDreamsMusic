@@ -48,6 +48,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
   });
 }
 
+// Cheap listener fingerprint: hashed IP + day bucket. Not PII at rest (hashed),
+// just enough to dedup play inflation without auth.
+async function listenerKey(req: NextRequest): Promise<string> {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || req.headers.get('x-real-ip') || 'anon';
+  const day = new Date().toISOString().slice(0, 10);
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${ip}|${day}`));
+  return Array.from(new Uint8Array(buf)).slice(0, 12).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   let body: Record<string, unknown>;
@@ -56,11 +66,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   if (!link) return NextResponse.json({ error: reason }, { status: reason === 'not_found' ? 404 : 410 });
 
   if (body.action === 'play') {
-    const newCount = (Number(link.play_count) || 0) + 1;
-    await db.from('track_share_links').update({ play_count: newCount } as never).eq('id', link.id);
-    if (newCount >= 25) await grantAchievement(db, link.user_id, CAREER_ACHIEVEMENTS.sharing.party);
-    // Plays move rollout (share_plays item) when the link is project-bound.
-    if (link.project_id) {
+    // Atomic vanity counter (no lost updates).
+    const { data: newCount } = await db.rpc('increment_share_play', { p_link_id: link.id });
+    if (Number(newCount) >= 25) await grantAchievement(db, link.user_id, CAREER_ACHIEVEMENTS.sharing.party);
+
+    // GATE/rollout signal uses DISTINCT listeners (one per IP per day), so a
+    // refresh/curl loop can't manufacture the 5+ share_plays rollout item.
+    const key = await listenerKey(req);
+    const { error: dupErr } = await db.from('track_share_plays')
+      .insert({ share_link_id: link.id, listener_key: key } as never);
+    const firstToday = !dupErr; // unique violation = already counted today
+    if (firstToday && link.project_id) {
       try {
         const { recomputeProjectRollout } = await import('@/lib/career-rules');
         await recomputeProjectRollout(db, link.project_id);
@@ -89,12 +105,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     } as never);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // Feedback achievements + gate re-evaluation for the ARTIST.
+    // Feedback achievements + gate re-evaluation for the ARTIST. The
+    // feedback10 count, like the s2_share gate (buildContext), excludes the
+    // artist's OWN email so they can't farm it with throwaways.
     try {
-      const { count } = await db.from('track_share_feedback')
-        .select('id,track_share_links!inner(user_id)', { count: 'exact', head: true })
+      const { data: owner } = await db.from('profiles').select('email').eq('user_id', link.user_id).maybeSingle();
+      const ownerEmail = String((owner as any)?.email || '').toLowerCase();
+      const { data: rows } = await db.from('track_share_feedback')
+        .select('listener_email,track_share_links!inner(user_id)')
         .eq('track_share_links.user_id', link.user_id);
-      if ((count ?? 0) >= 10) await grantAchievement(db, link.user_id, CAREER_ACHIEVEMENTS.sharing.feedback10);
+      const distinct = new Set(((rows ?? []) as any[])
+        .map((r) => String(r.listener_email || '').toLowerCase())
+        .filter((e) => e && e !== ownerEmail));
+      if (distinct.size >= 10) await grantAchievement(db, link.user_id, CAREER_ACHIEVEMENTS.sharing.feedback10);
       await evaluateGates(db, link.user_id);
     } catch (e) { console.error('[career] feedback hook failed:', e); }
     return NextResponse.json({ success: true });

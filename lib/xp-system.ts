@@ -224,7 +224,10 @@ export async function awardXP(
     }
   }
 
-  // Insert xp_log entry
+  // Insert xp_log entry. The partial UNIQUE index (migration 083) on
+  // (user_id, action, reference_id) is the real race guard — if two hooks fire
+  // at once, one insert wins and the other hits 23505; we treat that as
+  // "already awarded" rather than double-crediting the profile total.
   const { error: logError } = await supabase.from('xp_log').insert({
     user_id: userId,
     action,
@@ -234,7 +237,10 @@ export async function awardXP(
     metadata: opts?.metadata || {},
   });
 
-  if (logError) return { awarded: false, xp: 0, error: logError.message };
+  if (logError) {
+    if ((logError as { code?: string }).code === '23505') return { awarded: false, xp: 0, error: 'Already awarded (race)' };
+    return { awarded: false, xp: 0, error: logError.message };
+  }
 
   // Update profile totals. userId here is the AUTH user id — profiles are
   // keyed by user_id (profiles.id is a different PK; the old `.eq('id', …)`

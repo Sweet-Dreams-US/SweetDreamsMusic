@@ -18,17 +18,24 @@ export async function GET(request: NextRequest) {
   const summary = { evaluated: 0, stageUps: 0, tiersGranted: 0, goalsSynced: 0 };
   try {
     // Users with career surface: anyone with requirement progress, platform
-    // links, projects, or agent snapshots.
+    // links, projects, or agent snapshots. Paginated — PostgREST caps each
+    // query at 1000 rows, and the studio will cross that as it grows.
+    const collectUsers = async (table: string): Promise<string[]> => {
+      const out: string[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data } = await db.from(table).select('user_id').range(from, from + 999);
+        const rows = (data ?? []) as any[];
+        out.push(...rows.map((r) => r.user_id));
+        if (rows.length < 1000) break;
+      }
+      return out;
+    };
     const [a, b, c] = await Promise.all([
-      db.from('platform_connections').select('user_id'),
-      db.from('artist_projects').select('user_id'),
-      db.from('requirement_progress').select('user_id'),
+      collectUsers('platform_connections'),
+      collectUsers('artist_projects'),
+      collectUsers('requirement_progress'),
     ]);
-    const userIds = Array.from(new Set([
-      ...((a.data ?? []) as any[]).map((r) => r.user_id),
-      ...((b.data ?? []) as any[]).map((r) => r.user_id),
-      ...((c.data ?? []) as any[]).map((r) => r.user_id),
-    ].filter(Boolean)));
+    const userIds = Array.from(new Set([...a, ...b, ...c].filter(Boolean)));
 
     for (const uid of userIds) {
       try {

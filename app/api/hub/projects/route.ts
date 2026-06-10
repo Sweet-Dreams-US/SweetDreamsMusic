@@ -27,7 +27,13 @@ export async function POST(request: NextRequest) {
 
   if (!title?.trim()) return NextResponse.json({ error: 'Title required' }, { status: 400 });
 
-  // Create project
+  // Create project. If a release date is set at creation, freeze the
+  // days-ahead measurement NOW so the 21-day rollout item is reachable for
+  // projects that never get a later PUT (review: date_ahead was dead at creation).
+  const nowIso = new Date().toISOString();
+  const dateAheadDays = target_release_date
+    ? Math.round((Date.parse(`${String(target_release_date).slice(0, 10)}T00:00:00Z`) - Date.parse(`${nowIso.slice(0, 10)}T00:00:00Z`)) / 86_400_000)
+    : null;
   const { data: project, error } = await supabase
     .from('artist_projects')
     .insert({
@@ -40,11 +46,19 @@ export async function POST(request: NextRequest) {
       featured_artists: featured_artists || [],
       current_phase: 'concept',
       status: 'active',
+      ...(target_release_date ? { release_date_set_at: nowIso, rollout_breakdown: { date_ahead_days: dateAheadDays } } : {}),
     })
     .select()
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Initial rollout score (cover art / collab / etc. may already qualify).
+  try {
+    const { createServiceClient } = await import('@/lib/supabase/server');
+    const { recomputeProjectRollout } = await import('@/lib/career-rules');
+    await recomputeProjectRollout(createServiceClient(), project.id);
+  } catch { /* best-effort */ }
 
   // Generate default tasks for all phases
   const tasks = Object.entries(DEFAULT_PHASE_TASKS).flatMap(([phase, titles]) =>
@@ -118,10 +132,13 @@ export async function PUT(request: NextRequest) {
     const db = createServiceClient();
     const { recomputeProjectRollout, evaluateGates } = await import('@/lib/career-rules');
 
-    if (dateChanged && updates.target_release_date) {
-      const daysAhead = Math.round(
-        (Date.parse(String(updates.target_release_date)) - Date.now()) / 86_400_000);
+    if (dateChanged) {
       const { data: cur } = await db.from('artist_projects').select('rollout_breakdown').eq('id', id).single();
+      // Clearing the date resets the frozen measurement; setting it freezes a
+      // calendar-accurate days-ahead (UTC-midnight diff, no afternoon off-by-one).
+      const daysAhead = updates.target_release_date
+        ? Math.round((Date.parse(`${String(updates.target_release_date).slice(0, 10)}T00:00:00Z`) - Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`)) / 86_400_000)
+        : null;
       await db.from('artist_projects').update({
         rollout_breakdown: { ...((cur as { rollout_breakdown?: object })?.rollout_breakdown ?? {}), date_ahead_days: daysAhead },
       } as never).eq('id', id);

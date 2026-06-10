@@ -55,16 +55,22 @@ export async function buildContext(db: Client, userId: string): Promise<CareerCo
     .eq('user_id', userId).maybeSingle();
   const email = ((prof as any)?.email ?? '').toLowerCase() || null;
 
+  const projectsPromise = db.from('artist_projects')
+    .select('id,project_type,current_phase,status,released_at,slug,target_release_date,rollout_score,title,featured_artists,created_at')
+    .eq('user_id', userId);
+  const projectIds = ((await projectsPromise).data ?? []).map((p: any) => p.id);
+
   const [links, bookings, projects, collabs, feedback, prep, snaps, shows, contacts, shares] = await Promise.all([
     db.from('platform_connections').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     email
-      ? db.from('bookings').select('id', { count: 'exact', head: true }).eq('status', 'completed').ilike('customer_email', email)
+      ? db.from('bookings').select('id', { count: 'exact', head: true }).eq('status', 'completed').eq('customer_email', email)
       : Promise.resolve({ count: 0 } as any),
-    db.from('artist_projects')
-      .select('id,project_type,current_phase,status,released_at,slug,target_release_date,rollout_score,title,created_at')
-      .eq('user_id', userId),
-    db.from('project_collaborators').select('project_id'),
-    db.from('track_share_feedback').select('id,share_link_id,track_share_links!inner(user_id)')
+    projectsPromise,
+    projectIds.length
+      ? db.from('project_collaborators').select('project_id').in('project_id', projectIds)
+      : Promise.resolve({ data: [] } as any),
+    // Feedback toward the gate EXCLUDES the artist's own email (anti-farm).
+    db.from('track_share_feedback').select('id,listener_email,share_link_id,track_share_links!inner(user_id)')
       .eq('track_share_links.user_id', userId),
     db.from('session_prep').select('id,reference_tracks,beat_file_url').eq('user_id', userId),
     db.from('artist_metrics')
@@ -92,8 +98,12 @@ export async function buildContext(db: Client, userId: string): Promise<CareerCo
     else if (['album', 'ep', 'mixtape', 'deluxe'].includes(p.project_type) && singleCount < 3) albumBefore = true;
   }
 
+  // Collab release: an explicit project_collaborators row OR a featured artist
+  // listed on a released project (artist_projects.featured_artists), so the
+  // gate is reachable without a separate collaborator UI.
   const collabProjectIds = new Set(((collabs.data ?? []) as any[]).map((c) => c.project_id));
-  const hasCollabRelease = released.some((p) => collabProjectIds.has(p.id));
+  const hasCollabRelease = releasedFull.some((p) =>
+    collabProjectIds.has(p.id) || (Array.isArray(p.featured_artists) && p.featured_artists.length > 0));
 
   // Verified spotify snapshots (agent rows): latest non-anomalous listeners +
   // weekly streak across any-platform agent dates.
@@ -124,7 +134,10 @@ export async function buildContext(db: Client, userId: string): Promise<CareerCo
     releasedSingles: singleCount,
     albumReleasedBeforeSingles: albumBefore,
     maxRolloutScore: Math.max(0, ...projRows.map((p) => Number(p.rollout_score) || 0)),
-    shareFeedbackCount: (feedback.data ?? []).length,
+    // Distinct NON-owner listener emails only (self-feedback can't farm s2_share).
+    shareFeedbackCount: new Set(((feedback.data ?? []) as any[])
+      .map((f) => String(f.listener_email || '').toLowerCase())
+      .filter((e) => e && e !== email)).size,
     hasPrepReference: ((prep.data ?? []) as any[]).some((r) =>
       (Array.isArray(r.reference_tracks) && r.reference_tracks.length > 0) || !!r.beat_file_url),
     latestVerifiedListeners: latestClean ? Number(latestClean.monthly_listeners) : null,
@@ -231,10 +244,24 @@ export async function evaluateGates(db: Client, userId: string): Promise<GateRes
     });
   }
 
+  // Consistency achievements that mirror auto-gates (one write path).
+  if (ctx.hasCollabRelease) await grantAchievement(db, userId, CAREER_ACHIEVEMENTS.consistency.collab);
+  if (ctx.releasesIn12mo >= 6) await grantAchievement(db, userId, CAREER_ACHIEVEMENTS.consistency.sixReleases);
+  if (ctx.snapshotStreakWeeks >= 4) await grantAchievement(db, userId, CAREER_ACHIEVEMENTS.consistency.streak4);
+
+  // Stage-up fires off the DURABLE baseline (profiles.career_stage_computed),
+  // so a catalog edit or a confirm-route completion can't skip the celebration
+  // and a recompute drop never re-fires it. Persist the new stage.
   const stage = computeStage(done, reqs.map((r) => ({ stage: r.stage, key: r.key })));
-  const stageUp = stage > previousStage;
+  const { data: prevRow } = await db.from('profiles')
+    .select('career_stage_computed').eq('user_id', userId).maybeSingle();
+  const baseline = Number((prevRow as any)?.career_stage_computed ?? previousStage);
+  const stageUp = stage > baseline;
+  if (stage !== baseline) {
+    await db.from('profiles').update({ career_stage_computed: stage } as never).eq('user_id', userId);
+  }
   if (stageUp) await onStageUp(db, userId, stage);
-  return { newlyCompleted, stage, previousStage, stageUp };
+  return { newlyCompleted, stage, previousStage: baseline, stageUp };
 }
 
 function snapshotEvidence(check: string, ctx: CareerContext): Record<string, unknown> {
@@ -267,14 +294,22 @@ async function onStageUp(db: Client, userId: string, stage: number): Promise<voi
  * (cron). Grant = two consecutive verified weekly snapshots ≥ threshold,
  * neither anomaly-flagged. Permanent — rungs are only ever added.
  */
-export async function sweepListenerTiers(db: Client, onlyUserId?: string):
+export async function sweepListenerTiers(db: Client, onlyUserId?: string, opts?: { silent?: boolean }):
   Promise<{ granted: { userId: string; tier: number }[] }> {
   let userIds: string[];
   if (onlyUserId) userIds = [onlyUserId];
   else {
-    const { data } = await db.from('artist_metrics').select('user_id')
-      .eq('source', 'agent').eq('platform', 'spotify').not('monthly_listeners', 'is', null);
-    userIds = Array.from(new Set(((data ?? []) as any[]).map((r) => r.user_id)));
+    // Distinct users, paginated (PostgREST caps at 1000 rows/page).
+    const seen = new Set<string>();
+    for (let from = 0; ; from += 1000) {
+      const { data } = await db.from('artist_metrics').select('user_id')
+        .eq('source', 'agent').eq('platform', 'spotify').not('monthly_listeners', 'is', null)
+        .range(from, from + 999);
+      const rows = (data ?? []) as any[];
+      rows.forEach((r) => seen.add(r.user_id));
+      if (rows.length < 1000) break;
+    }
+    userIds = Array.from(seen);
   }
 
   const granted: { userId: string; tier: number }[] = [];
@@ -294,6 +329,7 @@ export async function sweepListenerTiers(db: Client, onlyUserId?: string):
 
     const { data: have } = await db.from('listener_tiers').select('tier').eq('user_id', uid);
     const haveSet = new Set(((have ?? []) as any[]).map((t) => Number(t.tier)));
+    let highestNew = 0;
     for (const t of TIER_LADDER) {
       if (t > top || haveSet.has(t)) continue;
       const { error } = await db.from('listener_tiers').insert({
@@ -301,16 +337,21 @@ export async function sweepListenerTiers(db: Client, onlyUserId?: string):
       } as never);
       if (error) { console.error(`[tiers] insert failed (${uid} ${t}):`, error.message); continue; }
       granted.push({ userId: uid, tier: t });
-      await onTierUp(db, uid, t);
+      // Achievement per rung (cheap, idempotent, no fan-out).
+      const aKey = CAREER_ACHIEVEMENTS.tiers[t];
+      if (aKey) await grantAchievement(db, uid, aKey);
+      if (t > highestNew) highestNew = t;
     }
+    // ONE notification per user per sweep, for the HIGHEST new rung — a debut
+    // at 500K announces "joined the 500K Club" once, not five times. Skipped
+    // entirely in silent (baseline backfill) mode.
+    if (highestNew > 0 && !opts?.silent) await onTierUp(db, uid, highestNew);
   }
   return { granted };
 }
 
 async function onTierUp(db: Client, userId: string, tier: number): Promise<void> {
-  const key = CAREER_ACHIEVEMENTS.tiers[tier];
-  if (key) await grantAchievement(db, userId, key);
-
+  // Achievements are granted per-rung by the caller; this is notification-only.
   const { data: prof } = await db.from('profiles')
     .select('display_name,email').eq('user_id', userId).maybeSingle();
   const name = (prof as any)?.display_name || 'An artist';
@@ -366,26 +407,41 @@ export async function recomputeProjectRollout(db: Client, projectId: string):
   const proj = p as any;
   const target: string | null = proj.target_release_date ?? null;
 
-  const [mediaLinked, events, shares] = await Promise.all([
-    db.from('media_bookings').select('id,status', { count: 'exact', head: true })
+  const winLo = target ? addDays(target, -45) : null; // photoshoot window when unlinked
+  const [mediaLinked, mediaWindow, events, shareIds] = await Promise.all([
+    db.from('media_bookings').select('id', { count: 'exact', head: true })
       .eq('linked_project_id', projectId).neq('status', 'cancelled'),
+    // Fallback the RolloutInputs comment promised: a recent media booking by
+    // the artist counts as the photoshoot even without an explicit link.
+    winLo
+      ? db.from('media_bookings').select('id', { count: 'exact', head: true })
+          .eq('user_id', proj.user_id).neq('status', 'cancelled')
+          .gte('created_at', winLo)
+      : Promise.resolve({ count: 0 } as any),
     target
       ? db.from('calendar_events').select('event_date,event_type').eq('user_id', proj.user_id)
           .gte('event_date', addDays(target, -14)).lte('event_date', addDays(target, 7))
       : Promise.resolve({ data: [] } as any),
-    db.from('track_share_links').select('play_count').eq('project_id', projectId),
+    db.from('track_share_links').select('id').eq('project_id', projectId),
   ]);
 
   const eventRows = ((events.data ?? []) as any[]).filter((e) => e.event_type !== 'studio_session');
   const preCount = target ? eventRows.filter((e) => e.event_date >= addDays(target, -14) && e.event_date < target).length : 0;
   const postCount = target ? eventRows.filter((e) => e.event_date >= target && e.event_date <= addDays(target, 7)).length : 0;
-  const plays = ((shares.data ?? []) as any[]).reduce((s, l) => s + (Number(l.play_count) || 0), 0);
+  // DISTINCT verified listeners (track_share_plays), not the farmable counter.
+  const linkIds = ((shareIds.data ?? []) as any[]).map((l) => l.id);
+  let plays = 0;
+  if (linkIds.length) {
+    const { count } = await db.from('track_share_plays')
+      .select('id', { count: 'exact', head: true }).in('share_link_id', linkIds);
+    plays = count ?? 0;
+  }
   const dateAheadDays: number | null = (proj.rollout_breakdown as any)?.date_ahead_days ?? null;
 
   const inputs: RolloutInputs = {
     releaseDateSetDaysAhead: dateAheadDays,
     hasCoverArt: !!proj.cover_image_url,
-    photoshootBooked: (mediaLinked.count ?? 0) > 0,
+    photoshootBooked: (mediaLinked.count ?? 0) > 0 || (mediaWindow.count ?? 0) > 0,
     videoBookedOrLinked: !!proj.video_url,
     hasPresave: !!proj.presave_url,
     preReleaseContentCount: preCount,

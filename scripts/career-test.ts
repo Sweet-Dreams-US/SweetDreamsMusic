@@ -130,6 +130,16 @@ async function main() {
     showsConfirmed: Array.from({ length: 5 }, () => ({ isPaid: false, isHeadline: false, preDated: true })),
   }), { min: 5, paidMin: 1 }) === false);
 
+  console.log('\n— Anti-farm: self-feedback excluded from the s2_share gate —');
+  // shareFeedbackCount in buildContext counts DISTINCT non-owner emails; here
+  // we assert the CHECK still keys off that pre-counted value (3 distinct).
+  ok('3 distinct non-owner feedback = met', CHECKS.share_feedback(baseCtx({ shareFeedbackCount: 3 }), { min: 3 }));
+  ok('2 distinct (one was self/dup) = NOT met', CHECKS.share_feedback(baseCtx({ shareFeedbackCount: 2 }), { min: 3 }) === false);
+
+  console.log('\n— Collab gate reachable via featured_artists (was unreachable) —');
+  ok('collab via featured artists', CHECKS.collab_release(baseCtx({ hasCollabRelease: true }), {}));
+  ok('no collab = not met', CHECKS.collab_release(baseCtx({ hasCollabRelease: false }), {}) === false);
+
   console.log('\n— Share links: revocation/expiry kill playback —');
   ok('live link valid', shareLinkInvalidReason({ revoked: false, expires_at: null }) === null);
   ok('revoked → dead', shareLinkInvalidReason({ revoked: true, expires_at: null }) === 'revoked');

@@ -5,6 +5,10 @@ import NextLink from 'next/link';
 import { Plus, Folder, ChevronRight, Check, X, Trash2, Edit3, Link, Music, Gauge, AlertTriangle, Info, Camera } from 'lucide-react';
 import { PROJECT_PHASES, PROJECT_TYPES } from '@/lib/hub-constants';
 import { ROLLOUT_ITEMS, RUSHED_RELEASE_DAYS } from '@/lib/career';
+
+// The three rollout items (45 of 100 pts) that are impossible to earn until a
+// target release date exists — they all key off the date.
+const DATE_DEPENDENT_ROLLOUT_KEYS = new Set(['date_ahead', 'pre_content', 'week_one']);
 import { formatDuration } from '@/lib/utils';
 import { fmtSessionDate } from '@/lib/studio-time';
 import { SkeletonList } from './LoadingSkeleton';
@@ -433,6 +437,7 @@ export default function ProjectList({ onXpEarned }: { onXpEarned?: () => void })
                           const breakdown = project.rollout_breakdown || {};
                           const isRushed = days !== null && days < RUSHED_RELEASE_DAYS;
                           const isMultiTrack = project.project_type === 'album' || project.project_type === 'ep';
+                          const noReleaseDate = !project.target_release_date;
                           return (
                             <div className="border-t border-black/10 pt-4">
                               <p className="font-mono text-[10px] text-black/40 uppercase tracking-wider mb-2 inline-flex items-center gap-1">
@@ -457,18 +462,33 @@ export default function ProjectList({ onXpEarned }: { onXpEarned?: () => void })
                                 </div>
                               )}
 
+                              {/* Missing-date callout — 45 of 100 pts (date_ahead 20,
+                                  pre_content 15, week_one 10) are unreachable until a
+                                  target release date is set. */}
+                              {noReleaseDate && (
+                                <button onClick={() => startEditing(project)}
+                                  className="w-full text-left flex items-start gap-2 border border-amber-300 bg-amber-50 p-3 mb-3 hover:bg-amber-100 transition-colors">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+                                  <span className="font-mono text-xs text-amber-700">Set a target release date — 45 points depend on it.</span>
+                                </button>
+                              )}
+
                               {/* Checklist */}
                               <div className="space-y-1 mb-4">
                                 {ROLLOUT_ITEMS.map((item) => {
                                   const met = breakdown[item.key] === true;
+                                  const dateBlocked = noReleaseDate && DATE_DEPENDENT_ROLLOUT_KEYS.has(item.key);
                                   return (
-                                    <div key={item.key} className="flex items-center gap-2 py-1">
+                                    <div key={item.key} className={`flex items-center gap-2 py-1 ${dateBlocked ? 'opacity-40' : ''}`}>
                                       <div className={`w-4 h-4 border flex items-center justify-center flex-shrink-0 ${
                                         met ? 'bg-accent border-accent' : 'border-black/20'
                                       }`}>{met && <Check className="w-3 h-3 text-black" />}</div>
                                       <span className={`font-mono text-xs ${met ? 'text-black/70' : 'text-black/40'}`}>{item.label}</span>
+                                      {dateBlocked && (
+                                        <span className="font-mono text-[10px] text-amber-600 italic flex-shrink-0">needs a release date</span>
+                                      )}
                                       <span className="font-mono text-[10px] text-black/30 ml-auto flex-shrink-0">+{item.weight}</span>
-                                      {!met && (item.key === 'photoshoot' || item.key === 'video') && (
+                                      {!met && !dateBlocked && (item.key === 'photoshoot' || item.key === 'video') && (
                                         <NextLink href="/media"
                                           className="font-mono text-[10px] text-accent hover:underline flex-shrink-0 inline-flex items-center gap-1">
                                           <Camera className="w-3 h-3" /> Book a {item.key === 'photoshoot' ? 'photoshoot' : 'video'}

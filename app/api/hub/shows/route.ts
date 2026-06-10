@@ -57,6 +57,20 @@ export async function PATCH(request: NextRequest) {
   const id = String(body.id || '');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
+  // Confirmation requires the show to have actually happened — you can't
+  // confirm a gig that's still in the future. This is what keeps semi
+  // verification from collapsing into honor (the calendar entry predates the
+  // show; the confirmation post-dates it).
+  if (body.confirm === true) {
+    const { data: showRow } = await supabase.from('shows')
+      .select('show_date').eq('id', id).eq('user_id', user.id).maybeSingle();
+    if (!showRow) return NextResponse.json({ error: 'Show not found' }, { status: 404 });
+    const today = new Date().toISOString().slice(0, 10);
+    if (String((showRow as { show_date: string }).show_date) > today) {
+      return NextResponse.json({ error: 'You can confirm a show once it has happened — come back the night of or after.' }, { status: 400 });
+    }
+  }
+
   const updates: Record<string, unknown> = {};
   if (body.confirm === true) updates.confirmed_at = new Date().toISOString();
   if (body.photo_url != null) updates.photo_url = String(body.photo_url);

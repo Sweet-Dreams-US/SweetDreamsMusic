@@ -23,19 +23,21 @@ export async function PUT(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const body = await request.json();
-  const { display_name, bio, social_links, career_stage, genre } = body;
+  const { display_name, bio, social_links, genre } = body;
 
   if (!display_name?.trim()) {
     return NextResponse.json({ error: 'Display name is required' }, { status: 400 });
   }
 
+  // career_stage is RETIRED (computed by the career engine; the editor no
+  // longer sends it). Don't touch the column here — the old code nulled it on
+  // every save.
   const { data: profile, error } = await supabase
     .from('profiles')
     .update({
       display_name: display_name.trim(),
       bio: bio?.trim() || null,
       social_links: social_links || {},
-      career_stage: career_stage || null,
       genre: genre?.trim() || null,
       updated_at: new Date().toISOString(),
     })

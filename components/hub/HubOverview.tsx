@@ -91,8 +91,9 @@ export default function HubOverview({ onXpEarned: _onXpEarned, onNavigate }: Hub
 
   useEffect(() => {
     fetch('/api/hub/overview')
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : null))
       .then((d) => setData(d))
+      .catch(() => setData(null))
       .finally(() => setLoading(false));
   }, []);
 
@@ -141,7 +142,15 @@ export default function HubOverview({ onXpEarned: _onXpEarned, onNavigate }: Hub
   const hasAchievements = data.achievements.length > 0;
   const hasSessions = data.upcomingSessions.length > 0;
   const hasEvents = data.upcomingEvents.length > 0;
+  const hasMetrics = Object.keys(data.latestMetrics ?? {}).length > 0;
   const goalsAutoSync = hasGoals && data.goals.some((g) => g.linked_platform);
+
+  // Brand-new user: nothing tracked anywhere AND no real career footing yet.
+  // Career null (API error) does NOT make someone "new" on its own — that's
+  // the fallback card's job — but a null/stage-0 career is one signal here.
+  const careerEmpty = !career || career.stage <= 0;
+  const isBrandNew = !hasProjects && !hasGoals && !hasMetrics
+    && !hasSessions && !hasEvents && !hasAchievements && careerEmpty;
 
   const tierDistance = career && career.nextTier != null && career.currentListeners != null
     ? Math.max(0, career.nextTier - career.currentListeners)
@@ -158,6 +167,50 @@ export default function HubOverview({ onXpEarned: _onXpEarned, onNavigate }: Hub
       <div className="mb-8">
         <ActivePackages />
       </div>
+
+      {/* WELCOME — brand-new users with zero content of any kind. Gives them a
+          first move instead of a page of empty space. */}
+      {isBrandNew && (
+        <div className="border-2 border-accent p-6 mb-6">
+          <h3 className="font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center gap-2 mb-2">
+            <Zap className="w-4 h-4 text-accent" /> Welcome
+          </h3>
+          <p className="font-mono text-sm text-black/60 mb-4">
+            Start by connecting your platforms or booking a session.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => onNavigate?.('metrics')}
+              className="font-mono text-[10px] font-bold uppercase tracking-wider bg-accent text-black px-3 py-1.5 hover:opacity-80 transition-opacity duration-200 inline-flex items-center gap-1"
+            >
+              Connect Platforms <ArrowRight className="w-3 h-3" />
+            </button>
+            <Link
+              href="/book"
+              className="font-mono text-[10px] font-bold uppercase tracking-wider border-2 border-black/10 text-black px-3 py-1.5 hover:border-accent/30 transition-colors duration-200 inline-flex items-center gap-1"
+            >
+              Book a Session <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* CAREER DIDN'T LOAD — slim fallback when the career payload is null
+          (API error) so the career section isn't just blank. Suppressed for
+          brand-new users, who get the welcome card above instead. */}
+      {!career && !isBrandNew && (
+        <div className="border-2 border-black/10 p-5 mb-6">
+          <p className="font-mono text-sm text-black/60 mb-3">
+            Career data didn&apos;t load — refresh to try again.
+          </p>
+          <button
+            onClick={() => onNavigate?.('roadmap')}
+            className="font-mono text-[10px] font-bold uppercase tracking-wider bg-accent text-black px-3 py-1.5 hover:opacity-80 transition-opacity duration-200"
+          >
+            View Roadmap
+          </button>
+        </div>
+      )}
 
       {/* NEXT STEPS strip — the single prompt surface for the whole page. */}
       {visibleSteps.length > 0 && (

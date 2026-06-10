@@ -21,8 +21,13 @@ export default function ListenPage() {
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [streamTimedOut, setStreamTimedOut] = useState(false);
   const playCounted = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Remembers where the listener was when the 15-min signed URL expired, so a
+  // refresh can resume instead of restarting from 0.
+  const resumeAtRef = useRef(0);
+  const refreshingUrl = useRef(false);
 
   // Feedback form
   const [form, setForm] = useState({ name: '', email: '', vibe: 7, comment: '' });
@@ -53,6 +58,7 @@ export default function ListenPage() {
     if (playing) { audio.pause(); setPlaying(false); return; }
     audio.play().then(() => {
       setPlaying(true);
+      setStreamTimedOut(false);
       if (!playCounted.current) {
         playCounted.current = true;
         fetch(`/api/listen/${token}`, {
@@ -62,6 +68,36 @@ export default function ListenPage() {
       }
     }).catch(() => {});
   }, [playing, meta, token]);
+
+  // The signed stream URL is short-TTL (15 min). When it expires the <audio>
+  // element fires onError mid-session — re-mint a fresh URL and (best-effort)
+  // resume from where the listener was, instead of dying silently.
+  const refreshStream = useCallback(async () => {
+    if (refreshingUrl.current) return;
+    refreshingUrl.current = true;
+    setPlaying(false);
+    resumeAtRef.current = audioRef.current?.currentTime || 0;
+    setStreamTimedOut(true);
+    try {
+      const res = await fetch(`/api/listen/${token}`);
+      const j = await res.json();
+      if (res.ok && j.streamUrl) {
+        setMeta((prev) => (prev ? { ...prev, streamUrl: j.streamUrl } : prev));
+      }
+    } catch { /* leave the timed-out message up — user can tap play to retry */ }
+    finally { refreshingUrl.current = false; }
+  }, [token]);
+
+  // After a fresh URL lands, restore the playback position so "tap play" resumes.
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !streamTimedOut || !resumeAtRef.current) return;
+    const restore = () => {
+      try { audio.currentTime = resumeAtRef.current; } catch { /* not seekable yet */ }
+    };
+    audio.addEventListener('loadedmetadata', restore, { once: true });
+    return () => audio.removeEventListener('loadedmetadata', restore);
+  }, [meta?.streamUrl, streamTimedOut]);
 
   async function submitFeedback() {
     setBusy(true); setErr(null);
@@ -74,7 +110,14 @@ export default function ListenPage() {
         }),
       });
       const j = await res.json();
-      if (!res.ok) { setErr(j.error || 'Could not submit'); setBusy(false); return; }
+      if (!res.ok) {
+        const human = (j.error === 'expired' || j.error === 'revoked')
+          ? 'This link expired while you were listening — ask the artist for a fresh one'
+          : (j.error || 'Could not submit');
+        setErr(human);
+        setBusy(false);
+        return;
+      }
       setSubmitted(true);
     } catch { setErr('Network error'); }
     setBusy(false);
@@ -106,11 +149,17 @@ export default function ListenPage() {
             onTimeUpdate={(e) => setPosition((e.target as HTMLAudioElement).currentTime)}
             onLoadedMetadata={(e) => setDuration((e.target as HTMLAudioElement).duration || 0)}
             onEnded={() => setPlaying(false)}
+            onError={() => { if (playCounted.current) refreshStream(); }}
             controlsList="nodownload" onContextMenu={(e) => e.preventDefault()}
           />
           <button onClick={toggle} className="w-16 h-16 rounded-full bg-accent text-black flex items-center justify-center mx-auto hover:scale-105 transition-transform">
             {playing ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-0.5" />}
           </button>
+          {streamTimedOut && (
+            <p className="mt-3 font-mono text-[10px] uppercase tracking-wider text-accent">
+              Track timed out — tap play to reload
+            </p>
+          )}
           <div className="mt-6">
             <div className="h-1 bg-white/10 cursor-pointer" onClick={(e) => {
               const rect = (e.target as HTMLElement).getBoundingClientRect();

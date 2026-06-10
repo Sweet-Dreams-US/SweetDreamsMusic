@@ -141,6 +141,13 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// A show only counts toward the gates if it was LOGGED before it happened —
+// the calendar entry (created_at) must predate (or equal) the show date.
+// A past-dated show logged after the fact confirms green but is gate-inert.
+function loggedOnTime(show: Show): boolean {
+  return show.created_at.slice(0, 10) <= show.show_date;
+}
+
 // ============================================================
 // Verify-type badge
 // ============================================================
@@ -964,7 +971,7 @@ export default function ArtistRoadmap() {
                               <Mic className="w-4 h-4 text-accent" />
                               <h4 className="font-mono text-xs font-bold uppercase tracking-wider">Live Shows</h4>
                               <span className="font-mono text-[10px] text-black/40">
-                                {shows.filter((sh) => sh.confirmed_at).length} confirmed
+                                {shows.filter((sh) => sh.confirmed_at && loggedOnTime(sh)).length} confirmed
                               </span>
                             </div>
                             {!showFormOpen && (
@@ -1013,6 +1020,13 @@ export default function ArtistRoadmap() {
                                   onChange={(e) => setShowForm((p) => ({ ...p, show_date: e.target.value }))}
                                   className="w-full border border-black/20 px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none bg-white"
                                 />
+                                {/* Advice, not a block — a past-dated show still saves, it
+                                    just can't count toward the gate (created_at must predate it). */}
+                                {showForm.show_date && showForm.show_date <= today && (
+                                  <p className="font-mono text-[10px] text-amber-700 mt-1.5 leading-relaxed">
+                                    Log shows BEFORE they happen — that&apos;s what verifies them. A past date won&apos;t count toward your stage.
+                                  </p>
+                                )}
                               </div>
                               <div className="flex items-center gap-5">
                                 <label className="flex items-center gap-2 font-mono text-xs cursor-pointer">
@@ -1062,6 +1076,7 @@ export default function ArtistRoadmap() {
                                 const isPast = show.show_date <= today;
                                 const confirmable = isPast && !show.confirmed_at;
                                 const confirming = confirmingShow === show.id;
+                                const lateLog = !loggedOnTime(show);
                                 return (
                                   <div key={show.id} className="border border-black/10">
                                     <div className="p-3 flex items-center gap-3 flex-wrap">
@@ -1073,6 +1088,14 @@ export default function ArtistRoadmap() {
                                           )}
                                           {show.is_headline && (
                                             <span className="font-mono text-[10px] uppercase tracking-wider bg-accent text-black px-1.5 py-0.5 font-bold">Headline</span>
+                                          )}
+                                          {lateLog && (
+                                            <span
+                                              className="font-mono text-[10px] uppercase tracking-wider bg-black/5 text-black/40 px-1.5 py-0.5"
+                                              title="Logged after the show date — gates need the calendar entry to predate the show."
+                                            >
+                                              Logged late — doesn&apos;t count toward gates
+                                            </span>
                                           )}
                                         </div>
                                         <div className="font-mono text-[10px] text-black/40 mt-0.5">
