@@ -5,7 +5,7 @@ import { DollarSign, TrendingUp, Calendar, Music, Users, Filter, ChevronDown } f
 import { formatCents, formatDuration } from '@/lib/utils';
 import { fmtSessionDate, fmtStampDate } from '@/lib/studio-time';
 import { PRODUCER_COMMISSION, PLATFORM_COMMISSION, ENGINEER_SESSION_SPLIT, BUSINESS_SESSION_SPLIT, MEDIA_SELLER_COMMISSION, MEDIA_BUSINESS_CUT, MEDIA_WORKER_TOTAL } from '@/lib/constants';
-import { computeEarningsCore, normalizeName, pctToFrac, revenueConfigFromConstants, type PersonEarnings } from '@/lib/earnings-core';
+import { computeEarningsCore, normalizeName, revenueConfigFromConstants, type PersonEarnings } from '@/lib/earnings-core';
 import CreditsLiabilityPanel from './CreditsLiabilityPanel';
 import PackageAccounting from './PackageAccounting';
 import CashCorrectionsLog from './CashCorrectionsLog';
@@ -161,6 +161,10 @@ export default function Accounting() {
   // All-time data for payroll (never date-filtered)
   const [allTimeBookings, setAllTimeBookings] = useState<Booking[]>([]);
   const [allTimeMediaSales, setAllTimeMediaSales] = useState<typeof mediaSales>([]);
+  // Period-filtered pay rows for the Overview's EXACT payroll figure
+  const [periodMediaSessions, setPeriodMediaSessions] = useState<typeof allTimeMediaSessions>([]);
+  const [periodPackageCommissions, setPeriodPackageCommissions] = useState<typeof allTimePackageCommissions>([]);
+  const [periodRewardBonuses, setPeriodRewardBonuses] = useState<typeof allTimeRewardBonuses>([]);
   const [allTimeBeatPurchases, setAllTimeBeatPurchases] = useState<BeatPurchase[]>([]);
   const [allTimeCancelledBookings, setAllTimeCancelledBookings] = useState<typeof cancelledBookings>([]);
   // Phase E follow-up: media_session_bookings completed payouts. Kept as a
@@ -281,6 +285,12 @@ export default function Accounting() {
     setMediaBookings(data.mediaBookings || []);
     setMediaOfferingMap(data.mediaOfferingMap || {});
     setBandMap(data.bandMap || {});
+    // Period-filtered pay rows — the route already returns these; the Overview
+    // payroll figure runs the EXACT earnings engine over them (no estimates).
+    setPeriodMediaSessions(data.mediaSessions || []);
+    setPeriodPackageCommissions(data.packageCommissions || []);
+    setPeriodRewardBonuses(data.rewardBonuses || []);
+    if (data.engineerNameMap) setEngineerNameMap(data.engineerNameMap);
     setLoading(false);
   }
 
@@ -849,37 +859,30 @@ export default function Accounting() {
     };
   }, [allTimeBookings, allTimeMediaSales, allTimeBeatPurchases, allTimeCancelledBookings, allTimeMediaSessions, allTimePackageCommissions, allTimeRewardBonuses, engineerNameMap, payouts, payPeriods, payrollPeriodIndex]);
 
-  // Payroll data for overview tab (date-filtered) - keep the existing behavior for overview
+  // Payroll figure for the Overview — EXACT, not an estimate. Runs the same
+  // earnings engine the Payroll tab pays from (per-row snapshot splits, the
+  // service-value basis for comped sessions, media commissions, media-session
+  // payouts, beat splits, package commissions, bonuses) over the period's
+  // rows. Counts COMPLETED sessions only — staff aren't owed for sessions
+  // that didn't happen. (The Profit tab's contract labor is what was PAID OUT
+  // during the period — cash basis; bill pays lag, so the two can differ.)
   const filteredPayrollData = useMemo(() => {
     const totalBooked = filteredBookings.reduce((s, b) => s + b.total_amount, 0);
     const mediaRev = mediaSales.reduce((s, m) => s + m.amount, 0);
     const beatRev = filteredPurchases.reduce((s, p) => s + p.amount_paid, 0);
     const totalGross = totalBooked + mediaRev + beatRev;
 
-    // Earned-this-period estimate. Snapshot-aware per booking: stamped split
-    // (bands 70%, per-engineer overrides) ?? the solo constant, on the
-    // service-value basis (comped sessions still pay staff in full). This is
-    // what staff EARN from the period's activity — the Profit tab's contract
-    // labor is what was PAID OUT during the period (cash basis); bill pays lag
-    // the work, so the two legitimately differ.
-    const sessionPayroll = filteredBookings.reduce((s, b) => {
-      const base = b.service_value_cents ?? b.total_amount;
-      const frac = pctToFrac(b.engineer_split_pct) ?? ENGINEER_SESSION_SPLIT;
-      return s + Math.round(base * frac);
-    }, 0);
-    const mediaPayroll = mediaSales.reduce((s, m) => {
-      let pay = m.sold_by ? Math.round(m.amount * MEDIA_SELLER_COMMISSION) : 0;
-      const wCount = (m.filmed_by ? 1 : 0) + (m.edited_by ? 1 : 0);
-      if (wCount > 0) pay += Math.round(m.amount * MEDIA_WORKER_TOTAL);
-      return s + pay;
-    }, 0);
-    const beatPayroll = Math.round(beatRev * PRODUCER_COMMISSION);
-    const totalPayroll = sessionPayroll + mediaPayroll + beatPayroll;
+    const earnings = computeEarnings(
+      filteredBookings, mediaSales, filteredPurchases,
+      periodMediaSessions, engineerNameMap, periodPackageCommissions, periodRewardBonuses,
+    );
+    const totalPayroll = Object.values(earnings).reduce((s, p) => s + p.totalPay, 0);
     const businessKeeps = totalGross - totalPayroll;
     const keptDeposits = cancelledBookings.reduce((s, b) => s + (b.actual_deposit_paid || 0), 0);
 
     return { totalGrossRevenue: totalGross, totalPayroll, businessKeeps, keptDeposits };
-  }, [filteredBookings, mediaSales, filteredPurchases, cancelledBookings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredBookings, mediaSales, filteredPurchases, cancelledBookings, periodMediaSessions, engineerNameMap, periodPackageCommissions, periodRewardBonuses]);
 
   const SALE_TYPE_LABELS: Record<string, string> = {
     video: 'Music Video',
@@ -1026,7 +1029,7 @@ export default function Accounting() {
               {/* Business Profit */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard icon={DollarSign} label="Business Keeps" value={formatCents(filteredPayrollData.businessKeeps + filteredPayrollData.keptDeposits)} accent />
-                <StatCard icon={Users} label="Est. Staff Earnings (This Period's Work)" value={formatCents(filteredPayrollData.totalPayroll)} />
+                <StatCard icon={Users} label="Staff Earnings (This Period's Work)" value={formatCents(filteredPayrollData.totalPayroll)} />
                 <StatCard icon={DollarSign} label="Remainder Due" value={formatCents(sessionStats.remainderOutstanding)} />
                 {filteredPayrollData.keptDeposits > 0 && (
                   <StatCard icon={DollarSign} label="Kept Deposits" value={formatCents(filteredPayrollData.keptDeposits)} />
@@ -2777,7 +2780,7 @@ function ProfitView({ from, to }: { from: string; to: string }) {
       <p className="font-mono text-[10px] text-black/40 -mt-2">
         Contract labor counts payouts <span className="font-bold">recorded during this period</span> (cash basis — the tax number).
         Bill pays lag the work, so it includes catch-up for the prior period and won&apos;t match the Overview&apos;s
-        &quot;earned this period&quot; estimate — that&apos;s expected, not an error.
+        &quot;Staff Earnings&quot; figure (what the period&apos;s work earned) — that&apos;s expected, not an error.
       </p>
 
       <div className="grid md:grid-cols-2 gap-6">
