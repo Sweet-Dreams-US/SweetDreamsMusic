@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import {
   extractSpotifyArtistId,
-  fetchSpotifyArtist,
   extractYouTubeChannelInfo,
-  fetchYouTubeChannel,
 } from '@/lib/platform-fetch';
 
 // GET — list all platform connections for the user
@@ -50,68 +48,28 @@ export async function POST(request: NextRequest) {
   let profileImageUrl: string | null = null;
   let metadata: Record<string, unknown> = {};
 
-  // ---- Spotify ----
+  // ALL platforms are link-only: the weekly agent run (Cowork) records the
+  // numbers from the artist's pasted URL — no platform APIs (per Cole; the
+  // Spotify/YouTube API keys were never configured in prod anyway, so the old
+  // "fetch + verify" path 400'd every Spotify/YouTube link save). For spotify/
+  // youtube we still PARSE the URL (pure string work, no network) so the link
+  // is sanity-checked and a clean platform_id is stored when available.
   if (platform === 'spotify') {
     const artistId = extractSpotifyArtistId(url);
     if (!artistId) {
       return NextResponse.json({ error: 'Could not find a Spotify artist ID. Paste your Spotify artist URL.' }, { status: 400 });
     }
-
-    const artist = await fetchSpotifyArtist(artistId);
-    if (!artist) {
-      return NextResponse.json({ error: 'Could not fetch Spotify artist. Check the URL and try again.' }, { status: 400 });
-    }
-
     platformId = artistId;
-    displayName = artist.name;
-    profileImageUrl = artist.images?.[0]?.url || null;
-    metadata = { genres: artist.genres, followers: artist.followers, popularity: artist.popularity_score };
-
-    // Auto-log current metrics
-    await supabase.from('artist_metrics').upsert({
-      user_id: user.id,
-      platform: 'spotify',
-      metric_date: new Date().toISOString().split('T')[0],
-      followers: artist.followers,
-      popularity_score: artist.popularity_score,
-      source: 'spotify_api',
-    }, { onConflict: 'user_id,metric_date,platform' });
-  }
-
-  // ---- YouTube ----
-  else if (platform === 'youtube') {
+  } else if (platform === 'youtube') {
     const info = extractYouTubeChannelInfo(url);
     if (!info) {
       return NextResponse.json({ error: 'Could not parse YouTube URL. Paste your channel URL (e.g. youtube.com/@yourname).' }, { status: 400 });
     }
-
-    const channel = await fetchYouTubeChannel(url);
-    if (!channel) {
-      return NextResponse.json({ error: 'Could not fetch YouTube channel. Check the URL and try again.' }, { status: 400 });
-    }
-
-    platformId = channel.channelId;
-    displayName = channel.name;
-    profileImageUrl = channel.thumbnail || null;
-    metadata = { subscribers: channel.subscribers, total_views: channel.total_views, videos_count: channel.videos_count };
-
-    // Auto-log current metrics
-    await supabase.from('artist_metrics').upsert({
-      user_id: user.id,
-      platform: 'youtube',
-      metric_date: new Date().toISOString().split('T')[0],
-      subscribers: channel.subscribers,
-      total_views: channel.total_views,
-      videos_count: channel.videos_count,
-      source: 'youtube_api',
-    }, { onConflict: 'user_id,metric_date,platform' });
-  }
-
-  // ---- Other platforms (manual connection — just store the URL) ----
-  else {
+    platformId = info.value;
+  } else {
     platformId = url;
-    displayName = null;
   }
+  displayName = null;
 
   // Upsert the connection
   const { data: connection, error } = await supabase
@@ -123,8 +81,11 @@ export async function POST(request: NextRequest) {
       platform_url: url,
       display_name: displayName,
       profile_image_url: profileImageUrl,
-      auto_fetch_enabled: ['spotify', 'youtube'].includes(platform),
-      last_fetched_at: ['spotify', 'youtube'].includes(platform) ? new Date().toISOString() : null,
+      // One pipeline: every link is recorded by the weekly agent run. No API
+      // auto-fetch for any platform (the fetch-metrics cron only processes
+      // auto_fetch_enabled rows, so this keeps it inert).
+      auto_fetch_enabled: false,
+      last_fetched_at: null,
       metadata,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id,platform' })

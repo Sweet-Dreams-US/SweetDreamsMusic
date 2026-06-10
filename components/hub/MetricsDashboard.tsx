@@ -232,10 +232,9 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
           manual rows never count toward charts (verified data only). */}
       <div className="border-2 border-accent/60 bg-accent/5 px-4 py-3 mb-4">
         <p className="font-mono text-xs text-black/80">
-          <span className="font-bold uppercase tracking-wider">Add your profile links below</span> — we
-          track your fans + followers for you every week. Spotify and YouTube sync automatically;
-          everything else our team records weekly from your link. Apple Music is the one exception —
-          its numbers live in your own artist dashboard, so you log those yourself.
+          <span className="font-bold uppercase tracking-wider">Add your profile links below</span> — our
+          team tracks your fans + followers from your links every week. Apple Music is the one
+          exception — its numbers live in your own artist dashboard, so you log those yourself.
         </p>
         <button onClick={() => setShowLogForm(!showLogForm)}
           className="font-mono text-[10px] text-black/40 underline hover:text-black mt-1.5">

@@ -25,9 +25,9 @@ you are the verification layer. Accuracy beats speed.
    - Click the link (opens in a new tab). You are only *reading public pages* —
      never log into anything, never interact with the artist's account.
    - Type the numbers the page shows into the boxes (e.g. Spotify: monthly
-     listeners + followers; TikTok: followers + total likes). Commas are fine.
-   - Some boxes come **prefilled from the Spotify/YouTube APIs** — verify they
-     look right; correct them if the public page disagrees.
+     listeners + followers; YouTube: subscribers + total views; TikTok:
+     followers + total likes). Commas are fine. Every platform is yours to
+     record — there is no API doing any of it for you.
    - Set the row's status:
      - **Recorded** — you entered the numbers (the default).
      - **Blocked** — the platform stopped you (captcha, login wall, rate limit).
@@ -67,5 +67,6 @@ you are the verification layer. Accuracy beats speed.
 2. As an admin: **Admin → Users** → find the account → set role **Stats Agent**.
 3. The account now lands on `/agent/stats` at every login.
 4. Artists feed the queue themselves: **Artist Hub → Metrics → "Add your …
-   link"** for every platform they're on. No links + no recent paid activity
-   = the artist isn't queued.
+   link"** for every platform they're on (Apple Music is the exception —
+   artists self-log those numbers; the agent never records Apple). No links +
+   no recent paid activity = the artist isn't queued.

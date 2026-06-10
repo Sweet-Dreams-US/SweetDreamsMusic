@@ -63,11 +63,15 @@ export const GOAL_CATEGORIES = [
 
 export type GoalCategory = (typeof GOAL_CATEGORIES)[number]['value'];
 
-// Metrics platforms — expanded with more fields and new platforms
+// Metrics platforms — expanded with more fields and new platforms.
+// autoFetchable is FALSE for everything: all platforms are link-only, recorded
+// by the weekly agent run (Cowork). No platform APIs (per Cole — the Spotify/
+// YouTube keys were never configured in prod anyway). Apple Music alone is
+// self-logged (no public page to read).
 export const METRIC_PLATFORMS = [
   { key: 'spotify', label: 'Spotify', color: '#1DB954', icon: '🟢',
     fields: ['monthly_listeners', 'followers', 'streams', 'saves', 'playlist_adds', 'popularity_score'],
-    primaryField: 'monthly_listeners', autoFetchable: true },
+    primaryField: 'monthly_listeners', autoFetchable: false },
   { key: 'apple_music', label: 'Apple Music', color: '#FC3C44', icon: '🍎',
     fields: ['plays', 'shazams'],
     primaryField: 'plays', autoFetchable: false },
@@ -79,7 +83,7 @@ export const METRIC_PLATFORMS = [
     primaryField: 'followers', autoFetchable: false },
   { key: 'youtube', label: 'YouTube', color: '#FF0000', icon: '▶️',
     fields: ['subscribers', 'total_views', 'avg_views', 'watch_hours', 'engagement_rate'],
-    primaryField: 'subscribers', autoFetchable: true },
+    primaryField: 'subscribers', autoFetchable: false },
   { key: 'soundcloud', label: 'SoundCloud', color: '#FF5500', icon: '☁️',
     fields: ['followers', 'streams', 'reposts', 'comments'],
     primaryField: 'followers', autoFetchable: false },
