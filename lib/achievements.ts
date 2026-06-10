@@ -286,6 +286,39 @@ export const ACHIEVEMENTS: Record<string, AchievementDef> = {
     description: 'Completed 100 tasks across all projects',
     icon: 'CheckCircle', xp: 300, tier: 'gold', category: 'milestones',
   },
+
+  // ── Career path (Plan 6) — granted ONLY by the career rule engine ─────────
+  // Stage-ups
+  stage_2_catalog:      { title: 'Catalog Builder',  description: 'Reached Stage 2 — every Foundation gate verified', icon: 'Music',      xp: 250,  tier: 'silver',  category: 'milestones' },
+  stage_3_audience:     { title: 'Audience Earned',  description: 'Reached Stage 3 — catalog complete, audience growing', icon: 'TrendingUp', xp: 400, tier: 'gold', category: 'milestones' },
+  stage_4_monetizing:   { title: 'Open for Business', description: 'Reached Stage 4 — your art makes money', icon: 'DollarSign', xp: 600,  tier: 'gold',    category: 'milestones' },
+  stage_5_professional: { title: 'Professional',     description: 'Reached Stage 5 — full-time trajectory, verified', icon: 'Award', xp: 1000, tier: 'diamond', category: 'milestones' },
+  // Listener tiers (permanent certifications — numeric naming, never RIAA-ish)
+  tier_10k:  { title: '10K Club',  description: '10,000+ verified monthly listeners, two consecutive weeks',  icon: 'Headphones', xp: 300,  tier: 'silver',  category: 'metrics' },
+  tier_50k:  { title: '50K Club',  description: '50,000+ verified monthly listeners',  icon: 'Headphones', xp: 500,  tier: 'gold',    category: 'metrics' },
+  tier_100k: { title: '100K Club', description: '100,000+ verified monthly listeners — plaque earned', icon: 'Headphones', xp: 800, tier: 'gold', category: 'metrics' },
+  tier_200k: { title: '200K Club', description: '200,000+ verified monthly listeners', icon: 'Headphones', xp: 1000, tier: 'gold',    category: 'metrics' },
+  tier_500k: { title: '500K Club', description: '500,000+ verified monthly listeners', icon: 'Headphones', xp: 1500, tier: 'diamond', category: 'metrics' },
+  tier_1m:   { title: '1M Club',   description: '1,000,000+ verified monthly listeners', icon: 'Headphones', xp: 2000, tier: 'diamond', category: 'metrics' },
+  tier_2m:   { title: '2M Club',   description: '2,000,000+ verified monthly listeners', icon: 'Headphones', xp: 2500, tier: 'diamond', category: 'metrics' },
+  tier_5m:   { title: '5M Club',   description: '5,000,000+ verified monthly listeners', icon: 'Headphones', xp: 3000, tier: 'diamond', category: 'metrics' },
+  tier_10m:  { title: '10M Club',  description: '10,000,000+ verified monthly listeners', icon: 'Headphones', xp: 5000, tier: 'diamond', category: 'metrics' },
+  // Shows
+  first_show:      { title: 'First Show',      description: 'Performed your first live show (booked ahead, confirmed after)', icon: 'Mic',  xp: 75,  tier: 'bronze', category: 'engagement' },
+  five_shows:      { title: 'Road Tested',     description: 'Performed 5 live shows', icon: 'Mic',  xp: 200, tier: 'silver', category: 'engagement' },
+  first_paid_show: { title: 'Paid to Play',    description: 'Performed your first PAID show', icon: 'DollarSign', xp: 150, tier: 'silver', category: 'engagement' },
+  first_headline:  { title: 'Name on the Marquee', description: 'Headlined or co-headlined a show', icon: 'Star', xp: 250, tier: 'gold', category: 'engagement' },
+  // Rollouts
+  rollout_60:      { title: 'Planned Drop',    description: 'Scored 60+ on a release rollout', icon: 'Target', xp: 100, tier: 'bronze', category: 'projects' },
+  rollout_85:      { title: 'Proper Rollout',  description: 'Scored 85+ on a release rollout', icon: 'Target', xp: 200, tier: 'silver', category: 'projects' },
+  rollout_perfect: { title: 'Flawless Campaign', description: 'Scored a perfect 100 rollout', icon: 'Target', xp: 400, tier: 'gold', category: 'projects' },
+  // Sharing
+  first_share_link: { title: 'First Listen',    description: 'Sent your first private listening link', icon: 'Share2', xp: 50, tier: 'bronze', category: 'engagement' },
+  feedback_x10:     { title: 'Focus Group',     description: 'Collected 10 pieces of track feedback', icon: 'MessageCircle', xp: 150, tier: 'silver', category: 'engagement' },
+  listening_party:  { title: 'Listening Party', description: '25 plays on a single private link', icon: 'Headphones', xp: 250, tier: 'gold', category: 'engagement' },
+  // Consistency
+  six_releases_year: { title: 'Machine Mode',  description: '6 releases inside 12 months', icon: 'Repeat', xp: 500, tier: 'gold', category: 'projects' },
+  first_collab:      { title: 'Better Together', description: 'Released your first collab', icon: 'Users', xp: 150, tier: 'silver', category: 'projects' },
 };
 
 // Tier colors for badge styling (Tailwind classes)

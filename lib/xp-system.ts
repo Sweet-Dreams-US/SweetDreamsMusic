@@ -113,6 +113,10 @@ export const XP_ACTIONS = {
   complete_roadmap_item: { xp: 10, label: 'Completed Roadmap Item' },
   unlock_achievement: { xp: 100, label: 'Unlocked Achievement' },
   earn_achievement: { xp: 0, label: 'Earned Achievement' }, // XP varies, passed via override
+  // Career path (Plan 6): per-requirement XP — value passed via xpOverride
+  // from career_stage_requirements.xp_award. Verified-heavy by design.
+  career_requirement: { xp: 10, label: 'Career Requirement Complete' },
+  release_project: { xp: 200, label: 'Released a Project' }, // scaled by rollout score at award time
 } as const;
 
 export type XpAction = keyof typeof XP_ACTIONS;
@@ -232,11 +236,13 @@ export async function awardXP(
 
   if (logError) return { awarded: false, xp: 0, error: logError.message };
 
-  // Update profile totals
+  // Update profile totals. userId here is the AUTH user id — profiles are
+  // keyed by user_id (profiles.id is a different PK; the old `.eq('id', …)`
+  // matched zero rows, so XP was logged but never totaled. Career-path fix.)
   const { data: profile } = await supabase
     .from('profiles')
     .select('total_xp')
-    .eq('id', userId)
+    .eq('user_id', userId)
     .single();
 
   const newTotal = (profile?.total_xp || 0) + xpAmount;
@@ -245,7 +251,7 @@ export async function awardXP(
   await supabase
     .from('profiles')
     .update({ total_xp: newTotal, artist_level: levelInfo.level })
-    .eq('id', userId);
+    .eq('user_id', userId);
 
   return { awarded: true, xp: xpAmount };
 }

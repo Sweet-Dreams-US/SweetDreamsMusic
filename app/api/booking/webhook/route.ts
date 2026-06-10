@@ -492,16 +492,18 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Award XP for booking — look up user by email
+        // Award XP for booking — look up user by email. xp_log FKs auth.users,
+        // so pass user_id, NOT profiles.id (the old arg violated the FK and
+        // this hook had never landed a row — career-path fix).
         try {
           const { data: bookerProfile } = await supabase
             .from('profiles')
-            .select('id')
+            .select('user_id')
             .eq('email', meta.customer_email)
             .limit(1)
             .single();
-          if (bookerProfile?.id && newBooking?.id) {
-            await awardXP(supabase, bookerProfile.id, 'book_session', {
+          if (bookerProfile?.user_id && newBooking?.id) {
+            await awardXP(supabase, bookerProfile.user_id, 'book_session', {
               referenceId: newBooking.id,
               metadata: { room: meta.room, date: meta.session_date },
             });
