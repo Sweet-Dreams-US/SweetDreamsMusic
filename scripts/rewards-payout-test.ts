@@ -82,14 +82,23 @@ async function main() {
     ok('bonus is a studio cost (value_cents tracked)', (g as any).id && 35000 > 0);
   }
 
-  // 5) Existing session payouts unchanged: service_value backfilled = total_amount.
+  // 5) Existing session payouts unchanged: service_value backfilled = total_amount
+  // — asserted over EXACTLY the rows payroll reads: COMPLETED, not deleted,
+  // non-reward, non-test-account. (The old version forgot to select
+  // reward_grant_id — its grant filter was a no-op — and included cancelled +
+  // test-account rows, so any $0 test booking Cole cancels would fail the suite
+  // despite payroll never reading it.)
   console.log('— Existing payouts unchanged —');
-  const { count: mismatch } = await db.from('bookings').select('id', { count: 'exact', head: true }).neq('service_value_cents', 'total_amount').not('service_value_cents', 'is', null);
-  // (the comparison above can't compare two columns via the JS client; do it in SQL-safe way)
-  const { data: sample } = await db.from('bookings').select('total_amount,service_value_cents').not('service_value_cents', 'is', null).limit(500);
-  const realMismatch = (sample ?? []).filter((b: any) => b.reward_grant_id == null && b.service_value_cents !== b.total_amount).length;
-  ok('non-reward bookings: service_value == total_amount (no payout change)', realMismatch === 0, `(${realMismatch} mismatched)`);
-  void mismatch;
+  const { data: sample } = await db.from('bookings')
+    .select('total_amount,service_value_cents,reward_grant_id,customer_email')
+    .eq('status', 'completed').is('deleted_at', null)
+    .not('service_value_cents', 'is', null).limit(1000);
+  const TEST_BOOKING_EMAILS = new Set(['cole@sweetdreams.us']);
+  const realMismatch = (sample ?? []).filter((b: any) =>
+    b.reward_grant_id == null
+    && !TEST_BOOKING_EMAILS.has(String(b.customer_email || '').toLowerCase())
+    && b.service_value_cents !== b.total_amount).length;
+  ok('non-reward COMPLETED bookings: service_value == total_amount (no payout change)', realMismatch === 0, `(${realMismatch} mismatched)`);
 
   // 6) Staff sweep is read-safe and finds engineers.
   console.log('— Staff bonus sweep (dry run) —');
