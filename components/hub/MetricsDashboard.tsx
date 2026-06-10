@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { BarChart3, TrendingUp, TrendingDown, Save, Loader2, Link2, Unlink, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { TrendingUp, TrendingDown, Save, Loader2, Link2, Unlink, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import { METRIC_PLATFORMS, METRIC_FIELD_LABELS } from '@/lib/hub-constants';
 import { getPlatformLevel, getPlatformLevelTitle } from '@/lib/xp-system';
 import { SkeletonChart } from './LoadingSkeleton';
-import EmptyState from './EmptyState';
 import MetricsChart, { Sparkline, calculateGrowthRate } from './MetricsChart';
 import type { DataPoint, ChartSeries } from './MetricsChart';
 
@@ -224,14 +223,23 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <h2 className="text-heading-md">METRICS</h2>
-        <div className="flex gap-2">
-          <button onClick={() => setShowLogForm(!showLogForm)}
-            className="bg-accent text-black font-mono text-xs font-bold uppercase tracking-wider px-4 py-2 hover:bg-accent/90 transition-colors inline-flex items-center gap-1">
-            {showLogForm ? 'Cancel' : 'Log This Week'}
-          </button>
-        </div>
+      </div>
+
+      {/* The pitch: artists supply LINKS, the platform supplies the numbers.
+          Manual logging still exists but is demoted to a quiet fallback —
+          manual rows never count toward charts (verified data only). */}
+      <div className="border-2 border-accent/60 bg-accent/5 px-4 py-3 mb-4">
+        <p className="font-mono text-xs text-black/80">
+          <span className="font-bold uppercase tracking-wider">Add your profile links below</span> — we
+          track your fans + followers for you every week. Spotify and YouTube sync automatically;
+          everything else our team records weekly from your link.
+        </p>
+        <button onClick={() => setShowLogForm(!showLogForm)}
+          className="font-mono text-[10px] text-black/40 underline hover:text-black mt-1.5">
+          {showLogForm ? 'Close manual logging' : 'Prefer to log numbers yourself? Log manually'}
+        </button>
       </div>
 
       {/* Tracking paused — win-back, resumes automatically on the next payment. */}
@@ -348,15 +356,9 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
         </div>
       )}
 
-      {/* Metrics snapshot cards */}
-      {metrics.length === 0 && connections.length === 0 ? (
-        <EmptyState
-          icon={BarChart3}
-          title="No metrics yet"
-          description="Start tracking your growth across platforms. Log your first week to see trends, or connect Spotify/YouTube for auto-tracking."
-          action={{ label: 'Log This Week', onClick: () => setShowLogForm(true) }}
-        />
-      ) : (
+      {/* Metrics snapshot cards — always rendered: with no data yet, every card
+          shows its "Add your … link" CTA, which IS the empty-state onboarding. */}
+      {(
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {METRIC_PLATFORMS.map((platform) => {
             const latest = latestByPlatform[platform.key];
