@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { Music, ExternalLink, Settings } from 'lucide-react';
 import { createServiceClient, createClient } from '@/lib/supabase/server';
 import ProfileBeatGrid from '@/components/beats/ProfileBeatGrid';
+import TierBadge from '@/components/career/TierBadge';
 import { fmtStampDate } from '@/lib/studio-time';
 
 type Props = {
@@ -55,6 +56,19 @@ export default async function PublicProfilePage({ params }: Props) {
   const authClient = await createClient();
   const { data: { user: currentUser } } = await authClient.auth.getUser();
   const isOwner = currentUser?.id === profile.user_id;
+
+  // Career path: computed stage + highest listener tier (replaces the old
+  // free-text career_stage badge — stage is EARNED now, never self-typed).
+  let computedStageLabel: string | null = null;
+  let highestTier: number | null = null;
+  if (profile.user_id) {
+    try {
+      const { getCareerSummary } = await import('@/lib/career-rules');
+      const summary = await getCareerSummary(supabase, profile.user_id);
+      if (summary.stage > 0) computedStageLabel = summary.stageLabel;
+      highestTier = summary.highestTier;
+    } catch { /* career data is decorative here */ }
+  }
 
   // Fetch public audio showcase
   const { data: showcaseItems } = await supabase
@@ -148,12 +162,13 @@ export default async function PublicProfilePage({ params }: Props) {
             <div className="text-center sm:text-left flex-1">
               <h1 className="text-display-sm mb-3">{profile.display_name}</h1>
 
-              {/* Career Stage & Genre Badges */}
-              {(profile.career_stage || profile.genre) && (
-                <div className="flex flex-wrap gap-2 mb-3 justify-center sm:justify-start">
-                  {profile.career_stage && (
+              {/* Earned career stage + listener tier + genre */}
+              {(computedStageLabel || highestTier || profile.genre) && (
+                <div className="flex flex-wrap gap-2 mb-3 justify-center sm:justify-start items-center">
+                  <TierBadge tier={highestTier} size="md" />
+                  {computedStageLabel && (
                     <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-white/10 text-accent px-3 py-1">
-                      {profile.career_stage}
+                      {computedStageLabel}
                     </span>
                   )}
                   {profile.genre && (

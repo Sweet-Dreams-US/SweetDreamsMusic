@@ -268,10 +268,14 @@ export async function POST() {
     }
   }
 
+  // career_stage retired (computed by the career engine now) — bio replaces
+  // it here, matching the s1_brand gate (photo + bio).
+  const { data: bioRow } = await service.from('profiles')
+    .select('bio').eq('user_id', user.id).maybeSingle();
   const profileComplete = !!(
     profile?.display_name &&
     profile?.genre &&
-    profile?.career_stage &&
+    (bioRow as { bio?: string | null } | null)?.bio &&
     profile?.profile_picture_url
   );
 
