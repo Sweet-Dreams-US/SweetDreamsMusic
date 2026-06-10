@@ -35,6 +35,15 @@ export async function POST(request: NextRequest) {
   if (!platform || !url) {
     return NextResponse.json({ error: 'platform and url required' }, { status: 400 });
   }
+  // Apple Music has no public page the API or the weekly agent can read — its
+  // numbers are self-logged from the artist's own dashboard. A saved link would
+  // sit dead in the tracking queue, so reject it here too (the UI doesn't offer it).
+  if (platform === 'apple_music') {
+    return NextResponse.json(
+      { error: 'Apple Music numbers are logged manually — use "Log your Apple Music numbers" on the Metrics tab.' },
+      { status: 400 },
+    );
+  }
 
   let platformId: string | null = null;
   let displayName: string | null = null;

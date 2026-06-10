@@ -234,11 +234,12 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
         <p className="font-mono text-xs text-black/80">
           <span className="font-bold uppercase tracking-wider">Add your profile links below</span> — we
           track your fans + followers for you every week. Spotify and YouTube sync automatically;
-          everything else our team records weekly from your link.
+          everything else our team records weekly from your link. Apple Music is the one exception —
+          its numbers live in your own artist dashboard, so you log those yourself.
         </p>
         <button onClick={() => setShowLogForm(!showLogForm)}
           className="font-mono text-[10px] text-black/40 underline hover:text-black mt-1.5">
-          {showLogForm ? 'Close manual logging' : 'Prefer to log numbers yourself? Log manually'}
+          {showLogForm ? 'Close Apple Music logging' : 'Log your Apple Music numbers'}
         </button>
       </div>
 
@@ -266,12 +267,14 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
       {showLogForm && (
         <div className="border-2 border-accent p-6 mb-8 space-y-4 transition-all duration-300">
           <div className="flex items-center justify-between">
-            <h3 className="font-mono text-sm font-bold uppercase tracking-wider">Log Metrics</h3>
+            <h3 className="font-mono text-sm font-bold uppercase tracking-wider">Log Apple Music</h3>
             <input type="date" value={logDate} onChange={(e) => setLogDate(e.target.value)}
               className="border border-black/20 px-2 py-1 font-mono text-xs focus:border-accent focus:outline-none" />
           </div>
           <div className="space-y-4">
-            {METRIC_PLATFORMS.map((platform) => (
+            {/* Apple Music ONLY — every other platform is tracked from the
+                artist's pasted link (API sync or the weekly agent run). */}
+            {METRIC_PLATFORMS.filter((p) => p.key === 'apple_music').map((platform) => (
               <div key={platform.key} className="border border-black/10 p-3 transition-colors duration-200 hover:border-black/20">
                 <p className="font-mono text-xs font-bold uppercase tracking-wider mb-2" style={{ color: platform.color }}>
                   {platform.icon} {platform.label}
@@ -284,7 +287,7 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
                       </label>
                       <input
                         type="number"
-                        step={field === 'engagement_rate' || field === 'watch_hours' ? '0.01' : '1'}
+                        step={(field as string) === 'engagement_rate' || (field as string) === 'watch_hours' ? '0.01' : '1'}
                         value={logEntries[platform.key]?.[field] || ''}
                         onChange={(e) => updateLogEntry(platform.key, field, e.target.value)}
                         className="w-full border border-black/10 px-2 py-1.5 font-mono text-xs focus:border-accent focus:outline-none transition-colors"
@@ -373,9 +376,15 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
                 </p>
                 <p className="font-mono text-xs text-black/20 mb-3">No data</p>
 
-                {/* Connect (spotify/youtube auto-sync) or save-your-link (all other
-                    platforms — feeds the weekly agent tracking queue). */}
-                {!conn && (
+                {/* Apple Music has no public page to read — its numbers are
+                    self-logged. Every OTHER platform: paste a link (API sync
+                    for spotify/youtube, weekly agent run for the rest). */}
+                {platform.key === 'apple_music' ? (
+                  <button onClick={() => setShowLogForm(true)}
+                    className="font-mono text-[10px] uppercase tracking-wider text-accent hover:text-accent/80 transition-colors">
+                    Log your Apple Music numbers
+                  </button>
+                ) : !conn && (
                   showConnectForm === platform.key ? (
                     <div className="space-y-2">
                       <input
@@ -437,9 +446,14 @@ export default function MetricsDashboard({ onXpEarned }: { onXpEarned?: () => vo
                   <span className="font-mono text-[10px] text-black/30 uppercase tracking-wider">Lv {platLevel.level}</span>
                 </div>
 
-                {/* Connect / save-link if not connected (all platforms — non-auto
-                    links feed the weekly agent tracking queue). */}
-                {!conn && (
+                {/* Connect / save-link if not connected. Apple Music is the
+                    self-logged exception (no public page to read). */}
+                {platform.key === 'apple_music' ? (
+                  <button onClick={() => setShowLogForm(true)}
+                    className="font-mono text-[10px] text-accent/70 hover:text-accent transition-colors mb-2">
+                    Log your Apple Music numbers
+                  </button>
+                ) : !conn && (
                   showConnectForm === platform.key ? (
                     <div className="space-y-2 mb-3">
                       <input
