@@ -94,6 +94,13 @@ export async function POST(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // Career gates: the 4th link completes s1_links.
+  try {
+    const { createServiceClient } = await import('@/lib/supabase/server');
+    const { evaluateGates } = await import('@/lib/career-rules');
+    await evaluateGates(createServiceClient(), user.id);
+  } catch (e) { console.error('[career] connections hook failed:', e); }
+
   return NextResponse.json({ connection, verified: !!displayName });
 }
 

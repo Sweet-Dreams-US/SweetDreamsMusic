@@ -143,6 +143,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 });
   }
 
+  // Career gates: a completed session can move s1_session/s2_sessions.
+  // Best-effort, never blocks completion (bookings key customers by email).
+  try {
+    const { evaluateGates } = await import('@/lib/career-rules');
+    const customerEmail = String(check.booking.customer_email || '').toLowerCase();
+    if (customerEmail) {
+      const { data: prof } = await supabase.from('profiles')
+        .select('user_id').ilike('email', customerEmail).limit(1).maybeSingle();
+      const uid = (prof as { user_id?: string } | null)?.user_id;
+      if (uid) await evaluateGates(supabase, uid);
+    }
+  } catch (e) { console.error('[career] completion hook failed:', e); }
+
   // Audit — do not swallow errors silently. If logging fails, shout to stderr.
   try {
     const { error: auditErr } = await supabase.from('booking_audit_log').insert({

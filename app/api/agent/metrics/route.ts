@@ -37,6 +37,16 @@ export async function POST(request: NextRequest) {
     if (result.needsConfirmation) {
       return NextResponse.json(result, { status: 409 });
     }
+
+    // Career hooks: a fresh verified snapshot can move listener gates, the
+    // 4-week streak, and listener tiers. Best-effort, never blocks recording.
+    try {
+      const { evaluateGates, sweepListenerTiers } = await import('@/lib/career-rules');
+      const db = createServiceClient();
+      await evaluateGates(db, body.userId);
+      await sweepListenerTiers(db, body.userId);
+    } catch (e) { console.error('[career] snapshot hook failed:', e); }
+
     return NextResponse.json({ success: true, ...result });
   } catch (e: unknown) {
     console.error('[agent/metrics] failed:', e);

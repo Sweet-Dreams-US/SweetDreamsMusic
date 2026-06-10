@@ -62,16 +62,45 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ project });
 }
 
+// Editable by the artist. Engine-owned fields (rollout_score, rollout_breakdown,
+// released_at, slug, release_date_set_at) are NOT in this list — the old
+// blind-spread would have let a client write its own rollout score.
+const EDITABLE = new Set([
+  'title', 'project_type', 'description', 'genre', 'target_release_date',
+  'featured_artists', 'current_phase', 'status', 'cover_image_url',
+  'streaming_links', 'is_public', 'presave_url', 'video_url', 'ad_budget_cents',
+]);
+
 export async function PUT(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const body = await request.json();
-  const { id, ...updates } = body;
+  const { id, ...raw } = body;
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
+  const updates: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(raw)) if (EDITABLE.has(k)) updates[k] = v;
   updates.updated_at = new Date().toISOString();
+
+  const { data: before } = await supabase.from('artist_projects')
+    .select('current_phase,target_release_date,released_at,title,rollout_score')
+    .eq('id', id).eq('user_id', user.id).single();
+  if (!before) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  // Release-date set/changed: freeze the days-ahead measurement AT SET TIME
+  // (moving the date later never retro-earns the 21-day rollout points).
+  const dateChanged = 'target_release_date' in updates
+    && updates.target_release_date !== before.target_release_date;
+  if (dateChanged) updates.release_date_set_at = new Date().toISOString();
+
+  // Releasing: stamp released_at + a public slug once, ever.
+  const releasing = updates.current_phase === 'released' && before.current_phase !== 'released';
+  if (releasing && !before.released_at) {
+    updates.released_at = new Date().toISOString();
+    updates.slug = `${String(before.title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48)}-${String(id).slice(0, 6)}`;
+  }
 
   const { data: project, error } = await supabase
     .from('artist_projects')
@@ -82,6 +111,35 @@ export async function PUT(request: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Engine work AFTER the write (service client; never blocks the response).
+  try {
+    const { createServiceClient } = await import('@/lib/supabase/server');
+    const db = createServiceClient();
+    const { recomputeProjectRollout, evaluateGates } = await import('@/lib/career-rules');
+
+    if (dateChanged && updates.target_release_date) {
+      const daysAhead = Math.round(
+        (Date.parse(String(updates.target_release_date)) - Date.now()) / 86_400_000);
+      const { data: cur } = await db.from('artist_projects').select('rollout_breakdown').eq('id', id).single();
+      await db.from('artist_projects').update({
+        rollout_breakdown: { ...((cur as { rollout_breakdown?: object })?.rollout_breakdown ?? {}), date_ahead_days: daysAhead },
+      } as never).eq('id', id);
+    }
+    const rollout = await recomputeProjectRollout(db, id);
+
+    if (releasing) {
+      const { releaseXp } = await import('@/lib/career');
+      const { awardXP, XP_ACTIONS } = await import('@/lib/xp-system');
+      await awardXP(db, user.id, 'release_project', {
+        referenceId: `release_${id}`,
+        xpOverride: releaseXp(XP_ACTIONS.release_project.xp, rollout?.score ?? before.rollout_score ?? 0),
+        metadata: { project_id: id, rollout_score: rollout?.score ?? 0 },
+      });
+    }
+    await evaluateGates(db, user.id);
+  } catch (e) { console.error('[career] project hook failed:', e); }
+
   return NextResponse.json({ project });
 }
 

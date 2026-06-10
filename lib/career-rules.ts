@@ -349,6 +349,71 @@ async function onTierUp(db: Client, userId: string, tier: number): Promise<void>
   } catch (e) { console.error('[tiers] notify failed:', e); }
 }
 
+// ── Rollout score (Plan 6 §4) — recomputed on relevant writes ────────────────
+
+import { computeRolloutScore, type RolloutInputs } from '@/lib/career';
+
+/**
+ * Recompute + persist a project's rollout score. The date_ahead item is
+ * FROZEN at the moment the release date was set (stored in rollout_breakdown
+ * .date_ahead_days by the projects route) — moving the date later never
+ * retro-earns the points. Grants rollout achievements on threshold crossings.
+ */
+export async function recomputeProjectRollout(db: Client, projectId: string):
+  Promise<{ score: number; breakdown: Record<string, boolean> } | null> {
+  const { data: p } = await db.from('artist_projects').select('*').eq('id', projectId).maybeSingle();
+  if (!p) return null;
+  const proj = p as any;
+  const target: string | null = proj.target_release_date ?? null;
+
+  const [mediaLinked, events, shares] = await Promise.all([
+    db.from('media_bookings').select('id,status', { count: 'exact', head: true })
+      .eq('linked_project_id', projectId).neq('status', 'cancelled'),
+    target
+      ? db.from('calendar_events').select('event_date,event_type').eq('user_id', proj.user_id)
+          .gte('event_date', addDays(target, -14)).lte('event_date', addDays(target, 7))
+      : Promise.resolve({ data: [] } as any),
+    db.from('track_share_links').select('play_count').eq('project_id', projectId),
+  ]);
+
+  const eventRows = ((events.data ?? []) as any[]).filter((e) => e.event_type !== 'studio_session');
+  const preCount = target ? eventRows.filter((e) => e.event_date >= addDays(target, -14) && e.event_date < target).length : 0;
+  const postCount = target ? eventRows.filter((e) => e.event_date >= target && e.event_date <= addDays(target, 7)).length : 0;
+  const plays = ((shares.data ?? []) as any[]).reduce((s, l) => s + (Number(l.play_count) || 0), 0);
+  const dateAheadDays: number | null = (proj.rollout_breakdown as any)?.date_ahead_days ?? null;
+
+  const inputs: RolloutInputs = {
+    releaseDateSetDaysAhead: dateAheadDays,
+    hasCoverArt: !!proj.cover_image_url,
+    photoshootBooked: (mediaLinked.count ?? 0) > 0,
+    videoBookedOrLinked: !!proj.video_url,
+    hasPresave: !!proj.presave_url,
+    preReleaseContentCount: preCount,
+    shareLinkPlays: plays,
+    hasAdBudget: proj.ad_budget_cents != null,
+    postReleaseContentCount: postCount,
+  };
+  const { score, breakdown } = computeRolloutScore(inputs);
+
+  await db.from('artist_projects').update({
+    rollout_score: score,
+    rollout_breakdown: { ...breakdown, date_ahead_days: dateAheadDays },
+  } as never).eq('id', projectId);
+
+  // Rollout achievements — any project, threshold crossings, idempotent.
+  if (score >= 60) await grantAchievement(db, proj.user_id, CAREER_ACHIEVEMENTS.rollout.r60);
+  if (score >= 85) await grantAchievement(db, proj.user_id, CAREER_ACHIEVEMENTS.rollout.r85);
+  if (score >= 100) await grantAchievement(db, proj.user_id, CAREER_ACHIEVEMENTS.rollout.r100);
+
+  return { score, breakdown };
+}
+
+export function addDays(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 // ── Career summary (the UI read model) ───────────────────────────────────────
 
 export async function getCareerSummary(db: Client, userId: string) {

@@ -60,6 +60,15 @@ export async function PUT(request: NextRequest) {
 
   if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
 
+  // Career gates: a playbook read can complete a stage's reading requirement.
+  if (completed && !wasCompleted) {
+    try {
+      const { createServiceClient } = await import('@/lib/supabase/server');
+      const { evaluateGates } = await import('@/lib/career-rules');
+      await evaluateGates(createServiceClient(), user.id);
+    } catch (e) { console.error('[career] playbook hook failed:', e); }
+  }
+
   return NextResponse.json({
     progress,
     xpEligible: completed && !wasCompleted,
