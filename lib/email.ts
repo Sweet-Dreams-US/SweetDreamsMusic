@@ -772,6 +772,62 @@ export async function sendTrackingPausedEmail(to: string, details: { name: strin
   } catch (e) { console.error('Email error (tracking paused):', e); }
 }
 
+/**
+ * Unread-message nudge (Plan 4): one email per thread per unread burst, sent by
+ * the message-nudges cron when a chat message sits unread for 24h.
+ */
+export async function sendUnreadMessageNudge(to: string, details: {
+  name: string; threadId: string; preview: string;
+}) {
+  try {
+    await resend.emails.send({
+      from: FROM, to,
+      subject: 'You have an unread message — Sweet Dreams Music',
+      html: wrap(`
+        ${h1('Unread Message')}
+        ${p(`Hey ${escapeHtml(details.name)} — there's a message waiting for you:`)}
+        <div style="background:#111;padding:14px;margin:14px 0;border-left:3px solid #F4C430">
+          <p style="font-size:14px;color:#ccc;margin:0">${escapeHtml(details.preview)}</p>
+        </div>
+        ${btn('Open conversation', `${SITE_URL}/dashboard/inbox?thread=${details.threadId}`)}
+      `),
+    });
+  } catch (e) { console.error('Email error (unread nudge):', e); }
+}
+
+/**
+ * Broadcast email mirror (Plan 4): batched Resend send for a fanned-out
+ * broadcast. Chunks of 100 with a breather between chunks (Resend batch limit).
+ * Returns counts; per-chunk failure never aborts the rest.
+ */
+export async function sendBroadcastEmailBatch(recipients: string[], subject: string, html: string):
+  Promise<{ sent: number; failed: number }> {
+  let sent = 0, failed = 0;
+  const BATCH = 100;
+  for (let i = 0; i < recipients.length; i += BATCH) {
+    const chunk = recipients.slice(i, i + BATCH);
+    try {
+      await resend.batch.send(chunk.map((to) => ({ from: FROM, to, subject, html })));
+      sent += chunk.length;
+    } catch (e) {
+      console.error('Email error (broadcast batch):', e);
+      failed += chunk.length;
+    }
+    if (i + BATCH < recipients.length) await new Promise((r) => setTimeout(r, 500));
+  }
+  return { sent, failed };
+}
+
+/** Dark-shell wrapper for a plain-text broadcast body (staff composer sends text). */
+export function broadcastHtml(subject: string, bodyText: string, senderName: string): string {
+  return wrap(`
+    ${h1(escapeHtml(subject))}
+    ${p(escapeHtml(bodyText))}
+    ${p(`— ${escapeHtml(senderName)}, Sweet Dreams Music`)}
+    ${btn('Open your inbox', `${SITE_URL}/dashboard/inbox`)}
+  `);
+}
+
 // ── Private Beat Sale Emails ──────────────────────────────────────────
 
 export async function sendPrivateBeatSaleInvite(to: string, details: {

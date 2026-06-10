@@ -32,7 +32,7 @@ export async function POST(
 
   let hasAccess = false;
   if (thread.kind === 'sweet_dreams') {
-    hasAccess = thread.owner_user_id === user.id || user.role === 'admin' || user.role === 'engineer';
+    hasAccess = thread.owner_user_id === user.id || user.role === 'admin' || user.role === 'engineer' || user.role === 'media_manager';
   } else if (thread.kind === 'media_booking' && thread.media_booking_id) {
     if (user.role === 'admin') hasAccess = true;
     else {
@@ -63,7 +63,7 @@ export async function POST(
         if (s) hasAccess = true;
       }
     }
-  } else if (thread.kind === 'producer_dm') {
+  } else if (thread.kind === 'producer_dm' || thread.kind === 'dm') {
     const { data: p } = await service
       .from('message_thread_participants')
       .select('role')
@@ -79,7 +79,7 @@ export async function POST(
   let role: 'owner' | 'staff' | 'producer' = 'owner';
   if (thread.kind === 'sweet_dreams' && thread.owner_user_id !== user.id) {
     role = 'staff'; // admin/engineer reading someone else's SD thread
-  } else if (thread.kind === 'producer_dm') {
+  } else if (thread.kind === 'producer_dm' || thread.kind === 'dm') {
     // Look up existing role; fall back to 'owner' (buyer side)
     const { data: existing } = await service
       .from('message_thread_participants')
@@ -89,7 +89,7 @@ export async function POST(
       .maybeSingle();
     role = ((existing as { role: 'owner' | 'staff' | 'producer' } | null)?.role) ?? 'owner';
   } else if (thread.kind === 'media_booking') {
-    role = user.role === 'admin' || user.role === 'engineer' ? 'staff' : 'owner';
+    role = user.role === 'admin' || user.role === 'engineer' || user.role === 'media_manager' ? 'staff' : 'owner';
   }
 
   await service

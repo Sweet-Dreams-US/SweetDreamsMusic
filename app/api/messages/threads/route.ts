@@ -1,19 +1,23 @@
 // app/api/messages/threads/route.ts
 //
-// Round 9b: GET the inbox list for the signed-in user.
+// GET the combined inbox for the signed-in user (Plan 4 §4).
 //
-// Returns all threads the user can see (Sweet Dreams + booking threads
-// they own + producer DMs they participate in), sorted by recent
-// activity, with display name + unread state precomputed for the UI.
-//
-// Staff (admin/engineer) get THEIR OWN inbox here — not the support
-// queue. The support queue is /admin/messages and is admin-only.
+// Artists: their studio thread (pinned) + booking threads + DMs.
+// Staff: the same PLUS the studio threads of the people they serve —
+//   admin → every user's studio thread; engineer → their session clients;
+//   media manager → their media clients. One inbox, no tab hunting; the
+//   client renders filter tabs. Producers reach people via DMs (matrix),
+//   so they get no extra studio threads here.
 
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import type { Thread, ThreadWithMeta } from '@/lib/messaging';
 import { defaultThreadDisplayName } from '@/lib/messaging';
+import { DM_KINDS, STUDIO_KIND } from '@/lib/messaging-matrix';
+import { resolveParty, engineerClientUserIds, mediaClientUserIds } from '@/lib/messaging-server';
+
+const STAFF_STUDIO_LIMIT = 200;
 
 export async function GET() {
   const user = await getSessionUser();
@@ -21,23 +25,49 @@ export async function GET() {
 
   const service = createServiceClient();
 
-  // Three queries (parallel) cover the user's three thread types:
-  //   1. Sweet Dreams thread (owner_user_id = user)
-  //   2. Booking threads (user is the booking's owner OR a band member)
-  //   3. Producer DMs (user is a participant)
-  const [sd, bookings, dms] = await Promise.all([
-    service
-      .from('message_threads')
-      .select('*')
-      .eq('kind', 'sweet_dreams')
-      .eq('owner_user_id', user.id),
-
-    // Booking threads visible to this user — joined with media_bookings to
-    // filter by ownership/band-membership. RLS would handle this for
-    // authenticated client, but we use service client + explicit filtering
-    // for predictable behavior + N+1 avoidance.
+  const [studio, bookings, dms] = await Promise.all([
+    // 1. Studio threads: always the user's own; staff also get their people's.
     (async () => {
-      // Get the user's owned booking IDs + their band-attached booking IDs
+      const { data: own } = await service
+        .from('message_threads')
+        .select('*')
+        .eq('kind', STUDIO_KIND)
+        .eq('owner_user_id', user.id);
+      const rows: Thread[] = [...((own ?? []) as Thread[])];
+
+      if (user.role === 'admin') {
+        const { data: all } = await service
+          .from('message_threads')
+          .select('*')
+          .eq('kind', STUDIO_KIND)
+          .neq('owner_user_id', user.id)
+          .order('last_message_at', { ascending: false })
+          .limit(STAFF_STUDIO_LIMIT);
+        rows.push(...((all ?? []) as Thread[]));
+      } else if (user.role === 'engineer' || user.role === 'media_manager') {
+        const sender = await resolveParty(service, user.id);
+        if (sender) {
+          const clientIds = user.role === 'media_manager'
+            ? await mediaClientUserIds(service, sender)
+            : await engineerClientUserIds(service, sender);
+          if (clientIds.length > 0) {
+            const { data: clients } = await service
+              .from('message_threads')
+              .select('*')
+              .eq('kind', STUDIO_KIND)
+              .in('owner_user_id', clientIds)
+              .order('last_message_at', { ascending: false })
+              .limit(STAFF_STUDIO_LIMIT);
+            rows.push(...((clients ?? []) as Thread[]));
+          }
+        }
+      }
+      return { data: rows };
+    })(),
+
+    // 2. Booking threads (unchanged union: owned / band / engineer-on-session;
+    //    admins see all).
+    (async () => {
       const { data: ownedBookings } = await service
         .from('media_bookings')
         .select('id, offering_id')
@@ -55,7 +85,6 @@ export async function GET() {
           .in('band_id', bandIds);
         bandBookings = (data ?? []) as typeof bandBookings;
       }
-      // Plus any booking where this user is an attached engineer
       const { data: engineerSessions } = await service
         .from('media_session_bookings')
         .select('parent_booking_id')
@@ -64,14 +93,12 @@ export async function GET() {
         new Set((engineerSessions ?? []).map((s: { parent_booking_id: string }) => s.parent_booking_id)),
       );
 
-      // For admin: every booking. For everyone else: just the union above.
       let bookingIds: string[] = [];
       if (user.role === 'admin') {
         const { data: allBookings } = await service
           .from('media_bookings')
           .select('id, offering_id');
-        const all = (allBookings ?? []) as Array<{ id: string; offering_id: string }>;
-        bookingIds = all.map((b) => b.id);
+        bookingIds = ((allBookings ?? []) as Array<{ id: string }>).map((b) => b.id);
       } else {
         bookingIds = Array.from(
           new Set([
@@ -89,7 +116,6 @@ export async function GET() {
         .eq('kind', 'media_booking')
         .in('media_booking_id', bookingIds);
 
-      // Hydrate offering titles for display names
       const threadsArr = (threads ?? []) as Thread[];
       const bookingIdToOfferingId = new Map<string, string>();
       const allBookingsResp = await service
@@ -111,7 +137,6 @@ export async function GET() {
       return {
         data: threadsArr.map((t) => ({
           ...t,
-          // Override the display name with the offering title when we have it
           subject: t.media_booking_id
             ? offeringTitles.get(bookingIdToOfferingId.get(t.media_booking_id) ?? '') ?? t.subject
             : t.subject,
@@ -119,7 +144,7 @@ export async function GET() {
       };
     })(),
 
-    // Producer DMs — threads where the user is a participant
+    // 3. DMs — generic 'dm' + legacy 'producer_dm', via participants.
     (async () => {
       const { data: parts } = await service
         .from('message_thread_participants')
@@ -130,23 +155,41 @@ export async function GET() {
       const { data: threads } = await service
         .from('message_threads')
         .select('*')
-        .eq('kind', 'producer_dm')
+        .in('kind', DM_KINDS as unknown as string[])
         .in('id', threadIds);
       return { data: threads ?? [] };
     })(),
   ]);
 
+  // De-dupe (a staff member's own SD thread can't collide, but belt-and-suspenders).
+  const seen = new Set<string>();
   const allThreads: Thread[] = [
-    ...((sd.data ?? []) as Thread[]),
+    ...((studio.data ?? []) as Thread[]),
     ...((bookings.data ?? []) as Thread[]),
     ...((dms.data ?? []) as Thread[]),
-  ];
+  ].filter((t) => (seen.has(t.id) ? false : (seen.add(t.id), true)));
 
   if (allThreads.length === 0) {
     return NextResponse.json({ threads: [] });
   }
 
-  // Per-user last_read_at lookup for unread state
+  // Owner names for OTHER people's studio threads (staff view).
+  const otherOwnerIds = Array.from(new Set(
+    allThreads
+      .filter((t) => t.kind === STUDIO_KIND && t.owner_user_id && t.owner_user_id !== user.id)
+      .map((t) => t.owner_user_id as string),
+  ));
+  const ownerNames = new Map<string, string>();
+  if (otherOwnerIds.length > 0) {
+    const { data: owners } = await service
+      .from('profiles')
+      .select('user_id, display_name, email')
+      .in('user_id', otherOwnerIds);
+    for (const o of (owners ?? []) as Array<{ user_id: string; display_name: string | null; email: string | null }>) {
+      ownerNames.set(o.user_id, o.display_name || o.email || 'User');
+    }
+  }
+
   const { data: parts } = await service
     .from('message_thread_participants')
     .select('thread_id, last_read_at')
@@ -157,7 +200,6 @@ export async function GET() {
     lastReadByThread.set(p.thread_id, p.last_read_at);
   }
 
-  // Last-message preview for each thread (one query, ranked per thread)
   const { data: previews } = await service
     .from('messages')
     .select('thread_id, body, author_role, kind, created_at')
@@ -170,25 +212,35 @@ export async function GET() {
     }
   }
 
-  const enriched: ThreadWithMeta[] = allThreads
+  const enriched: (ThreadWithMeta & { mine: boolean })[] = allThreads
     .map((t) => {
       const latest = latestByThread.get(t.id);
       const lastRead = lastReadByThread.get(t.id);
-      const unread = !!latest && (!lastRead || latest.at > lastRead);
+      const mine = !(t.kind === STUDIO_KIND && t.owner_user_id !== user.id);
+      // Staff don't get "unread" on client studio threads they've never opened —
+      // only after they're a participant (opened it once). Keeps the inbox calm.
+      const unread = !!latest && (mine
+        ? (!lastRead || latest.at > lastRead)
+        : (!!lastRead && latest.at > lastRead));
       return {
         ...t,
-        display_name: defaultThreadDisplayName(t),
+        mine,
+        display_name: t.kind === STUDIO_KIND && !mine
+          ? (ownerNames.get(t.owner_user_id as string) ?? 'User')
+          : defaultThreadDisplayName(t),
         unread,
         last_message_preview: latest?.body?.slice(0, 120) ?? undefined,
         last_message_role: latest?.role as ThreadWithMeta['last_message_role'],
       };
     })
-    // Sweet Dreams thread always pinned at top, then other threads by recency
+    // Own studio thread pinned first, then recency.
     .sort((a, b) => {
-      if (a.kind === 'sweet_dreams' && b.kind !== 'sweet_dreams') return -1;
-      if (b.kind === 'sweet_dreams' && a.kind !== 'sweet_dreams') return 1;
+      const aPin = a.kind === STUDIO_KIND && a.mine;
+      const bPin = b.kind === STUDIO_KIND && b.mine;
+      if (aPin && !bPin) return -1;
+      if (bPin && !aPin) return 1;
       return new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime();
     });
 
-  return NextResponse.json({ threads: enriched });
+  return NextResponse.json({ threads: enriched, viewer_role: user.role });
 }

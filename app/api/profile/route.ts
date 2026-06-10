@@ -9,7 +9,7 @@ export async function GET() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name, bio, profile_picture_url, cover_photo_url, social_links, public_profile_slug, career_stage, genre')
+    .select('display_name, bio, profile_picture_url, cover_photo_url, social_links, public_profile_slug, career_stage, genre, is_producer')
     .eq('user_id', user.id)
     .single();
 

@@ -4,9 +4,12 @@
 // One thread of each kind (sweet_dreams, media_booking, producer_dm)
 // with one messages table. See migration 052 for schema details.
 
-export type ThreadKind = 'sweet_dreams' | 'media_booking' | 'producer_dm';
+// 'dm' = the generic matrix DM kind (076); 'producer_dm' is its legacy synonym
+// kept for read-compat. 'sweet_dreams' is the per-user STUDIO thread (the DB
+// string is frozen — live code queries the literal; the UI labels it "Studio").
+export type ThreadKind = 'sweet_dreams' | 'media_booking' | 'producer_dm' | 'dm';
 export type MessageKind = 'chat' | 'update' | 'booking_notification';
-export type AuthorRole = 'admin' | 'buyer' | 'engineer' | 'producer' | 'system';
+export type AuthorRole = 'admin' | 'buyer' | 'engineer' | 'producer' | 'media_manager' | 'system';
 export type ParticipantRole = 'owner' | 'staff' | 'producer';
 
 export interface Attachment {
@@ -58,7 +61,7 @@ export function bubbleStyleFor(message: Pick<Message, 'kind' | 'author_role'>): 
   if (message.kind === 'update') return 'gray';
   if (message.kind === 'booking_notification') return 'white-outline';
   // chat-style: studio (admin/engineer) is yellow, others are black
-  if (message.author_role === 'admin' || message.author_role === 'engineer') return 'yellow';
+  if (message.author_role === 'admin' || message.author_role === 'engineer' || message.author_role === 'media_manager') return 'yellow';
   return 'black';
 }
 
@@ -70,6 +73,6 @@ export function bubbleStyleFor(message: Pick<Message, 'kind' | 'author_role'>): 
 // ────────────────────────────────────────────────────────────────────
 export function defaultThreadDisplayName(t: Thread): string {
   if (t.kind === 'sweet_dreams') return 'Sweet Dreams Music';
-  if (t.kind === 'producer_dm') return t.subject || 'Direct message';
+  if (t.kind === 'producer_dm' || t.kind === 'dm') return t.subject || 'Direct message';
   return t.subject || 'Booking conversation';
 }
