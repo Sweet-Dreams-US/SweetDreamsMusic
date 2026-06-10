@@ -229,7 +229,7 @@ function HomeTab({ year }: { year: number }) {
             <div><p className="font-heading text-xl">{formatCents(pnl.totalExpensesCents)}</p><p className="font-mono text-[10px] text-black/50 uppercase">Expenses</p></div>
             <div><p className={`font-heading text-xl ${pnl.netProfitCents >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatCents(pnl.netProfitCents)}</p><p className="font-mono text-[10px] text-black/50 uppercase">Net profit</p></div>
           </div>
-          <p className="font-mono text-[10px] text-black/40">Contract labor auto-filled from recorded payouts: {formatCents(pnl.contractLaborCents)} — don&apos;t enter payouts as expenses.</p>
+          <p className="font-mono text-[10px] text-black/40">Contract labor auto-filled from the payroll engine (staff earnings for the year&apos;s work): {formatCents(pnl.contractLaborCents)} — don&apos;t enter payouts as expenses.</p>
         </div>
       )}
 

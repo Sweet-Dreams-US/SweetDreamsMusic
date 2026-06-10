@@ -16,7 +16,7 @@ import {
 } from '../lib/tax';
 import {
   taxRevenueForRange, computePnL, contractorDashboard, computeEstimates,
-  contractorPaidForRange, getTaxConstants,
+  contractorPaidForRange, staffEarningsForRange, getTaxConstants,
 } from '../lib/tax-server';
 import { materializeRecurringExpenses } from '../lib/tax-recurring-server';
 
@@ -112,11 +112,15 @@ async function main() {
     + ((media ?? []) as any[]).reduce((s, r) => s + (r.amount || 0), 0);
   ok('taxRevenue grossCents == independent recompute (cent-exact)', rev.grossCents === indep, `lib ${rev.grossCents} vs ${indep}`);
 
-  console.log('\n— Live: P&L is coherent + contract labor auto-fed —');
+  console.log('\n— Live: P&L is coherent + contract labor = staff earnings (work basis) —');
   const pnl = await computePnL(db as never, year);
   ok('P&L revenue top line = gross + kept deposits', pnl.totalRevenueCents === rev.grossCents + rev.keptDepositsCents);
   const ytdPaid = await contractorPaidForRange(db as never, `${year}-01-01`, `${year}-12-31`);
-  ok('contract labor line = actual payroll_payouts total', pnl.contractLaborCents === ytdPaid, `pnl ${pnl.contractLaborCents} vs ${ytdPaid}`);
+  const ytdEarned = await staffEarningsForRange(db as never, `${year}-01-01`, `${year}-12-31`);
+  ok('contract labor line = EXACT staff earnings for the year\'s work (same basis as revenue)',
+    pnl.contractLaborCents === ytdEarned, `pnl ${pnl.contractLaborCents} vs ${ytdEarned}`);
+  ok('cash payouts ride along as paidOutCents (the 1099 basis)', pnl.paidOutCents === ytdPaid,
+    `pnl ${pnl.paidOutCents} vs ${ytdPaid}`);
   ok('net profit = revenue − expenses', pnl.netProfitCents === pnl.totalRevenueCents - pnl.totalExpensesCents);
   ok('no NaN anywhere in P&L', Number.isFinite(pnl.netProfitCents) && Number.isFinite(pnl.contractLaborCents));
 

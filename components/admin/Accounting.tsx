@@ -2746,7 +2746,7 @@ export default function Accounting() {
 interface ProfitPnL {
   from: string; to: string;
   revenue: { sessionsCents: number; beatsCents: number; mediaSalesCents: number; keptDepositsCents: number };
-  totalRevenueCents: number; contractLaborCents: number; manualExpensesCents: number;
+  totalRevenueCents: number; contractLaborCents: number; paidOutCents: number; manualExpensesCents: number;
   totalExpensesCents: number; netProfitCents: number;
   expensesByCategory: { key: string; label: string; scheduleCLine: string; amountCents: number }[];
 }
@@ -2774,13 +2774,15 @@ function ProfitView({ from, to }: { from: string; to: string }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard icon={DollarSign} label="Revenue (incl. kept deposits)" value={formatCents(pnl.totalRevenueCents)} />
         <StatCard icon={Filter} label="Expenses (incl. contract labor)" value={formatCents(pnl.totalExpensesCents)} />
-        <StatCard icon={Users} label="Contract Labor — Paid Out This Period" value={formatCents(pnl.contractLaborCents)} />
+        <StatCard icon={Users} label="Contract Labor (Staff Earnings)" value={formatCents(pnl.contractLaborCents)} />
         <StatCard icon={TrendingUp} label="Net profit" value={formatCents(pnl.netProfitCents)} accent />
       </div>
       <p className="font-mono text-[10px] text-black/40 -mt-2">
-        Contract labor counts payouts <span className="font-bold">recorded during this period</span> (cash basis — the tax number).
-        Bill pays lag the work, so it includes catch-up for the prior period and won&apos;t match the Overview&apos;s
-        &quot;Staff Earnings&quot; figure (what the period&apos;s work earned) — that&apos;s expected, not an error.
+        Contract labor = exact staff earnings for this period&apos;s work — the same number as the Overview&apos;s
+        &quot;Staff Earnings&quot; card, so revenue and labor sit on the same basis.
+        {pnl.paidOutCents !== pnl.contractLaborCents && (
+          <> Cash payouts recorded this period: <span className="font-bold">{formatCents(pnl.paidOutCents)}</span> (bill pays lag the work — see Payroll for per-person balances).</>
+        )}
       </p>
 
       <div className="grid md:grid-cols-2 gap-6">

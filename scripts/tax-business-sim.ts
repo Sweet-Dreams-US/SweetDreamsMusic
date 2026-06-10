@@ -102,8 +102,14 @@ async function main() {
   const pnl1 = await computePnL(db as never, YEAR);
   ok('expenses up by exactly the seeded total', pnl1.manualExpensesCents - pnl0.manualExpensesCents === totalSeeded,
     `Δ ${pnl1.manualExpensesCents - pnl0.manualExpensesCents} vs ${totalSeeded}`);
-  ok('contract labor up by exactly $700', pnl1.contractLaborCents - pnl0.contractLaborCents === 70000);
-  ok('net dropped by expenses+labor', pnl0.netProfitCents - pnl1.netProfitCents === totalSeeded + 70000);
+  // Contract labor = staff earnings for the period's WORK; a recorded payout
+  // with no underlying session moves the CASH-OUT reference, not the P&L line.
+  ok('contract labor (work basis) unmoved by a work-less payout',
+    pnl1.contractLaborCents === pnl0.contractLaborCents,
+    `Δ ${pnl1.contractLaborCents - pnl0.contractLaborCents}`);
+  ok('cash paid-out reference up by exactly $700', pnl1.paidOutCents - pnl0.paidOutCents === 70000,
+    `Δ ${pnl1.paidOutCents - pnl0.paidOutCents}`);
+  ok('net dropped by exactly the expenses', pnl0.netProfitCents - pnl1.netProfitCents === totalSeeded);
   const equip = pnl1.expensesByCategory.find((c) => c.key === 'equipment');
   ok('equipment category carries the interface', (equip?.amountCents ?? 0) >= 320000);
 

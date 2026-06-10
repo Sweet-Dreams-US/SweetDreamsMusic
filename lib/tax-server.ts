@@ -16,7 +16,7 @@ import {
   contractorCompliance, quarterMonthRange,
   type EntityType, type TaxConstants, type QuarterlyEstimate,
 } from '@/lib/tax';
-import { normalizeName } from '@/lib/earnings-core';
+import { computeEarningsCore, normalizeName, revenueConfigFromConstants } from '@/lib/earnings-core';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Client = SupabaseClient<any, any, any>;
@@ -125,9 +125,66 @@ export async function listExpenses(db: Client, fromIso: string, toIso: string): 
 }
 
 /**
+ * EXACT staff earnings attributed to a period's WORK — the same earnings
+ * engine the Payroll tab pays from (computeEarningsCore), run over the
+ * period's rows: completed sessions by session date (per-row snapshot splits,
+ * service-value basis), media commissions, completed media-shoot payouts,
+ * beat producer splits, package commissions. This is the P&L contract-labor
+ * line so labor sits on the SAME basis as revenue (work attribution) —
+ * mixing cash-out payouts into a work-dated P&L made monthly net profit
+ * incoherent (Overview $2,555 earned vs $4,028 paid out, May 2026).
+ * Owner-marked contractors are excluded (owner pay ≠ contract labor).
+ * NOTE: reward staff bonuses (dormant system) not included — revisit at
+ * rewards launch.
+ */
+export async function staffEarningsForRange(db: Client, fromIso: string, toIso: string): Promise<number> {
+  const toTs = `${toIso}T23:59:59`;
+  const [bk, ms, bp, msess, pc, owners] = await Promise.all([
+    db.from('bookings')
+      .select('status,engineer_name,service_value_cents,total_amount,duration,reward_grant_id,engineer_split_pct')
+      .not('status', 'eq', 'cancelled').gte('start_time', fromIso).lte('start_time', toTs),
+    db.from('media_sales').select('sold_by,filmed_by,edited_by,amount,seller_pct,worker_pct')
+      .gte('created_at', fromIso).lte('created_at', toTs),
+    db.from('beat_purchases').select('amount_paid,producer_pct,beats(producer)')
+      .gte('created_at', fromIso).lte('created_at', toTs),
+    db.from('media_session_bookings').select('engineer_id,engineer_payout_cents,status,starts_at')
+      .eq('status', 'completed').not('engineer_payout_cents', 'is', null)
+      .gte('starts_at', fromIso).lte('starts_at', toTs),
+    db.from('package_entitlements').select('salesperson_name,sales_commission_cents,created_at')
+      .not('salesperson_name', 'is', null).gt('sales_commission_cents', 0)
+      .gte('created_at', fromIso).lte('created_at', toTs),
+    db.from('contractors').select('display_name,legal_name').eq('is_owner', true),
+  ]);
+
+  // Names for media-shoot payouts (engineer_id → display name).
+  const sessRows = (msess.data ?? []) as any[];
+  const engineerNames: Record<string, string> = {};
+  const ids = Array.from(new Set(sessRows.map((s) => s.engineer_id).filter(Boolean)));
+  if (ids.length) {
+    const { data: profs } = await db.from('profiles').select('user_id,display_name').in('user_id', ids);
+    for (const p of (profs ?? []) as any[]) engineerNames[p.user_id] = p.display_name || 'Unknown';
+  }
+
+  const earnings = computeEarningsCore({
+    bookings: (bk.data ?? []) as never,
+    media: (ms.data ?? []) as never,
+    beats: (bp.data ?? []) as never,
+    mediaSessions: sessRows as never,
+    engineerNames,
+    packageCommissions: (pc.data ?? []) as never,
+  }, revenueConfigFromConstants());
+
+  const ownerNames = new Set(((owners.data ?? []) as any[])
+    .flatMap((o) => [o.display_name, o.legal_name]).filter(Boolean)
+    .map((n) => normalizeName(String(n)) ?? ''));
+  return Object.entries(earnings).reduce((s, [name, p]) =>
+    ownerNames.has(normalizeName(name) ?? '') ? s : s + p.totalPay, 0);
+}
+
+/**
  * Total ACTUAL contractor pay in a window (payroll_payouts, all methods incl.
- * cash) — EXCLUDING payouts to is_owner contractors: an S-corp owner's pay is
- * not 1099 contract labor (Schedule C Line 11) and must not inflate that line.
+ * cash) — the 1099/contractor-dashboard basis (a 1099 reports what you PAID
+ * someone in the calendar year, per IRS rules) — EXCLUDING is_owner payees.
  */
 export async function contractorPaidForRange(db: Client, fromIso: string, toIso: string): Promise<number> {
   const [{ data }, { data: owners }] = await Promise.all([
@@ -152,7 +209,8 @@ export interface PnL {
   revenue: RevenueBreakdown;
   totalRevenueCents: number;          // gross + kept deposits (the P&L top line)
   expensesByCategory: { key: string; label: string; scheduleCLine: string; amountCents: number }[];
-  contractLaborCents: number;         // auto-fed from payroll_payouts — never double-entered
+  contractLaborCents: number;         // EXACT staff earnings for the period's work (matches the revenue basis + the Overview)
+  paidOutCents: number;               // cash payouts RECORDED in the period (reference; the 1099 basis)
   manualExpensesCents: number;        // business_expenses excluding any 'contract_labor' rows
   totalExpensesCents: number;
   netProfitCents: number;
@@ -160,14 +218,18 @@ export interface PnL {
 
 /**
  * P&L for an arbitrary period (the Accounting Profit view passes its month/
- * quarter/custom range; the Tax Center passes whole years). Contract labor is
- * auto-filled from payroll_payouts (actual pay), so the contract_labor expense
- * category is IGNORED on manual rows to avoid double counting.
+ * quarter/custom range; the Tax Center passes whole years). Contract labor =
+ * EXACT staff earnings for the period's work (same engine + basis as revenue
+ * and the Overview card), so monthly net profit is coherent. Cash payouts
+ * recorded in the period ride along as `paidOutCents` for reference. The
+ * contract_labor expense category is IGNORED on manual rows (auto-fed; never
+ * double-entered).
  */
 export async function computePnLRange(db: Client, from: string, to: string): Promise<PnL> {
-  const [revenue, expenses, contractLaborCents] = await Promise.all([
+  const [revenue, expenses, contractLaborCents, paidOutCents] = await Promise.all([
     taxRevenueForRange(db, from, to),
     listExpenses(db, from, to),
+    staffEarningsForRange(db, from, to),
     contractorPaidForRange(db, from, to),
   ]);
 
@@ -189,7 +251,7 @@ export async function computePnLRange(db: Client, from: string, to: string): Pro
   return {
     year: Number(from.slice(0, 4)), from, to,
     revenue, totalRevenueCents, expensesByCategory,
-    contractLaborCents, manualExpensesCents, totalExpensesCents,
+    contractLaborCents, paidOutCents, manualExpensesCents, totalExpensesCents,
     netProfitCents: totalRevenueCents - totalExpensesCents,
   };
 }
@@ -318,7 +380,7 @@ export async function computeEstimates(db: Client, year: number): Promise<{
     const [revenue, expenses, contractLabor] = await Promise.all([
       taxRevenueForRange(db, from, qEnd),
       listExpenses(db, from, qEnd),
-      contractorPaidForRange(db, from, qEnd),
+      staffEarningsForRange(db, from, qEnd), // same work-attribution basis as revenue
     ]);
     const manualExp = expenses.filter((e) => e.category !== 'contract_labor').reduce((s, e) => s + e.amountCents, 0);
     const est = computeQuarterlyEstimate({

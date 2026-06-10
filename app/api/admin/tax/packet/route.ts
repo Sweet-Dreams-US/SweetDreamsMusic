@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
     ['Est. income tax rate', `${profile.estimatedIncomeTaxRatePct}%`],
     ['EIN (last 4)', profile.einLast4 ? `…${profile.einLast4}` : '—'],
     ['State', profile.state ?? '—'],
-    ['Contract labor basis', 'Actual payouts recorded (all methods incl. cash); owner-marked payees excluded. Cash basis — unpaid year-end balances owed to staff are NOT included; see the Accounting payroll tab.'],
+    ['Contract labor basis', 'Staff earnings attributed to the period\'s work (same payroll engine + work-date basis as revenue); owner-marked payees excluded. The Contractors tab + 1099 totals use ACTUAL PAYMENTS per IRS rules — timing differences at period edges are expected; confirm treatment with your CPA.'],
     ['Revenue basis', 'Sessions by session date; beats/media by transaction date; GROSS of refunds and card-processing fees (log fees as Merchant/Processing Fees expenses)'],
     ['Sales tax', 'NOT computed or collected by this system (deliberate) — confirm state obligations with your CPA'],
     ['Not tracked here — bring separately', 'Vehicle mileage, home office, owner health insurance, retirement contributions, owner draws'],
