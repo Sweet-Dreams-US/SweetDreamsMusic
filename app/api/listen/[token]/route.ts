@@ -8,15 +8,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { evaluateGates } from '@/lib/career-rules';
 import { grantAchievement } from '@/lib/achievements-server';
-import { CAREER_ACHIEVEMENTS } from '@/lib/career';
+import { CAREER_ACHIEVEMENTS, shareLinkInvalidReason } from '@/lib/career';
 
 async function loadValidLink(token: string) {
   const db = createServiceClient();
   const { data } = await db.from('track_share_links').select('*').eq('token', token).maybeSingle();
   if (!data) return { db, link: null, reason: 'not_found' as const };
   const link = data as any;
-  if (link.revoked) return { db, link: null, reason: 'revoked' as const };
-  if (link.expires_at && new Date(link.expires_at) < new Date()) return { db, link: null, reason: 'expired' as const };
+  const invalid = shareLinkInvalidReason(link);
+  if (invalid) return { db, link: null, reason: invalid };
   return { db, link, reason: null };
 }
 

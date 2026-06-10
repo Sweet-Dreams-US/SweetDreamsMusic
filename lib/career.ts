@@ -188,6 +188,15 @@ export function stageDisplay(stage: number): string {
   return `Stage ${stage} — ${STAGE_NAMES[stage]}`;
 }
 
+// ── Share-link validity (the listen route's gate; pure for the golden test) ──
+
+export function shareLinkInvalidReason(link: { revoked: boolean; expires_at: string | null }, now: Date = new Date()):
+  'revoked' | 'expired' | null {
+  if (link.revoked) return 'revoked';
+  if (link.expires_at && new Date(link.expires_at) < now) return 'expired';
+  return null;
+}
+
 // ── Achievement keys granted by this engine ──────────────────────────────────
 
 export const CAREER_ACHIEVEMENTS = {
