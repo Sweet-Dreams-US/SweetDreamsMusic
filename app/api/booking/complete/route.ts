@@ -144,15 +144,17 @@ export async function POST(request: NextRequest) {
   }
 
   // Career gates: a completed session can move s1_session/s2_sessions.
-  // Best-effort, never blocks completion (bookings key customers by email).
+  // Best-effort, never blocks completion. MUST use the service client —
+  // requirement_progress has zero client policies and the customer is not
+  // the caller (an engineer/admin completes the booking).
   try {
     const { evaluateGates } = await import('@/lib/career-rules');
     const customerEmail = String(check.booking.customer_email || '').toLowerCase();
     if (customerEmail) {
-      const { data: prof } = await supabase.from('profiles')
+      const { data: prof } = await service.from('profiles')
         .select('user_id').ilike('email', customerEmail).limit(1).maybeSingle();
       const uid = (prof as { user_id?: string } | null)?.user_id;
-      if (uid) await evaluateGates(supabase, uid);
+      if (uid) await evaluateGates(service, uid);
     }
   } catch (e) { console.error('[career] completion hook failed:', e); }
 
