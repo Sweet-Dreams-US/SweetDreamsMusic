@@ -5,7 +5,7 @@ import { DollarSign, TrendingUp, Calendar, Music, Users, Filter, ChevronDown } f
 import { formatCents, formatDuration } from '@/lib/utils';
 import { fmtSessionDate, fmtStampDate } from '@/lib/studio-time';
 import { PRODUCER_COMMISSION, PLATFORM_COMMISSION, ENGINEER_SESSION_SPLIT, BUSINESS_SESSION_SPLIT, MEDIA_SELLER_COMMISSION, MEDIA_BUSINESS_CUT, MEDIA_WORKER_TOTAL } from '@/lib/constants';
-import { computeEarningsCore, normalizeName, revenueConfigFromConstants, type PersonEarnings } from '@/lib/earnings-core';
+import { computeEarningsCore, normalizeName, pctToFrac, revenueConfigFromConstants, type PersonEarnings } from '@/lib/earnings-core';
 import CreditsLiabilityPanel from './CreditsLiabilityPanel';
 import PackageAccounting from './PackageAccounting';
 import CashCorrectionsLog from './CashCorrectionsLog';
@@ -21,6 +21,7 @@ interface Booking {
   total_amount: number;
   service_value_cents?: number | null; // full value of the work — staff paid on this
   reward_grant_id?: string | null;     // set when a reward funded/discounted this booking
+  engineer_split_pct?: number | null;  // split snapshot stamped at completion (bands 70%, overrides)
   deposit_amount: number;
   remainder_amount: number;
   actual_deposit_paid: number | null;
@@ -855,8 +856,17 @@ export default function Accounting() {
     const beatRev = filteredPurchases.reduce((s, p) => s + p.amount_paid, 0);
     const totalGross = totalBooked + mediaRev + beatRev;
 
-    // Simple payroll calc for overview
-    const sessionPayroll = Math.round(totalBooked * ENGINEER_SESSION_SPLIT);
+    // Earned-this-period estimate. Snapshot-aware per booking: stamped split
+    // (bands 70%, per-engineer overrides) ?? the solo constant, on the
+    // service-value basis (comped sessions still pay staff in full). This is
+    // what staff EARN from the period's activity — the Profit tab's contract
+    // labor is what was PAID OUT during the period (cash basis); bill pays lag
+    // the work, so the two legitimately differ.
+    const sessionPayroll = filteredBookings.reduce((s, b) => {
+      const base = b.service_value_cents ?? b.total_amount;
+      const frac = pctToFrac(b.engineer_split_pct) ?? ENGINEER_SESSION_SPLIT;
+      return s + Math.round(base * frac);
+    }, 0);
     const mediaPayroll = mediaSales.reduce((s, m) => {
       let pay = m.sold_by ? Math.round(m.amount * MEDIA_SELLER_COMMISSION) : 0;
       const wCount = (m.filmed_by ? 1 : 0) + (m.edited_by ? 1 : 0);
@@ -1016,7 +1026,7 @@ export default function Accounting() {
               {/* Business Profit */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard icon={DollarSign} label="Business Keeps" value={formatCents(filteredPayrollData.businessKeeps + filteredPayrollData.keptDeposits)} accent />
-                <StatCard icon={Users} label="Total Payroll Owed" value={formatCents(filteredPayrollData.totalPayroll)} />
+                <StatCard icon={Users} label="Est. Staff Earnings (This Period's Work)" value={formatCents(filteredPayrollData.totalPayroll)} />
                 <StatCard icon={DollarSign} label="Remainder Due" value={formatCents(sessionStats.remainderOutstanding)} />
                 {filteredPayrollData.keptDeposits > 0 && (
                   <StatCard icon={DollarSign} label="Kept Deposits" value={formatCents(filteredPayrollData.keptDeposits)} />
@@ -2761,9 +2771,14 @@ function ProfitView({ from, to }: { from: string; to: string }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard icon={DollarSign} label="Revenue (incl. kept deposits)" value={formatCents(pnl.totalRevenueCents)} />
         <StatCard icon={Filter} label="Expenses (incl. contract labor)" value={formatCents(pnl.totalExpensesCents)} />
-        <StatCard icon={Users} label="Contract labor (auto from payouts)" value={formatCents(pnl.contractLaborCents)} />
+        <StatCard icon={Users} label="Contract Labor — Paid Out This Period" value={formatCents(pnl.contractLaborCents)} />
         <StatCard icon={TrendingUp} label="Net profit" value={formatCents(pnl.netProfitCents)} accent />
       </div>
+      <p className="font-mono text-[10px] text-black/40 -mt-2">
+        Contract labor counts payouts <span className="font-bold">recorded during this period</span> (cash basis — the tax number).
+        Bill pays lag the work, so it includes catch-up for the prior period and won&apos;t match the Overview&apos;s
+        &quot;earned this period&quot; estimate — that&apos;s expected, not an error.
+      </p>
 
       <div className="grid md:grid-cols-2 gap-6">
         <div className="border-2 border-black/10 p-4">
