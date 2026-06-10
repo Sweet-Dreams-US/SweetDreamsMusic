@@ -90,15 +90,10 @@ export const METRIC_PLATFORMS = [
   { key: 'twitter', label: 'X / Twitter', color: '#000000', icon: '𝕏',
     fields: ['followers', 'avg_likes', 'impressions'],
     primaryField: 'followers', autoFetchable: false },
-  { key: 'audiomack', label: 'Audiomack', color: '#FFA200', icon: '🎧',
-    fields: ['followers', 'plays'],
-    primaryField: 'followers', autoFetchable: false },
-  // Facebook + Deezer round out the agent-console field map (Plan 1): artists
-  // save the link, the Cowork agent records followers weekly.
+  // Facebook completes the trackable set. Audiomack + Deezer were CUT
+  // (2026-06-10, Cole's field test): their public pages don't visibly show
+  // fan counts a human agent can read — nothing recordable, dead cards.
   { key: 'facebook', label: 'Facebook', color: '#1877F2', icon: '📘',
-    fields: ['followers'],
-    primaryField: 'followers', autoFetchable: false },
-  { key: 'deezer', label: 'Deezer', color: '#A238FF', icon: '🎶',
     fields: ['followers'],
     primaryField: 'followers', autoFetchable: false },
 ] as const;

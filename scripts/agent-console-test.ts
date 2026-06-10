@@ -31,7 +31,7 @@ function ok(name: string, cond: boolean, extra = '') {
 }
 
 const TEST_EMAIL = 'cole@sweetdreams.us';
-const SEED_PLATFORMS = ['tiktok', 'spotify', 'soundcloud', 'audiomack', 'deezer'];
+const SEED_PLATFORMS = ['tiktok', 'spotify', 'soundcloud', 'facebook'];
 let testUserId = '';
 const cleanupRunIds: string[] = [];
 const cleanupDates = new Set<string>();
@@ -97,7 +97,7 @@ async function main() {
   const d3 = shiftDate(today.dateStr, -3); cleanupDates.add(d3);
   const d8 = shiftDate(today.dateStr, -8); cleanupDates.add(d8);
 
-  // Seed connections (tiktok/spotify/soundcloud/audiomack/deezer) + history.
+  // Seed connections (tiktok/spotify/soundcloud/facebook) + history.
   for (const platform of SEED_PLATFORMS) {
     await db.from('platform_connections').upsert({
       user_id: testUserId, platform, platform_url: `https://example.com/${platform}/test`,
@@ -130,7 +130,7 @@ async function main() {
   const sp = work!.platforms.find((p) => p.key === 'spotify')!;
   ok('spotify prefill from API today', sp.prefill?.source === 'spotify_api' && sp.prefill?.values.followers === 100);
   ok('platform with no link has null connection',
-    work!.platforms.find((p) => p.key === 'facebook')!.connection === null);
+    work!.platforms.find((p) => p.key === 'instagram')!.connection === null);
 
   console.log('\n— Live: run + clean save + stamps —');
   const run = await startAgentRun(db as never, testUserId);
@@ -142,7 +142,7 @@ async function main() {
     userId: testUserId, recordedBy: testUserId, runId: (run as { id: string }).id,
     entries: [
       { platform: 'tiktok', status: 'recorded', values: { followers: 1200 } }, // +20% — clean
-      { platform: 'audiomack', status: 'blocked' },
+      { platform: 'facebook', status: 'blocked' },
     ],
   });
   ok('clean save needs no confirmation', !save1.needsConfirmation);
@@ -157,9 +157,9 @@ async function main() {
   const { data: tkConn } = await db.from('platform_connections').select('last_fetched_at,fetch_error')
     .eq('user_id', testUserId).eq('platform', 'tiktok').maybeSingle();
   ok('tiktok connection stamped clean', !!(tkConn as { last_fetched_at?: string })?.last_fetched_at && (tkConn as { fetch_error?: string })?.fetch_error === null);
-  const { data: amConn } = await db.from('platform_connections').select('fetch_error')
-    .eq('user_id', testUserId).eq('platform', 'audiomack').maybeSingle();
-  ok('blocked status stamped on connection', (amConn as { fetch_error?: string })?.fetch_error === 'blocked');
+  const { data: fbConn } = await db.from('platform_connections').select('fetch_error')
+    .eq('user_id', testUserId).eq('platform', 'facebook').maybeSingle();
+  ok('blocked status stamped on connection', (fbConn as { fetch_error?: string })?.fetch_error === 'blocked');
 
   console.log('\n— Live: anomaly confirm flow (same-day correction) —');
   const save2 = await saveAgentMetrics(db as never, {

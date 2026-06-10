@@ -30,8 +30,8 @@ export const AGENT_PLATFORMS: AgentPlatform[] = [
   { key: 'tiktok',     label: 'TikTok',     fields: [{ column: 'followers', label: 'Followers' }, { column: 'total_likes', label: 'Total likes' }] },
   { key: 'facebook',   label: 'Facebook',   fields: [{ column: 'followers', label: 'Followers' }] },
   { key: 'twitter',    label: 'X',          fields: [{ column: 'followers', label: 'Followers' }] },
-  { key: 'audiomack',  label: 'Audiomack',  fields: [{ column: 'followers', label: 'Followers' }, { column: 'plays', label: 'Total plays' }] },
-  { key: 'deezer',     label: 'Deezer',     fields: [{ column: 'followers', label: 'Fans' }] },
+  // Audiomack + Deezer CUT (2026-06-10, Cole's field test): their public pages
+  // don't visibly show stats a human agent can record.
 ];
 
 export const AGENT_PLATFORM_KEYS = AGENT_PLATFORMS.map((p) => p.key);
