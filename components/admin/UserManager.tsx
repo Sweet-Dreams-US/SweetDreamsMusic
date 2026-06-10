@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Search, ExternalLink, Shield, Wrench, Music, User, Check, Users as UsersIcon, Eye, EyeOff, Film, ClipboardList } from 'lucide-react';
+import { Search, ExternalLink, Shield, Wrench, Music, User, Check, Users as UsersIcon, Eye, EyeOff, Film, ClipboardList, Activity } from 'lucide-react';
 import { fmtStampDate } from '@/lib/studio-time';
 
 interface Profile {
@@ -13,6 +13,7 @@ interface Profile {
   role: string;
   email: string | null;
   is_producer: boolean;
+  tracking_always_on: boolean;
   producer_name: string | null;
   files_count: number;
   notes_count: number;
@@ -103,6 +104,22 @@ export default function UserManager() {
     });
     if (res.ok) {
       setProfiles((prev) => prev.map((p) => p.id === profileId ? { ...p, is_producer: !currentValue } : p));
+    }
+    setUpdatingId(null);
+  }
+
+  // Tracking exemption (077): "Always track" — this account's weekly stat
+  // tracking never pauses on the 90-day paid-activity rule. Staff roles +
+  // producers are auto-exempt without the toggle; this covers everyone else.
+  async function toggleAlwaysTrack(profileId: string, currentValue: boolean) {
+    setUpdatingId(profileId);
+    const res = await fetch('/api/admin/users/update-role', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileId, tracking_always_on: !currentValue }),
+    });
+    if (res.ok) {
+      setProfiles((prev) => prev.map((p) => p.id === profileId ? { ...p, tracking_always_on: !currentValue } : p));
     }
     setUpdatingId(null);
   }
@@ -363,6 +380,25 @@ export default function UserManager() {
                   >
                     <Music className="w-3 h-3" />
                     {profile.is_producer ? <Check className="w-3 h-3" /> : null}
+                  </button>
+
+                  {/* Always-track toggle — this account's weekly stat tracking
+                      never pauses on the 90-day rule. Staff + producers are
+                      auto-exempt; this covers everyone else (e.g. a VIP artist). */}
+                  <button
+                    onClick={() => toggleAlwaysTrack(profile.id, profile.tracking_always_on)}
+                    disabled={updatingId === profile.id}
+                    title={profile.tracking_always_on
+                      ? 'Always track: ON — stat tracking never pauses for this account'
+                      : 'Always track: OFF — tracking pauses after 90 days without paid activity (staff + producers are exempt automatically)'}
+                    className={`border px-2 py-1.5 font-mono text-xs uppercase tracking-wider inline-flex items-center gap-1 transition-colors disabled:opacity-50 ${
+                      profile.tracking_always_on
+                        ? 'border-green-500 bg-green-50 text-green-700 font-bold'
+                        : 'border-black/20 text-black/40 hover:border-green-500 hover:text-green-700'
+                    }`}
+                  >
+                    <Activity className="w-3 h-3" />
+                    {profile.tracking_always_on ? <Check className="w-3 h-3" /> : null}
                   </button>
 
                   {/* Profile link */}

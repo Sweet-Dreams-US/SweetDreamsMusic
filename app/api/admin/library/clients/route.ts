@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   // Get all profiles with their file and note counts
   const { data: profiles, error } = await supabase
     .from('profiles')
-    .select('id, user_id, display_name, profile_picture_url, public_profile_slug, role, email, is_producer, producer_name')
+    .select('id, user_id, display_name, profile_picture_url, public_profile_slug, role, email, is_producer, producer_name, tracking_always_on')
     .order('display_name', { ascending: true });
 
   if (error) {

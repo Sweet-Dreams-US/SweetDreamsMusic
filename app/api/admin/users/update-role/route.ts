@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
   const hasAccess = await verifyAdminAccess(supabase);
   if (!hasAccess) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { profileId, role, is_producer } = await request.json();
+  const { profileId, role, is_producer, tracking_always_on } = await request.json();
 
   if (!profileId) {
     return NextResponse.json({ error: 'profileId required' }, { status: 400 });
@@ -29,6 +29,13 @@ export async function POST(request: NextRequest) {
     if (is_producer) {
       updates.producer_approved_at = new Date().toISOString();
     }
+  }
+
+  // Tracking exemption (077): this account's weekly stat tracking never pauses
+  // regardless of paid activity. Staff roles + producers are auto-exempt in the
+  // artist_tracking_status view without it; the toggle covers everyone else.
+  if (tracking_always_on !== undefined) {
+    updates.tracking_always_on = tracking_always_on === true;
   }
 
   if (Object.keys(updates).length === 0) {

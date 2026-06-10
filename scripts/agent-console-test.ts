@@ -246,6 +246,34 @@ async function main() {
   ok('tracking view returns a row with boolean is_active', typeof (tsRow as { is_active?: boolean })?.is_active === 'boolean');
   const { data: inactiveSample } = await db.from('artist_tracking_status').select('user_id').eq('is_active', false).limit(1);
   ok('view distinguishes inactive artists (not everyone active)', (inactiveSample ?? []).length === 1);
+
+  console.log('\n— Live: tracking exemptions (077) —');
+  // Staff are auto-exempt: every engineer-role profile must be ACTIVE in the
+  // view regardless of paid activity (they never "book sessions").
+  const { data: engProfiles } = await db.from('profiles').select('user_id').eq('role', 'engineer');
+  const engIds = ((engProfiles ?? []) as { user_id: string }[]).map((p) => p.user_id);
+  if (engIds.length > 0) {
+    const { data: engStatus } = await db.from('artist_tracking_status')
+      .select('user_id,is_active,always_on').in('user_id', engIds);
+    ok('every engineer is always_on + active (auto-exempt)',
+      (engStatus ?? []).length === engIds.length
+      && ((engStatus ?? []) as { is_active: boolean; always_on: boolean }[])
+        .every((r) => r.is_active && r.always_on));
+  } else {
+    ok('engineer profiles exist for exemption test', false, 'none found');
+  }
+  // The manual toggle: flipping tracking_always_on makes the view report
+  // always_on, regardless of payments. Restored right after.
+  const { data: beforeToggle } = await db.from('profiles')
+    .select('tracking_always_on').eq('user_id', testUserId).single();
+  await db.from('profiles').update({ tracking_always_on: true } as never).eq('user_id', testUserId);
+  const { data: toggled } = await db.from('artist_tracking_status')
+    .select('always_on,is_active').eq('user_id', testUserId).single();
+  ok('tracking_always_on toggle forces always_on + active',
+    (toggled as { always_on: boolean }).always_on && (toggled as { is_active: boolean }).is_active);
+  await db.from('profiles').update({
+    tracking_always_on: (beforeToggle as { tracking_always_on: boolean }).tracking_always_on,
+  } as never).eq('user_id', testUserId);
 }
 
 async function cleanup() {
