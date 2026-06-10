@@ -17,8 +17,11 @@ you are the verification layer. Accuracy beats speed.
 ## The daily run
 
 1. **Open the console** → you'll see today's queue: how many artists are due,
-   completed, and remaining. Artists are assigned a fixed weekday each, plus
-   any missed from earlier in the week. An empty queue = done for the day.
+   completed, and remaining. **An artist's recheck day is the weekday you
+   first tracked them** — record someone on a Tuesday and they're yours every
+   Tuesday after. Brand-new artists (fresh links) show up in your very next
+   run, plus anyone whose day got missed appears as catch-up. An empty queue
+   = done for the day.
 2. Click **Start queue** (this opens a run — your work is counted for the
    end-of-day report).
 3. For each artist, the work screen shows **one row per platform link**:

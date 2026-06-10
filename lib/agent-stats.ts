@@ -57,46 +57,45 @@ export function studioToday(now: Date = new Date()): { dateStr: string; dayIdx: 
 
 // ── weekday slicing ──────────────────────────────────────────────────────────
 
-/** Stable weekday assignment: hash(user_id) % 5 → 0=Mon … 4=Fri. */
-export function weekdaySlot(userId: string): number {
-  const hex = userId.replace(/-/g, '').slice(0, 8);
-  const n = parseInt(hex, 16);
-  return Number.isFinite(n) ? n % 5 : 0;
-}
-
 /** Whole days between two YYYY-MM-DD strings (b - a). */
 export function daysBetween(a: string, b: string): number {
   return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
 }
 
-export interface DueInput { userId: string; lastAgentDate: string | null }
+/** Weekday index (Mon=0 … Sun=6) of a YYYY-MM-DD date string. */
+export function weekdayOf(dateStr: string): number {
+  // JS getUTCDay: Sun=0 … Sat=6 → remap to Mon=0 … Sun=6.
+  return (new Date(`${dateStr}T00:00:00Z`).getUTCDay() + 6) % 7;
+}
+
+export interface DueInput { userId: string; firstAgentDate: string | null; lastAgentDate: string | null }
 export interface DueResult { include: boolean; dueToday: boolean; missed: boolean; done: boolean; slot: number }
 
 /**
- * Queue membership for one artist. Weekdays: due if slot === today, plus
- * missed-earlier-this-week artists with no agent snapshot in the last 6 days
- * (a failed day self-heals tomorrow). Weekends are pure catch-up: anyone stale.
+ * Queue membership for one artist — ANCHOR-DAY model (per Cole): the weekday an
+ * artist was FIRST tracked is their recheck day forever.
+ *  - Never tracked → due in the very next run, whatever day that is; that
+ *    first save sets their anchor.
+ *  - Anchored → due when today matches their anchor weekday.
+ *  - Missed (any day): no snapshot in ≥7 days surfaces them as catch-up, so a
+ *    skipped anchor day self-heals on the next run instead of gapping a week.
  * "done" = an agent snapshot exists today (still listed, counted complete).
  */
 export function computeDue(input: DueInput, today: { dateStr: string; dayIdx: number }): DueResult {
-  const slot = weekdaySlot(input.userId);
   const done = input.lastAgentDate === today.dateStr;
   const recent = input.lastAgentDate != null && daysBetween(input.lastAgentDate, today.dateStr) <= 6;
 
-  if (today.dayIdx <= 4) {
-    const dueToday = slot === today.dayIdx;
-    // Missed = an earlier slot this week, OR a cross-week miss: a Friday-slot
-    // artist whose Friday AND weekend catch-up were skipped would otherwise be
-    // invisible Mon–Thu (slot 4 is never < dayIdx) and silently gap two weeks.
-    // Never-recorded artists still wait for their first slot day.
-    const crossWeekStale = input.lastAgentDate != null
-      && daysBetween(input.lastAgentDate, today.dateStr) >= 7;
-    const missed = !dueToday && !recent && (slot < today.dayIdx || crossWeekStale);
-    return { include: dueToday || missed, dueToday, missed, done, slot };
+  if (input.firstAgentDate == null) {
+    // Brand new to tracking: today becomes their day the moment they're saved.
+    return { include: true, dueToday: true, missed: false, done, slot: today.dayIdx };
   }
-  // Weekend: nobody is "due", everything stale this week is catch-up.
-  const missed = !recent;
-  return { include: missed || done, dueToday: false, missed, done, slot };
+
+  const anchor = weekdayOf(input.firstAgentDate);
+  const dueToday = anchor === today.dayIdx;
+  const stale = input.lastAgentDate == null
+    || daysBetween(input.lastAgentDate, today.dateStr) >= 7;
+  const missed = !dueToday && stale;
+  return { include: dueToday || missed, dueToday, missed, done, slot: anchor };
 }
 
 // ── anomaly guard ────────────────────────────────────────────────────────────

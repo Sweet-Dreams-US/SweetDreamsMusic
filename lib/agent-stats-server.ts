@@ -81,9 +81,12 @@ export async function buildAgentQueue(db: Client, now: Date = new Date()): Promi
     trackingStatusMap(db, userIds),
   ]);
 
-  // Latest agent snapshot date per artist (any platform — "done" means the
-  // artist was worked today; per-platform completeness shows on the work screen).
+  // FIRST + latest agent snapshot dates per artist. First = the anchor (the
+  // weekday an artist was first tracked is their recheck day forever); latest
+  // drives "done today" + staleness. Rows arrive date-desc, so the first row
+  // seen per user is their latest and the last row seen is their first.
   const lastAgent = new Map<string, string>();
+  const firstAgent = new Map<string, string>();
   for (let i = 0; i < userIds.length; i += 200) {
     const { data: rows } = await db.from('artist_metrics')
       .select('user_id,metric_date').eq('source', 'agent')
@@ -91,6 +94,7 @@ export async function buildAgentQueue(db: Client, now: Date = new Date()): Promi
       .order('metric_date', { ascending: false }).limit(2000);
     for (const r of (rows ?? []) as any[]) {
       if (!lastAgent.has(r.user_id)) lastAgent.set(r.user_id, r.metric_date);
+      firstAgent.set(r.user_id, r.metric_date); // keeps overwriting → oldest wins
     }
   }
 
@@ -99,7 +103,11 @@ export async function buildAgentQueue(db: Client, now: Date = new Date()): Promi
     const email = String(p.email || '').toLowerCase();
     if (!email || TEST_EMAILS.has(email)) continue;
     if (!status.get(p.user_id)?.isActive) continue; // PAUSED → never queued
-    const due = computeDue({ userId: p.user_id, lastAgentDate: lastAgent.get(p.user_id) ?? null }, today);
+    const due = computeDue({
+      userId: p.user_id,
+      firstAgentDate: firstAgent.get(p.user_id) ?? null,
+      lastAgentDate: lastAgent.get(p.user_id) ?? null,
+    }, today);
     if (!due.include) continue;
     artists.push({
       userId: p.user_id,

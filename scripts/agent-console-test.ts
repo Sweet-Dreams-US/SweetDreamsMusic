@@ -11,7 +11,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import {
-  AGENT_PLATFORMS, weekdaySlot, computeDue, isAnomalous, daysBetween, studioToday,
+  AGENT_PLATFORMS, weekdayOf, computeDue, isAnomalous, daysBetween, studioToday,
 } from '../lib/agent-stats';
 import {
   buildAgentQueue, getArtistWork, saveAgentMetrics, startAgentRun, finishAgentRun,
@@ -44,39 +44,35 @@ function shiftDate(dateStr: string, days: number): string {
 
 async function main() {
   // ── PURE ────────────────────────────────────────────────────────────────
-  console.log('\n— Pure: weekday slicing —');
-  const u = '0a1b2c3d-0000-0000-0000-000000000000';
-  ok('slot is stable', weekdaySlot(u) === weekdaySlot(u));
-  ok('slot in 0..4', [u, crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()]
-    .every((id) => weekdaySlot(id) >= 0 && weekdaySlot(id) <= 4));
+  // ANCHOR-DAY model (per Cole): the weekday an artist was FIRST tracked is
+  // their recheck day forever; brand-new artists are due in the very next run.
+  console.log('\n— Pure: anchor-day scheduling —');
+  const U = '0a1b2c3d-0000-0000-0000-000000000000';
+  ok('weekdayOf maps Mon..Sun correctly',
+    weekdayOf('2026-06-08') === 0 && weekdayOf('2026-06-12') === 4 && weekdayOf('2026-06-14') === 6);
 
-  // A user whose slot we control by picking ids until we find slots 0 and 2.
-  const idFor = (slot: number) => {
-    for (let i = 0; i < 5000; i++) {
-      const id = `${(i * 7919).toString(16).padStart(8, '0')}-0000-0000-0000-000000000000`;
-      if (weekdaySlot(id) === slot) return id;
-    }
-    throw new Error('no id found');
-  };
   const wed = { dateStr: '2026-06-10', dayIdx: 2 }; // a Wednesday
-  ok('due on own weekday', computeDue({ userId: idFor(2), lastAgentDate: null }, wed).dueToday);
-  ok('not due on later weekday', !computeDue({ userId: idFor(4), lastAgentDate: null }, wed).include);
-  const missedStale = computeDue({ userId: idFor(0), lastAgentDate: '2026-05-20' }, wed);
-  ok('missed earlier slot + stale ⇒ included', missedStale.include && missedStale.missed);
-  ok('missed earlier slot but recent ⇒ excluded',
-    !computeDue({ userId: idFor(0), lastAgentDate: '2026-06-08' }, wed).include);
-  ok('done when snapshot is today', computeDue({ userId: idFor(2), lastAgentDate: '2026-06-10' }, wed).done);
+  // Never tracked → due immediately, whatever day it is.
+  const fresh = computeDue({ userId: U, firstAgentDate: null, lastAgentDate: null }, wed);
+  ok('never-tracked artist is due in the next run', fresh.include && fresh.dueToday);
+  // First tracked on a Wednesday → due every Wednesday.
+  const anchored = computeDue({ userId: U, firstAgentDate: '2026-06-03', lastAgentDate: '2026-06-03' }, wed);
+  ok('anchor weekday matches ⇒ due today', anchored.include && anchored.dueToday);
+  // Monday-anchored artist, recorded this Monday → NOT due Wednesday (recent).
+  ok('off-anchor + recent ⇒ excluded',
+    !computeDue({ userId: U, firstAgentDate: '2026-06-01', lastAgentDate: '2026-06-08' }, wed).include);
+  // Monday-anchored artist whose Monday was missed (last snapshot 9 days ago)
+  // → surfaces as catch-up on any later day.
+  const catchUp = computeDue({ userId: U, firstAgentDate: '2026-05-04', lastAgentDate: '2026-06-01' }, wed);
+  ok('missed anchor day self-heals as catch-up', catchUp.include && catchUp.missed);
+  ok('done when snapshot is today',
+    computeDue({ userId: U, firstAgentDate: '2026-06-03', lastAgentDate: '2026-06-10' }, wed).done);
+  // Saturday-anchored artist (first tracked on a weekend catch-up) → due Saturdays.
   const sat = { dateStr: '2026-06-13', dayIdx: 5 };
-  ok('weekend = catch-up for any stale slot',
-    computeDue({ userId: idFor(4), lastAgentDate: null }, sat).include);
-  ok('weekend excludes recent', !computeDue({ userId: idFor(4), lastAgentDate: '2026-06-12' }, sat).include);
-  // Cross-week blind spot (review finding): a Friday-slot artist missed on
-  // Friday + weekend must surface MONDAY, not vanish until next Friday.
-  const mon = { dateStr: '2026-06-15', dayIdx: 0 };
-  const fridaySlotStale = computeDue({ userId: idFor(4), lastAgentDate: '2026-06-05' }, mon);
-  ok('cross-week miss surfaces Monday', fridaySlotStale.include && fridaySlotStale.missed);
-  ok('never-recorded later slot still waits for its first day',
-    !computeDue({ userId: idFor(4), lastAgentDate: null }, mon).include);
+  ok('weekend anchors work (first-tracked Saturday ⇒ due Saturday)',
+    computeDue({ userId: U, firstAgentDate: '2026-06-06', lastAgentDate: '2026-06-06' }, sat).dueToday);
+  ok('off-anchor + recent stays excluded on weekends too',
+    !computeDue({ userId: U, firstAgentDate: '2026-06-01', lastAgentDate: '2026-06-12' }, sat).include);
 
   console.log('\n— Pure: anomaly + field map —');
   ok('+60% is anomalous', isAnomalous(100, 160));
