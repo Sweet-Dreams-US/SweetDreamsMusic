@@ -206,12 +206,12 @@ export async function POST(
   const startLabel = fmtStampDateTime(startsAt, { weekday: 'short' });
   const proposerName = user.profile?.display_name ?? user.email.split('@')[0];
   const verb = supersedesId ? 'counter-proposed' : 'proposed';
-  await service.from('media_booking_messages').insert({
-    booking_id: bookingId,
-    author_user_id: null,
-    author_role: 'system',
+  // Unified inbox (Plan 4): the legacy media_booking_messages table is
+  // invisible in the UI — write through the mirror instead.
+  const { mirrorToThread } = await import('@/lib/messaging-mirror');
+  await mirrorToThread({
+    mediaBookingId: bookingId, kind: 'update',
     body: `${proposerName} ${verb} ${startLabel} for ${line.label}. The other side approves or counter-proposes here.`,
-    attachments: [],
   });
 
   // Email digest — same helper Round 8b uses, framed as a buyer/admin

@@ -294,12 +294,12 @@ export async function PUT(
   // wiped without explanation. Round 8b chat thread is the right surface.
   if (existingPkg && priorApprovedCount > 0) {
     const adminName = user.profile?.display_name ?? user.email.split('@')[0];
-    await service.from('media_booking_messages').insert({
-      booking_id: id,
-      author_user_id: null,
-      author_role: 'system',
+    // Unified inbox (Plan 4): write via the mirror — the legacy table is
+    // invisible in the UI.
+    const { mirrorToThread } = await import('@/lib/messaging-mirror');
+    await mirrorToThread({
+      mediaBookingId: id, kind: 'update',
       body: `${adminName} edited the package. ${priorApprovedCount} previously-approved line item${priorApprovedCount === 1 ? '' : 's'} need to be re-approved.`,
-      attachments: [],
     });
   }
 

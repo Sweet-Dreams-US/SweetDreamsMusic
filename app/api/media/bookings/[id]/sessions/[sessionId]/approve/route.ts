@@ -141,12 +141,12 @@ export async function POST(
   // System message in chat.
   const startLabel = fmtStampDateTime(session.starts_at, { weekday: 'short' });
   const approverName = user.profile?.display_name ?? user.email.split('@')[0];
-  await service.from('media_booking_messages').insert({
-    booking_id: bookingId,
-    author_user_id: null,
-    author_role: 'system',
+  // Unified inbox (Plan 4): write via the mirror — the legacy table is
+  // invisible in the UI.
+  const { mirrorToThread } = await import('@/lib/messaging-mirror');
+  await mirrorToThread({
+    mediaBookingId: bookingId, kind: 'update',
     body: `${approverName} approved ${startLabel} — session is scheduled.`,
-    attachments: [],
   });
 
   try {

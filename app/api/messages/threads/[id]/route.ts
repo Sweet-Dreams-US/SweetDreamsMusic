@@ -36,11 +36,12 @@ async function resolveAccess(
   const thread = threadRow as Thread | null;
   if (!thread) return { ok: false };
 
-  // Sweet Dreams thread: owner OR admin/engineer
+  // Studio thread (kind 'sweet_dreams'): owner OR staff (admin/engineer/media manager)
   if (thread.kind === 'sweet_dreams') {
     if (thread.owner_user_id === user.id) return { ok: true, thread, role: 'buyer' };
     if (user.role === 'admin') return { ok: true, thread, role: 'admin' };
     if (user.role === 'engineer') return { ok: true, thread, role: 'engineer' };
+    if (user.role === 'media_manager') return { ok: true, thread, role: 'media_manager' };
     return { ok: false };
   }
 
@@ -75,8 +76,10 @@ async function resolveAccess(
     return { ok: false };
   }
 
-  // Producer DM: only participants
-  if (thread.kind === 'producer_dm') {
+  // Direct threads ('dm' + legacy 'producer_dm'): only participants. The
+  // author role comes from WHO the user is (staff roles speak as themselves),
+  // falling back to the participant tag for producers/artists.
+  if (thread.kind === 'producer_dm' || thread.kind === 'dm') {
     const { data: p } = await service
       .from('message_thread_participants')
       .select('role')
@@ -85,7 +88,11 @@ async function resolveAccess(
       .maybeSingle();
     if (!p) return { ok: false };
     const partRole = (p as { role: string }).role;
-    const role: AuthorRole = partRole === 'producer' ? 'producer' : 'buyer';
+    const role: AuthorRole =
+      user.role === 'admin' ? 'admin' :
+      user.role === 'engineer' ? 'engineer' :
+      user.role === 'media_manager' ? 'media_manager' :
+      partRole === 'producer' ? 'producer' : 'buyer';
     return { ok: true, thread, role };
   }
 
@@ -133,7 +140,7 @@ export async function GET(
       {
         thread_id: id,
         user_id: user.id,
-        role: access.thread.kind === 'sweet_dreams' && access.thread.owner_user_id === user.id ? 'owner' : access.role === 'producer' ? 'producer' : access.role === 'admin' || access.role === 'engineer' ? 'staff' : 'owner',
+        role: access.thread.kind === 'sweet_dreams' && access.thread.owner_user_id === user.id ? 'owner' : access.role === 'producer' ? 'producer' : access.role === 'admin' || access.role === 'engineer' || access.role === 'media_manager' ? 'staff' : 'owner',
         last_read_at: new Date().toISOString(),
       },
       { onConflict: 'thread_id,user_id' },

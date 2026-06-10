@@ -92,7 +92,7 @@ export async function GET() {
       const { data } = await service
         .from('message_threads')
         .select('id, last_message_at')
-        .eq('kind', 'producer_dm')
+        .in('kind', ['producer_dm', 'dm'])
         .in('id', threadIds);
       dmThreads = (data ?? []) as typeof dmThreads;
     }

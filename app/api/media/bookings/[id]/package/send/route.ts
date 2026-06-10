@@ -93,13 +93,10 @@ async function postSystemAndNotify(
   const verb = resend ? 're-sent' : 'sent';
   const body = `${adminName} ${verb} a proposed package for your review — total $${dollars}. Approve each line item or use this thread to request changes.`;
 
-  await service.from('media_booking_messages').insert({
-    booking_id: bookingId,
-    author_user_id: null,
-    author_role: 'system',
-    body,
-    attachments: [],
-  });
+  // Unified inbox (Plan 4): write to `messages` via the mirror — the legacy
+  // media_booking_messages table is read-only history and invisible in the UI.
+  const { mirrorToThread } = await import('@/lib/messaging-mirror');
+  await mirrorToThread({ mediaBookingId: bookingId, kind: 'update', body });
 
   // Buyer notification — same digest used for regular chat messages.
   try {

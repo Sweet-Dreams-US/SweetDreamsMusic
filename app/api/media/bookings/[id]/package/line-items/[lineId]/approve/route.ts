@@ -168,13 +168,12 @@ export async function POST(
       details: { package_id: pkg.id },
     });
 
-    // Post a system message + notify admins.
-    await service.from('media_booking_messages').insert({
-      booking_id: bookingId,
-      author_user_id: null,
-      author_role: 'system',
+    // Post a system message + notify admins (unified inbox via the mirror —
+    // the legacy media_booking_messages table is invisible in the UI).
+    const { mirrorToThread } = await import('@/lib/messaging-mirror');
+    await mirrorToThread({
+      mediaBookingId: bookingId, kind: 'update',
       body: `${user.profile?.display_name ?? 'The buyer'} approved every line item — package is locked. Production can start.`,
-      attachments: [],
     });
     try {
       await sendNewMediaMessageNotification({
@@ -188,13 +187,12 @@ export async function POST(
       console.error('[approve] notification failed:', e);
     }
   } else {
-    // Partial approval — post a brief system message so admin sees progress.
-    await service.from('media_booking_messages').insert({
-      booking_id: bookingId,
-      author_user_id: null,
-      author_role: 'system',
+    // Partial approval — brief system message so admin sees progress
+    // (unified inbox via the mirror).
+    const { mirrorToThread } = await import('@/lib/messaging-mirror');
+    await mirrorToThread({
+      mediaBookingId: bookingId, kind: 'update',
       body: `${user.profile?.display_name ?? 'The buyer'} approved: ${line.label}.`,
-      attachments: [],
     });
   }
 
