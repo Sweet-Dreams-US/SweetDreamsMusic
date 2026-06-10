@@ -753,6 +753,28 @@ export async function sendContactForm(details: {
 }
 
 /**
+ * Quarterly estimated-tax reminder (Plan 5). Sent to admins 30 + 7 days before
+ * each due date. Education + organization, never advice.
+ */
+export async function sendTaxEstimateReminder(to: string[], details: {
+  quarter: number; dueDate: string; amountCents: number; daysOut: number;
+}) {
+  try {
+    await resend.emails.send({
+      from: FROM, to,
+      subject: `Q${details.quarter} estimated tax due ${details.dueDate} — ${details.daysOut} days`,
+      html: wrap(`
+        ${h1(`Q${details.quarter} Estimated Tax`)}
+        ${p(`Your federal estimated payment is due <strong>${escapeHtml(details.dueDate)}</strong> — ${details.daysOut} days out.`)}
+        ${p(`Based on your year-to-date profit, plan to set aside about <strong>${formatMoney(details.amountCents)}</strong>.`)}
+        ${p('Preparation and organization, not tax advice — review with your accountant.')}
+        ${btn('Open the Tax Center', `${SITE_URL}/admin`)}
+      `),
+    });
+  } catch (e) { console.error('Email error (tax estimate reminder):', e); }
+}
+
+/**
  * Tracking paused (win-back, not a punishment notice). Sent ONCE per pause
  * episode by the fetch-metrics cron when an artist with platform links has no
  * paid activity in 90 days. Resume is automatic on their next payment.

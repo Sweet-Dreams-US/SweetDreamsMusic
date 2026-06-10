@@ -11,15 +11,16 @@
 // without reshaping the shell.
 
 import { useState } from 'react';
-import { ToggleLeft, DollarSign, Percent, FileText, Building2, Mic } from 'lucide-react';
+import { ToggleLeft, DollarSign, Percent, FileText, Building2, Mic, Calculator } from 'lucide-react';
 import FeaturesNavPanel from './FeaturesNavPanel';
 import StudiosManager from './StudiosManager';
 import RevenueSharesManager from './RevenueSharesManager';
 import SiteContentManager from './SiteContentManager';
 import BrandManager from './BrandManager';
 import EngineersManager from './EngineersManager';
+import TaxProfileManager from './TaxProfileManager';
 
-type Section = 'features' | 'studios' | 'revenue' | 'content' | 'brand' | 'team';
+type Section = 'features' | 'studios' | 'revenue' | 'content' | 'brand' | 'team' | 'tax';
 
 const SECTIONS: { key: Section; label: string; icon: typeof ToggleLeft }[] = [
   { key: 'features', label: 'Features & Nav', icon: ToggleLeft },
@@ -28,6 +29,7 @@ const SECTIONS: { key: Section; label: string; icon: typeof ToggleLeft }[] = [
   { key: 'revenue', label: 'Revenue Shares', icon: Percent },
   { key: 'content', label: 'Content', icon: FileText },
   { key: 'brand', label: 'Brand', icon: Building2 },
+  { key: 'tax', label: 'Tax Profile', icon: Calculator },
 ];
 
 export default function StudioControlPanel() {
@@ -66,6 +68,7 @@ export default function StudioControlPanel() {
       {section === 'revenue' && <RevenueSharesManager />}
       {section === 'content' && <SiteContentManager />}
       {section === 'brand' && <BrandManager />}
+      {section === 'tax' && <TaxProfileManager />}
     </div>
   );
 }

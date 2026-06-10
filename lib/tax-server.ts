@@ -207,11 +207,11 @@ export async function contractorDashboard(db: Client, year: number): Promise<Con
       const b = m.get(key); b.total += amt; if (p.method === 'cash') b.cash += amt; b.methods.add(p.method); return b;
     };
     if (p.contractor_id) bucket(byContractor, p.contractor_id);
-    bucket(byName, normalizeName(String(p.person_name || '')));
+    bucket(byName, normalizeName(String(p.person_name || '')) ?? '');
   }
 
   return ((contractors ?? []) as any[]).map((c) => {
-    const agg = byContractor.get(c.id) ?? byName.get(normalizeName(String(c.display_name || c.legal_name || '')))
+    const agg = byContractor.get(c.id) ?? byName.get(normalizeName(String(c.display_name || c.legal_name || '')) ?? '')
       ?? { total: 0, cash: 0, methods: new Set<string>() };
     const hasW9 = !!c.w9_storage_path || !!c.w9_received_at;
     const comp = constants

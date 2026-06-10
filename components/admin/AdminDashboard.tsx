@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Calendar, Music, Users, DollarSign, Clock, Video, Mic, FileText, LayoutDashboard, BarChart3, Bell, PartyPopper, Film, ClipboardList, Package, Gift, SlidersHorizontal } from 'lucide-react';
+import { Calendar, Music, Users, DollarSign, Clock, Video, Mic, FileText, LayoutDashboard, BarChart3, Bell, PartyPopper, Film, ClipboardList, Package, Gift, SlidersHorizontal, Calculator } from 'lucide-react';
 import type { SessionUser } from '@/lib/auth';
 import AdminOverview from './AdminOverview';
 import BookingManager from './BookingManager';
@@ -21,8 +21,9 @@ import AdminEvents from './AdminEvents';
 import PackageTemplates from './PackageTemplates';
 import RewardsManager from './RewardsManager';
 import StudioControlPanel from './StudioControlPanel';
+import TaxCenter from './TaxCenter';
 
-type Tab = 'overview' | 'control' | 'clients' | 'accounting' | 'bookings' | 'events' | 'media' | 'media-catalog' | 'media-orders' | 'packages' | 'blocks' | 'beats' | 'producers' | 'contracts' | 'users' | 'rewards' | 'analytics' | 'notifications';
+type Tab = 'overview' | 'control' | 'clients' | 'accounting' | 'tax' | 'bookings' | 'events' | 'media' | 'media-catalog' | 'media-orders' | 'packages' | 'blocks' | 'beats' | 'producers' | 'contracts' | 'users' | 'rewards' | 'analytics' | 'notifications';
 
 export default function AdminDashboard({ user }: { user: SessionUser }) {
   const [tab, setTab] = useState<Tab>('overview');
@@ -32,6 +33,7 @@ export default function AdminDashboard({ user }: { user: SessionUser }) {
     { key: 'control', label: 'Control Panel', icon: SlidersHorizontal },
     { key: 'clients', label: 'Clients', icon: Users },
     { key: 'accounting', label: 'Accounting', icon: DollarSign },
+    { key: 'tax', label: 'Tax Center', icon: Calculator },
     { key: 'bookings', label: 'Bookings', icon: Calendar },
     { key: 'events', label: 'Events', icon: PartyPopper },
     { key: 'media', label: 'Media Sales', icon: Video },
@@ -102,6 +104,7 @@ export default function AdminDashboard({ user }: { user: SessionUser }) {
           {tab === 'control' && <StudioControlPanel />}
           {tab === 'clients' && <ClientCRM />}
           {tab === 'accounting' && <Accounting />}
+          {tab === 'tax' && <TaxCenter />}
           {tab === 'bookings' && <BookingManager />}
           {tab === 'events' && <AdminEvents />}
           {tab === 'media' && <MediaSales />}
