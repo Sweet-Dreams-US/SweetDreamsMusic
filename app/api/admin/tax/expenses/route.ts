@@ -40,9 +40,11 @@ export async function POST(request: NextRequest) {
   if (!description) return NextResponse.json({ error: 'Description required' }, { status: 400 });
 
   const category = normalizeCategory(body.category as string);
-  // Auto-suggest the Section 179 flag over $2,500 unless the caller set it.
-  const isEquipment = body.is_equipment != null ? !!body.is_equipment
-    : (category === 'equipment' || amountCents >= EQUIPMENT_SUGGEST_CENTS);
+  // Section 179: ONLY the equipment category auto-flags (the audit caught the
+  // old >$2,500-in-any-category rule putting rent on the CPA's equipment tab).
+  // The UI's amber hint suggests the category for big purchases; the owner
+  // decides. EQUIPMENT_SUGGEST_CENTS drives the hint only.
+  const isEquipment = body.is_equipment != null ? !!body.is_equipment : category === 'equipment';
 
   const db = createServiceClient();
   const { data, error } = await db.from('business_expenses').insert({
@@ -54,6 +56,44 @@ export async function POST(request: NextRequest) {
   } as never).select('id').single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true, id: (data as { id: string }).id });
+}
+
+export async function PATCH(request: NextRequest) {
+  const g = await requireAdmin();
+  if (g.error) return g.error;
+  let body: Record<string, unknown>;
+  try { body = await request.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  const id = String(body.id || '');
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+  const updates: Record<string, unknown> = {};
+  if (body.amount_cents != null) {
+    const n = Math.round(Number(body.amount_cents));
+    if (!Number.isFinite(n) || n <= 0) return NextResponse.json({ error: 'Amount must be positive' }, { status: 400 });
+    updates.amount_cents = n;
+  }
+  if (body.incurred_on != null) {
+    const d = String(body.incurred_on).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return NextResponse.json({ error: 'Valid date required' }, { status: 400 });
+    updates.incurred_on = d;
+  }
+  if (body.description != null) {
+    const s = String(body.description).trim();
+    if (!s) return NextResponse.json({ error: 'Description required' }, { status: 400 });
+    updates.description = s;
+  }
+  if (body.category != null) updates.category = normalizeCategory(body.category as string);
+  if (body.vendor != null) updates.vendor = body.vendor === '' ? null : String(body.vendor);
+  if (body.notes != null) updates.notes = body.notes === '' ? null : String(body.notes);
+  if (body.is_equipment != null) updates.is_equipment = !!body.is_equipment;
+  if (body.receipt_storage_path != null) updates.receipt_storage_path = body.receipt_storage_path === '' ? null : String(body.receipt_storage_path);
+  if (Object.keys(updates).length === 0) return NextResponse.json({ error: 'No fields' }, { status: 400 });
+
+  const db = createServiceClient();
+  const { error } = await db.from('business_expenses').update(updates as never)
+    .eq('id', id).is('deleted_at', null);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ success: true });
 }
 
 export async function DELETE(request: NextRequest) {

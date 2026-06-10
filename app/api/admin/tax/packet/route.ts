@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
   revWs.addRow(['Beat sales', usd(pnl.revenue.beatsCents), 'beat_purchases amount paid, by purchase date']);
   revWs.addRow(['Media sales', usd(pnl.revenue.mediaSalesCents), 'media_sales, by sale date']);
   revWs.addRow(['Kept deposits', usd(pnl.revenue.keptDepositsCents), 'Deposits retained on cancellations']);
-  revWs.addRow(['Hub media orders (collected)', usd(pnl.revenue.hubMediaCents), 'Reference only — confirm overlap with your CPA']);
+  revWs.addRow(['Hub media deposits collected', usd(pnl.revenue.hubMediaCents), 'Deposits only (not full order value) — reference line, confirm overlap with your CPA']);
   revWs.columns.forEach((c, i) => { c.width = [30, 16, 48][i] ?? 18; });
 
   // 6. Assumptions.
@@ -100,8 +100,12 @@ export async function GET(request: NextRequest) {
     ['Est. income tax rate', `${profile.estimatedIncomeTaxRatePct}%`],
     ['EIN (last 4)', profile.einLast4 ? `…${profile.einLast4}` : '—'],
     ['State', profile.state ?? '—'],
-    ['Contract labor basis', 'Actual payouts recorded in payroll_payouts (all methods incl. cash)'],
-    ['Revenue basis', 'Sessions by session date; beats/media by transaction date; gross of refunds'],
+    ['Contract labor basis', 'Actual payouts recorded (all methods incl. cash); owner-marked payees excluded. Cash basis — unpaid year-end balances owed to staff are NOT included; see the Accounting payroll tab.'],
+    ['Revenue basis', 'Sessions by session date; beats/media by transaction date; GROSS of refunds and card-processing fees (log fees as Merchant/Processing Fees expenses)'],
+    ['Sales tax', 'NOT computed or collected by this system (deliberate) — confirm state obligations with your CPA'],
+    ['Not tracked here — bring separately', 'Vehicle mileage, home office, owner health insurance, retirement contributions, owner draws'],
+    ['Equipment tab note', 'Equipment rows also appear in the expense totals above — they are flagged for Section 179 review, not double-counted'],
+    ['Meals note', 'Meals are recorded at full amount; the 50% limitation is applied by your preparer'],
     ['Tax constants reviewed by CPA', constants?.reviewed ? 'Yes' : 'NO — figures are drafts pending review'],
     ['Generated', new Date().toISOString()],
   ].forEach((r) => asmWs.addRow(r));

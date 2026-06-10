@@ -39,6 +39,7 @@ export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   { key: 'insurance',             label: 'Insurance',               scheduleCLine: 'Line 15' },
   { key: 'repairs_maintenance',   label: 'Repairs & Maintenance',   scheduleCLine: 'Line 21' },
   { key: 'legal_professional',    label: 'Legal & Professional',    scheduleCLine: 'Line 17' },
+  { key: 'merchant_fees',         label: 'Merchant / Processing Fees', scheduleCLine: 'Line 10' },
   { key: 'travel',                label: 'Travel',                  scheduleCLine: 'Line 24a' },
   { key: 'meals',                 label: 'Meals (50%)',             scheduleCLine: 'Line 24b' },
   { key: 'equipment',             label: 'Equipment (Sec. 179)',    scheduleCLine: 'Line 13 / Form 4562' },
@@ -166,7 +167,9 @@ export interface ContractorComplianceInput {
   hasW9: boolean;
   constants: TaxConstants;
 }
-export type ComplianceFlag = 'ok' | 'needs_1099' | 'needs_1099_missing_w9' | 'below_threshold';
+export type ComplianceFlag = 'ok' | 'needs_1099' | 'needs_1099_missing_w9' | 'below_threshold'
+  | 'owner'          // S-corp/partnership owner pay — never 1099 contract labor
+  | 'no_constants';  // the year's tax tables aren't configured — status UNKNOWN, not "under $600"
 
 /**
  * The "what to file for this person" answer. Missing W-9 + over threshold is the

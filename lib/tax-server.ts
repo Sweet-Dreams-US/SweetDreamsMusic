@@ -124,11 +124,26 @@ export async function listExpenses(db: Client, fromIso: string, toIso: string): 
   }));
 }
 
-/** Total ACTUAL contractor pay in a window (payroll_payouts, all methods incl. cash). */
+/**
+ * Total ACTUAL contractor pay in a window (payroll_payouts, all methods incl.
+ * cash) — EXCLUDING payouts to is_owner contractors: an S-corp owner's pay is
+ * not 1099 contract labor (Schedule C Line 11) and must not inflate that line.
+ */
 export async function contractorPaidForRange(db: Client, fromIso: string, toIso: string): Promise<number> {
-  const { data } = await db.from('payroll_payouts').select('amount,created_at')
-    .gte('created_at', fromIso).lte('created_at', `${toIso}T23:59:59`);
-  return ((data ?? []) as any[]).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const [{ data }, { data: owners }] = await Promise.all([
+    db.from('payroll_payouts').select('amount,contractor_id,person_name')
+      .gte('created_at', fromIso).lte('created_at', `${toIso}T23:59:59`),
+    db.from('contractors').select('id,display_name,legal_name').eq('is_owner', true),
+  ]);
+  const ownerIds = new Set(((owners ?? []) as any[]).map((o) => o.id));
+  const ownerNames = new Set(((owners ?? []) as any[])
+    .flatMap((o) => [o.display_name, o.legal_name]).filter(Boolean)
+    .map((n) => normalizeName(String(n)) ?? ''));
+  return ((data ?? []) as any[]).reduce((s, r) => {
+    if (r.contractor_id && ownerIds.has(r.contractor_id)) return s;
+    if (!r.contractor_id && ownerNames.has(normalizeName(String(r.person_name || '')) ?? '')) return s;
+    return s + (Number(r.amount) || 0);
+  }, 0);
 }
 
 export interface PnL {
@@ -182,8 +197,14 @@ export async function computePnL(db: Client, year: number): Promise<PnL> {
 export interface ContractorCard {
   id: string; legalName: string; displayName: string; businessName: string | null;
   hasW9: boolean; w9ReceivedAt: string | null; tinLast4: string | null;
+  w9StoragePath: string | null;
   ytdPaidCents: number; needs1099: boolean; flag: string;
   methods: string[]; cashCents: number;
+  isOwner: boolean;
+  filed1099On: string | null;   // ISO date the 1099 was marked filed for this year
+  addressLine1: string | null; addressLine2: string | null;
+  city: string | null; state: string | null; zip: string | null;
+  entityType: string | null;
 }
 
 /** Per-contractor YTD payments (ALL methods incl. cash) + 1099 status. */
@@ -223,15 +244,25 @@ export async function contractorDashboard(db: Client, year: number): Promise<Con
       methods: new Set<string>([...(linked?.methods ?? []), ...(unlinked?.methods ?? [])]),
     };
     const hasW9 = !!c.w9_storage_path || !!c.w9_received_at;
-    const comp = constants
-      ? contractorCompliance({ ytdPaidCents: agg.total, hasW9, constants })
-      : { needs1099: false, flag: 'below_threshold' };
+    // Owner pay is NEVER 1099 contract labor (the S-corp misclassification
+    // trap); a missing constants year is UNKNOWN, never a false "under $600".
+    const comp = c.is_owner
+      ? { needs1099: false, flag: 'owner' as const }
+      : constants
+        ? contractorCompliance({ ytdPaidCents: agg.total, hasW9, constants })
+        : { needs1099: false, flag: 'no_constants' as const };
     return {
       id: c.id, legalName: c.legal_name, displayName: c.display_name || c.legal_name,
       businessName: c.business_name ?? null, hasW9, w9ReceivedAt: c.w9_received_at ?? null,
-      tinLast4: c.tin_last4 ?? null, ytdPaidCents: agg.total,
+      tinLast4: c.tin_last4 ?? null, w9StoragePath: c.w9_storage_path ?? null,
+      ytdPaidCents: agg.total,
       needs1099: comp.needs1099, flag: comp.flag,
       methods: Array.from(agg.methods), cashCents: agg.cash,
+      isOwner: !!c.is_owner,
+      filed1099On: (c.filings as Record<string, string> | null)?.[String(year)] ?? null,
+      addressLine1: c.address_line1 ?? null, addressLine2: c.address_line2 ?? null,
+      city: c.city ?? null, state: c.state ?? null, zip: c.zip ?? null,
+      entityType: c.entity_type ?? null,
     };
   }).sort((a, b) => b.ytdPaidCents - a.ytdPaidCents);
 }
@@ -240,12 +271,17 @@ export async function contractorDashboard(db: Client, year: number): Promise<Con
 
 export interface EstimateForQuarter extends QuarterlyEstimate {
   quarter: number; dueDate: string | null;
+  /** What the owner ACTUALLY paid for this quarter (tax_payments), null if unrecorded. */
+  paidCents: number | null;
+  paidOn: string | null;
 }
 
 /**
  * Estimates for all four quarters of a tax year, YTD-catch-up. Each quarter's
- * YTD net = revenue−expenses through the END of that quarter; prior suggested
- * payments accumulate so Q-n only asks for the incremental set-aside.
+ * YTD net = revenue−expenses through the END of that quarter. The catch-up
+ * basis prefers what the owner ACTUALLY paid (tax_payments) over what was
+ * suggested — paying more than suggested reduces later quarters; skipping a
+ * quarter rolls it forward.
  */
 export async function computeEstimates(db: Client, year: number): Promise<{
   reviewed: boolean; entityType: EntityType; quarters: EstimateForQuarter[];
@@ -255,8 +291,19 @@ export async function computeEstimates(db: Client, year: number): Promise<{
   const profile = await getTaxProfile(db);
   const { from } = yearRange(year);
 
+  // Actual payments recorded for the year, summed per quarter.
+  const { data: payRows } = await db.from('tax_payments')
+    .select('quarter,paid_cents,paid_on').eq('tax_year', year).is('studio_id', null);
+  const paidByQuarter = new Map<number, { cents: number; lastOn: string | null }>();
+  for (const p of (payRows ?? []) as any[]) {
+    const cur = paidByQuarter.get(p.quarter) ?? { cents: 0, lastOn: null };
+    cur.cents += Number(p.paid_cents) || 0;
+    cur.lastOn = p.paid_on ?? cur.lastOn;
+    paidByQuarter.set(p.quarter, cur);
+  }
+
   const quarters: EstimateForQuarter[] = [];
-  let priorSuggested = 0;
+  let priorBasis = 0; // Σ over earlier quarters of (actual paid ?? suggested)
   for (let q = 1; q <= 4; q++) {
     const { endMonth } = quarterMonthRange(q);
     const qEnd = `${year}-${String(endMonth).padStart(2, '0')}-${endMonth === 2 ? '28' : ['4', '6', '9', '11'].includes(String(endMonth)) ? '30' : '31'}`;
@@ -271,10 +318,14 @@ export async function computeEstimates(db: Client, year: number): Promise<{
       ytdExpensesCents: manualExp + contractLabor,
       entityType: profile.entityType,
       incomeTaxRatePct: profile.estimatedIncomeTaxRatePct,
-      constants, priorSuggestedCents: priorSuggested,
+      constants, priorSuggestedCents: priorBasis,
     });
-    priorSuggested += est.suggestedPaymentCents;
-    quarters.push({ ...est, quarter: q, dueDate: constants.dueDates[String(q)] ?? null });
+    const paid = paidByQuarter.get(q);
+    priorBasis += paid != null ? paid.cents : est.suggestedPaymentCents;
+    quarters.push({
+      ...est, quarter: q, dueDate: constants.dueDates[String(q)] ?? null,
+      paidCents: paid?.cents ?? null, paidOn: paid?.lastOn ?? null,
+    });
   }
   return { reviewed: constants.reviewed, entityType: profile.entityType, quarters };
 }

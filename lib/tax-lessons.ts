@@ -60,6 +60,17 @@ export const TAX_LESSONS: TaxLesson[] = [
     linksTo: { label: 'Open Tax Center home', tab: 'home' },
   },
   {
+    id: 'not-tracked',
+    title: 'What this system does NOT track — bring these to your CPA',
+    body: [
+      'DreamSuite organizes what flows through the studio: revenue, expenses, contractor pay. Several classic deductions live outside it, and your CPA will ask about them — bring them separately.',
+      'Vehicle mileage (trips for gear, sessions, events — keep a mileage log app), home office (if you run studio business from home), your own health insurance premiums (deductible for self-employed owners), and retirement contributions (SEP-IRA / Solo 401k).',
+      'Also: owner draws — money you pay YOURSELF as a sole proprietor or LLC owner — are NOT a business expense and are deliberately not deductible anywhere in this system. If you operate as an S corp, your own pay is W-2 wages through a payroll provider, never a 1099 (mark yourself as "Owner" on your contractor card so the system excludes you).',
+      'And merchant processing fees: card payments arrive net of Stripe\'s cut, but revenue here is recorded gross. Log your processing fees as a Merchant / Processing Fees expense (your Stripe dashboard totals them by month) or your profit will look higher than it is.',
+    ],
+    linksTo: { label: 'Open Expenses', tab: 'expenses' },
+  },
+  {
     id: 'sales-tax',
     title: 'Sales tax: ask your CPA (we deliberately don\'t compute it)',
     body: [

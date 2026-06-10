@@ -30,11 +30,18 @@ export async function GET(request: NextRequest) {
   const cur = est.quarters.find((q) => q.quarter === curQ);
   if (cur && new Date().getUTCFullYear() === year) {
     try {
+      // MERGE assumptions — the reminder cron stores its dedup array in there;
+      // a wholesale replace would wipe it and re-fire reminders (audit finding).
+      const { data: existing } = await db.from('tax_estimate_snapshots')
+        .select('assumptions').eq('tax_year', year).eq('quarter', curQ).is('studio_id', null).maybeSingle();
       await db.from('tax_estimate_snapshots').upsert({
         studio_id: null, tax_year: year, quarter: curQ,
         ytd_net_cents: cur.ytdNetCents, se_tax_cents: cur.seTaxCents,
         income_tax_cents: cur.incomeTaxCents, suggested_payment_cents: cur.suggestedPaymentCents,
-        assumptions: { entity_type: est.entityType, income_rate_pct: profile.estimatedIncomeTaxRatePct, reviewed: est.reviewed },
+        assumptions: {
+          ...(((existing as { assumptions?: Record<string, unknown> })?.assumptions) ?? {}),
+          entity_type: est.entityType, income_rate_pct: profile.estimatedIncomeTaxRatePct, reviewed: est.reviewed,
+        },
         computed_at: new Date().toISOString(),
       } as never, { onConflict: 'studio_id,tax_year,quarter' });
     } catch { /* snapshotting is best-effort — never block the read */ }

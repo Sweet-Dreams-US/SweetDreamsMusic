@@ -22,16 +22,22 @@ export async function sweepTaxReminders(
   now: Date = new Date(),
 ): Promise<{ fired: number; window: number | null }> {
   const todayIso = now.toISOString().slice(0, 10);
-  const year = now.getUTCFullYear();
-  const est = await computeEstimates(db, year);
-  if (!est || !est.reviewed) return { fired: 0, window: null }; // dormant until CPA review
-
   let fired = 0; let firedWindow: number | null = null;
+
+  // Sweep BOTH the current and the previous tax year: Q4's payment is due the
+  // following January 15, so its 7-day window lives in the NEXT calendar year
+  // (audit finding — the easiest payment to forget structurally never fired).
+  for (const year of [now.getUTCFullYear(), now.getUTCFullYear() - 1]) {
+  const est = await computeEstimates(db, year);
+  if (!est || !est.reviewed) continue; // dormant until CPA review
+
   for (const q of est.quarters) {
     if (!q.dueDate) continue;
     const out = daysUntil(q.dueDate, todayIso);
-    // Fire on the day we cross into a window (out === 30 or === 7).
-    const hit = WINDOWS.find((w) => out === w);
+    // Window matching is <= (smallest eligible first), not exact-day: one
+    // failed cron run must not lose the window forever. Past-due → skip.
+    if (out < 0) continue;
+    const hit = [...WINDOWS].sort((a, b) => a - b).find((w) => out <= w);
     if (hit == null) continue;
 
     // Dedup: record fired windows in the snapshot's assumptions.
@@ -59,8 +65,9 @@ export async function sweepTaxReminders(
       continue;
     }
 
-    await send({ adminEmails, quarter: q.quarter, dueDate: q.dueDate, amountCents: q.suggestedPaymentCents, daysOut: hit });
+    await send({ adminEmails, quarter: q.quarter, dueDate: q.dueDate, amountCents: q.suggestedPaymentCents, daysOut: out });
     fired++; firedWindow = hit;
+  }
   }
   return { fired, window: firedWindow };
 }

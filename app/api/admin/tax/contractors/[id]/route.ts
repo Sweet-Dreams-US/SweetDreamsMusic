@@ -8,7 +8,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 const EDITABLE = new Set([
   'legal_name', 'display_name', 'business_name', 'entity_type',
   'address_line1', 'address_line2', 'city', 'state', 'zip',
-  'w9_storage_path', 'active',
+  'w9_storage_path', 'active', 'is_owner',
 ]);
 
 export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -30,6 +30,18 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   // Marking a W-9 received stamps the timestamp.
   if (body.w9_storage_path || body.w9_received === true) updates.w9_received_at = new Date().toISOString();
   if (body.w9_received === false) { updates.w9_received_at = null; updates.w9_storage_path = null; }
+  // January bookkeeping: mark the 1099 filed for a given year (or unmark).
+  if (body.mark_1099_filed != null) {
+    const yr = Math.round(Number(body.mark_1099_filed));
+    if (yr >= 2020 && yr <= 2100) {
+      const db0 = createServiceClient();
+      const { data: row } = await db0.from('contractors').select('filings').eq('id', id).maybeSingle();
+      const filings = { ...(((row as { filings?: Record<string, string> })?.filings) ?? {}) };
+      if (body.unfile === true) delete filings[String(yr)];
+      else filings[String(yr)] = new Date().toISOString().slice(0, 10);
+      updates.filings = filings;
+    }
+  }
 
   if (Object.keys(updates).length === 0) return NextResponse.json({ error: 'No editable fields' }, { status: 400 });
   const db = createServiceClient();

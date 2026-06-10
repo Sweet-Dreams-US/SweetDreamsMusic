@@ -18,6 +18,7 @@ import {
   taxRevenueForRange, computePnL, contractorDashboard, computeEstimates,
   contractorPaidForRange, getTaxConstants,
 } from '../lib/tax-server';
+import { materializeRecurringExpenses } from '../lib/tax-recurring-server';
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -156,6 +157,65 @@ async function main() {
   const c2026 = await getTaxConstants(db as never, year);
   ok('2026 constants exist + reviewed=false', !!c2026 && c2026.reviewed === false);
   ok('a year with no constants ⇒ estimates null (no crash)', (await computeEstimates(db as never, 1999)) === null);
+
+  console.log('\n— Live: actual payments feed the catch-up (owner-audit fix) —');
+  // Record a huge Q1 actual payment → later quarters' suggested must collapse
+  // to 0 (the math now prefers what was PAID over what was suggested).
+  const { data: pay } = await db.from('tax_payments').insert({
+    studio_id: null, tax_year: year, quarter: 1, paid_cents: 50_000_000,
+    paid_on: `${year}-04-10`, note: 'tax-test (ignore)',
+  } as never).select('id').single();
+  try {
+    const est2 = await computeEstimates(db as never, year);
+    ok('Q1 paid amount surfaces on the quarter', est2?.quarters[0].paidCents === 50_000_000);
+    ok('massive Q1 payment zeroes later quarters', !!est2 && est2.quarters.slice(1).every((q) => q.suggestedPaymentCents === 0));
+  } finally {
+    await db.from('tax_payments').delete().eq('id', (pay as { id: string }).id);
+  }
+
+  console.log('\n— Live: owner exclusion + no-constants honesty (owner-audit fixes) —');
+  const { data: ownerC } = await db.from('contractors').insert({
+    studio_id: null, legal_name: 'TAXTEST Owner', display_name: 'TAXTEST Owner', is_owner: true,
+  } as never).select('id').single();
+  const ownerId = (ownerC as { id: string }).id;
+  const { data: ownerPay } = await db.from('payroll_payouts').insert({
+    person_name: 'TAXTEST Owner', amount: 12345, method: 'check', note: 'tax-test', contractor_id: ownerId,
+  } as never).select('id').single();
+  try {
+    const labor = await contractorPaidForRange(db as never, `${year}-01-01`, `${year}-12-31`);
+    const laborBefore = ytdPaid; // from earlier in the test, before owner payout existed
+    ok('owner payouts EXCLUDED from contract labor', labor === laborBefore, `now ${labor} vs ${laborBefore}`);
+    const cards3 = await contractorDashboard(db as never, year);
+    const ownerCard = cards3.find((c) => c.id === ownerId);
+    ok('owner card flagged owner + never needs 1099', ownerCard?.flag === 'owner' && ownerCard?.needs1099 === false);
+    ok('owner pay still VISIBLE on their card', ownerCard?.ytdPaidCents === 12345);
+    const cards1999 = await contractorDashboard(db as never, 1999);
+    ok('constants-less year ⇒ flag no_constants, never a false "under $600"',
+      cards1999.filter((c) => !c.isOwner).every((c) => c.flag === 'no_constants'));
+  } finally {
+    await db.from('payroll_payouts').delete().eq('id', (ownerPay as { id: string }).id);
+    await db.from('contractors').delete().eq('id', ownerId);
+  }
+
+  console.log('\n— Live: recurring expense materializer (owner-audit fix) —');
+  const { data: tpl } = await db.from('recurring_expense_templates').insert({
+    studio_id: null, label: 'TAXTEST monthly rent', category: 'rent', amount_cents: 99901, day_of_month: 1, active: true,
+  } as never).select('id').single();
+  const tplId = (tpl as { id: string }).id;
+  try {
+    const r1 = await materializeRecurringExpenses(db as never);
+    ok('materializer creates the month\'s expense', r1.created >= 1);
+    const { data: made } = await db.from('business_expenses').select('id,amount_cents,recurring_template_id')
+      .eq('recurring_template_id', tplId).is('deleted_at', null);
+    ok('expense row linked to the template + right amount',
+      (made ?? []).length === 1 && (made as any[])[0].amount_cents === 99901);
+    const r2 = await materializeRecurringExpenses(db as never);
+    const { data: made2 } = await db.from('business_expenses').select('id').eq('recurring_template_id', tplId).is('deleted_at', null);
+    ok('second run is a no-op (idempotent per month)', (made2 ?? []).length === 1 && r2.created === 0);
+  } finally {
+    await db.from('business_expenses').delete().eq('recurring_template_id', tplId);
+    await db.from('recurring_expense_templates').delete().eq('id', tplId);
+  }
 }
 
 main()
