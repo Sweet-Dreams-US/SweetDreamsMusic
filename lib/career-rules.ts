@@ -55,17 +55,18 @@ export async function buildContext(db: Client, userId: string): Promise<CareerCo
     .eq('user_id', userId).maybeSingle();
   const email = ((prof as any)?.email ?? '').toLowerCase() || null;
 
-  const projectsPromise = db.from('artist_projects')
+  // Projects first — collaborator lookup is scoped to the user's project ids.
+  // (Awaited ONCE: supabase builders are thenables that re-execute per await.)
+  const projects = await db.from('artist_projects')
     .select('id,project_type,current_phase,status,released_at,slug,target_release_date,rollout_score,title,featured_artists,created_at')
     .eq('user_id', userId);
-  const projectIds = ((await projectsPromise).data ?? []).map((p: any) => p.id);
+  const projectIds = ((projects.data ?? []) as any[]).map((p) => p.id);
 
-  const [links, bookings, projects, collabs, feedback, prep, snaps, shows, contacts, shares] = await Promise.all([
+  const [links, bookings, collabs, feedback, prep, snaps, shows, contacts, shares] = await Promise.all([
     db.from('platform_connections').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     email
       ? db.from('bookings').select('id', { count: 'exact', head: true }).eq('status', 'completed').eq('customer_email', email)
       : Promise.resolve({ count: 0 } as any),
-    projectsPromise,
     projectIds.length
       ? db.from('project_collaborators').select('project_id').in('project_id', projectIds)
       : Promise.resolve({ data: [] } as any),

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { buildContext, nextSteps, getCareerSummary } from '@/lib/career-rules';
-import { TIER_LADDER } from '@/lib/career';
+import { TIER_LADDER, daysBetweenIso, CONSECUTIVE_MAX_DAYS } from '@/lib/career';
 
 export async function GET() {
   const supabase = await createClient();
@@ -66,7 +66,6 @@ export async function GET() {
       if (rows.length < 2) continue;
       // Only call it a weekly delta when the two snapshots really are about a
       // week apart — a gap spanning a month of missed checks isn't "this week".
-      const { daysBetweenIso, CONSECUTIVE_MAX_DAYS } = await import('@/lib/career');
       if (daysBetweenIso(rows[1].metric_date, rows[0].metric_date) > CONSECUTIVE_MAX_DAYS) continue;
       const field = platform === 'spotify' ? 'monthly_listeners' : platform === 'youtube' ? 'subscribers' : 'followers';
       const cur = Number(rows[0][field] ?? rows[0].followers) || 0;
