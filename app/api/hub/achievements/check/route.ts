@@ -427,7 +427,12 @@ export async function POST() {
     }));
 
     if (xpLogs.length > 0) {
-      await supabase.from('xp_log').insert(xpLogs);
+      // ignoreDuplicates so a concurrent grant's 23505 (083 unique index) on
+      // one row can't abort the whole batch and silently drop siblings whose
+      // XP was already totaled above.
+      await supabase.from('xp_log').upsert(xpLogs, {
+        onConflict: 'user_id,action,reference_id', ignoreDuplicates: true,
+      });
     }
   }
 

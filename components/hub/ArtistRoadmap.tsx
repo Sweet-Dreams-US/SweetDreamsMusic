@@ -74,6 +74,7 @@ interface Show {
   is_headline: boolean;
   confirmed_at: string | null;
   photo_url: string | null;
+  calendar_event_id: string | null;
   created_at: string;
 }
 
@@ -141,11 +142,14 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-// A show only counts toward the gates if it was LOGGED before it happened —
-// the calendar entry (created_at) must predate (or equal) the show date.
-// A past-dated show logged after the fact confirms green but is gate-inert.
+// A show only counts toward the gates if it was LOGGED before it happened AND
+// its calendar entry actually got created — the server gate (lib/career-rules
+// CHECKS.shows_performed via ctx.showsConfirmed[].preDated) requires BOTH a
+// non-null calendar_event_id AND created_at predating (or equal to) the show
+// date. A past-dated show — or one whose calendar event failed to create —
+// confirms green but is gate-inert, so mirror that predicate exactly here.
 function loggedOnTime(show: Show): boolean {
-  return show.created_at.slice(0, 10) <= show.show_date;
+  return !!show.calendar_event_id && show.created_at.slice(0, 10) <= show.show_date;
 }
 
 // ============================================================

@@ -9,6 +9,13 @@ import { ROLLOUT_ITEMS, RUSHED_RELEASE_DAYS } from '@/lib/career';
 // The three rollout items (45 of 100 pts) that are impossible to earn until a
 // target release date exists — they all key off the date.
 const DATE_DEPENDENT_ROLLOUT_KEYS = new Set(['date_ahead', 'pre_content', 'week_one']);
+
+// "Drake, 21 Savage" → ['Drake', '21 Savage']. A non-empty featured_artists
+// array on a RELEASED project is what makes the s4_collab gate reachable from
+// the UI (career-rules hasCollabRelease). Empty / whitespace → [].
+function parseFeaturedArtists(raw: string): string[] {
+  return raw.split(',').map((s) => s.trim()).filter(Boolean);
+}
 import { formatDuration } from '@/lib/utils';
 import { fmtSessionDate } from '@/lib/studio-time';
 import { SkeletonList } from './LoadingSkeleton';
@@ -40,6 +47,7 @@ interface Project {
   ad_budget_cents?: number | null;
   released_at?: string | null;
   slug?: string | null;
+  featured_artists?: string[] | null;
 }
 
 interface LinkedSession {
@@ -63,6 +71,7 @@ export default function ProjectList({ onXpEarned }: { onXpEarned?: () => void })
   const [description, setDescription] = useState('');
   const [genre, setGenre] = useState('');
   const [targetDate, setTargetDate] = useState('');
+  const [featuredArtists, setFeaturedArtists] = useState('');
   const [creating, setCreating] = useState(false);
   const [newTaskText, setNewTaskText] = useState('');
   const [linkedSessions, setLinkedSessions] = useState<Record<string, LinkedSession[]>>({});
@@ -79,6 +88,7 @@ export default function ProjectList({ onXpEarned }: { onXpEarned?: () => void })
   const [editDescription, setEditDescription] = useState('');
   const [editGenre, setEditGenre] = useState('');
   const [editTargetDate, setEditTargetDate] = useState('');
+  const [editFeaturedArtists, setEditFeaturedArtists] = useState('');
 
   useEffect(() => { loadProjects(); }, []);
 
@@ -106,10 +116,10 @@ export default function ProjectList({ onXpEarned }: { onXpEarned?: () => void })
     const res = await fetch('/api/hub/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, project_type: projectType, description, genre, target_release_date: targetDate || null }),
+      body: JSON.stringify({ title, project_type: projectType, description, genre, target_release_date: targetDate || null, featured_artists: parseFeaturedArtists(featuredArtists) }),
     });
     if (res.ok) {
-      setTitle(''); setProjectType('single'); setDescription(''); setGenre(''); setTargetDate('');
+      setTitle(''); setProjectType('single'); setDescription(''); setGenre(''); setTargetDate(''); setFeaturedArtists('');
       setShowForm(false);
       await loadProjects();
       awardXp('create_project');
@@ -128,6 +138,7 @@ export default function ProjectList({ onXpEarned }: { onXpEarned?: () => void })
         description: editDescription || null,
         genre: editGenre || null,
         target_release_date: editTargetDate || null,
+        featured_artists: parseFeaturedArtists(editFeaturedArtists),
       }),
     });
     setEditingId(null);
@@ -141,6 +152,7 @@ export default function ProjectList({ onXpEarned }: { onXpEarned?: () => void })
     setEditDescription(project.description || '');
     setEditGenre(project.genre || '');
     setEditTargetDate(project.target_release_date || '');
+    setEditFeaturedArtists((project.featured_artists || []).join(', '));
   }
 
   async function toggleTask(taskId: string, currentValue: boolean) {
@@ -281,6 +293,11 @@ export default function ProjectList({ onXpEarned }: { onXpEarned?: () => void })
             </div>
           </div>
           <div>
+            <label className="block font-mono text-xs text-black/60 uppercase tracking-wider mb-1">Featured artists (comma-separated)</label>
+            <input type="text" value={featuredArtists} onChange={(e) => setFeaturedArtists(e.target.value)}
+              className="w-full border border-black/20 px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none transition-colors" placeholder="Drake, 21 Savage" />
+          </div>
+          <div>
             <label className="block font-mono text-xs text-black/60 uppercase tracking-wider mb-1">Description</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
               className="w-full border border-black/20 px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none resize-none" />
@@ -356,6 +373,11 @@ export default function ProjectList({ onXpEarned }: { onXpEarned?: () => void })
                             className="border border-black/20 px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none" placeholder="Genre" />
                           <input type="date" value={editTargetDate} onChange={(e) => setEditTargetDate(e.target.value)}
                             className="border border-black/20 px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none" />
+                        </div>
+                        <div>
+                          <label className="block font-mono text-[10px] text-black/40 uppercase tracking-wider mb-1">Featured artists (comma-separated)</label>
+                          <input type="text" value={editFeaturedArtists} onChange={(e) => setEditFeaturedArtists(e.target.value)}
+                            className="w-full border border-black/20 px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none" placeholder="Drake, 21 Savage" />
                         </div>
                         <textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={2}
                           className="w-full border border-black/20 px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none resize-none" placeholder="Description" />

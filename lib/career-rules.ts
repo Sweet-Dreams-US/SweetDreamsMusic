@@ -204,10 +204,19 @@ export interface GateResult {
  * Stage-up grants the stage achievement + an inbox congrats.
  */
 export async function evaluateGates(db: Client, userId: string): Promise<GateResult> {
-  const [{ data: catalog }, { data: progress }] = await Promise.all([
+  const [{ data: catalog, error: catErr }, { data: progress, error: progErr }] = await Promise.all([
     db.from('career_stage_requirements').select('*').eq('active', true),
     db.from('requirement_progress').select('requirement_key,status').eq('user_id', userId),
   ]);
+  // A transient read failure must NOT be treated as an empty catalog — that
+  // would compute stage 0 and (pre-fix) persist it, demoting a real Stage-3
+  // user and re-firing the celebration on recovery. Bail instead.
+  if (catErr || progErr || !catalog || catalog.length === 0) {
+    if (catErr || progErr) console.error('[career] evaluateGates read failed; skipping:', catErr?.message || progErr?.message);
+    const { data: cur } = await db.from('profiles').select('career_stage_computed').eq('user_id', userId).maybeSingle();
+    const s = Number((cur as any)?.career_stage_computed ?? 0);
+    return { newlyCompleted: [], stage: s, previousStage: s, stageUp: false };
+  }
   const reqs = (catalog ?? []) as any[];
   const done = new Set(((progress ?? []) as any[])
     .filter((p) => p.status === 'complete').map((p) => p.requirement_key));
@@ -253,13 +262,20 @@ export async function evaluateGates(db: Client, userId: string): Promise<GateRes
   // Stage-up fires off the DURABLE baseline (profiles.career_stage_computed),
   // so a catalog edit or a confirm-route completion can't skip the celebration
   // and a recompute drop never re-fires it. Persist the new stage.
+  // Stage is a HIGH-WATER MARK: persist + celebrate only on a real increase.
+  // Gates never un-complete in normal use, so we never demote — and a
+  // conditional `.lt(...)` write makes the celebration fire at most once even
+  // if two evaluateGates race (the loser's update matches no row).
   const stage = computeStage(done, reqs.map((r) => ({ stage: r.stage, key: r.key })));
   const { data: prevRow } = await db.from('profiles')
     .select('career_stage_computed').eq('user_id', userId).maybeSingle();
   const baseline = Number((prevRow as any)?.career_stage_computed ?? previousStage);
-  const stageUp = stage > baseline;
-  if (stage !== baseline) {
-    await db.from('profiles').update({ career_stage_computed: stage } as never).eq('user_id', userId);
+  let stageUp = false;
+  if (stage > baseline) {
+    const { data: claimed } = await db.from('profiles')
+      .update({ career_stage_computed: stage } as never)
+      .eq('user_id', userId).lt('career_stage_computed', stage).select('user_id');
+    stageUp = !!(claimed && claimed.length > 0); // we won the race
   }
   if (stageUp) await onStageUp(db, userId, stage);
   return { newlyCompleted, stage, previousStage: baseline, stageUp };
@@ -305,7 +321,7 @@ export async function sweepListenerTiers(db: Client, onlyUserId?: string, opts?:
     for (let from = 0; ; from += 1000) {
       const { data } = await db.from('artist_metrics').select('user_id')
         .eq('source', 'agent').eq('platform', 'spotify').not('monthly_listeners', 'is', null)
-        .range(from, from + 999);
+        .order('user_id', { ascending: true }).range(from, from + 999); // stable order — no skipped users across pages
       const rows = (data ?? []) as any[];
       rows.forEach((r) => seen.add(r.user_id));
       if (rows.length < 1000) break;
@@ -412,12 +428,14 @@ export async function recomputeProjectRollout(db: Client, projectId: string):
   const [mediaLinked, mediaWindow, events, shareIds] = await Promise.all([
     db.from('media_bookings').select('id', { count: 'exact', head: true })
       .eq('linked_project_id', projectId).neq('status', 'cancelled'),
-    // Fallback the RolloutInputs comment promised: a recent media booking by
-    // the artist counts as the photoshoot even without an explicit link.
+    // Fallback the RolloutInputs comment promised: a media booking by the
+    // artist in the release WINDOW (45 days before → 7 after) counts as the
+    // photoshoot even without an explicit link. Bounded both ends so a booking
+    // made months later can't retro-earn the pre-release item.
     winLo
       ? db.from('media_bookings').select('id', { count: 'exact', head: true })
           .eq('user_id', proj.user_id).neq('status', 'cancelled')
-          .gte('created_at', winLo)
+          .gte('created_at', winLo).lte('created_at', `${addDays(target!, 7)}T23:59:59`)
       : Promise.resolve({ count: 0 } as any),
     target
       ? db.from('calendar_events').select('event_date,event_type').eq('user_id', proj.user_id)
@@ -429,13 +447,15 @@ export async function recomputeProjectRollout(db: Client, projectId: string):
   const eventRows = ((events.data ?? []) as any[]).filter((e) => e.event_type !== 'studio_session');
   const preCount = target ? eventRows.filter((e) => e.event_date >= addDays(target, -14) && e.event_date < target).length : 0;
   const postCount = target ? eventRows.filter((e) => e.event_date >= target && e.event_date <= addDays(target, 7)).length : 0;
-  // DISTINCT verified listeners (track_share_plays), not the farmable counter.
+  // DISTINCT verified listeners across ALL the project's links — deduped by
+  // listener_key, so spreading plays over 5 self-made links (or 5 days) from
+  // one device still counts as one listener, not five.
   const linkIds = ((shareIds.data ?? []) as any[]).map((l) => l.id);
   let plays = 0;
   if (linkIds.length) {
-    const { count } = await db.from('track_share_plays')
-      .select('id', { count: 'exact', head: true }).in('share_link_id', linkIds);
-    plays = count ?? 0;
+    const { data: playRows } = await db.from('track_share_plays')
+      .select('listener_key').in('share_link_id', linkIds);
+    plays = new Set(((playRows ?? []) as any[]).map((p) => p.listener_key)).size;
   }
   const dateAheadDays: number | null = (proj.rollout_breakdown as any)?.date_ahead_days ?? null;
 

@@ -75,7 +75,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     const key = await listenerKey(req);
     const { error: dupErr } = await db.from('track_share_plays')
       .insert({ share_link_id: link.id, listener_key: key } as never);
-    const firstToday = !dupErr; // unique violation = already counted today
+    // 23505 = this listener already counted today (expected). Any OTHER error
+    // is a real failure — log it; don't silently treat it as a dup.
+    if (dupErr && (dupErr as { code?: string }).code !== '23505') {
+      console.error('[listen] play dedup insert failed:', dupErr.message);
+    }
+    const firstToday = !dupErr;
     if (firstToday && link.project_id) {
       try {
         const { recomputeProjectRollout } = await import('@/lib/career-rules');

@@ -23,7 +23,8 @@ export async function GET(request: NextRequest) {
     const collectUsers = async (table: string): Promise<string[]> => {
       const out: string[] = [];
       for (let from = 0; ; from += 1000) {
-        const { data } = await db.from(table).select('user_id').range(from, from + 999);
+        const { data } = await db.from(table).select('user_id')
+          .order('user_id', { ascending: true }).range(from, from + 999); // stable order across pages
         const rows = (data ?? []) as any[];
         out.push(...rows.map((r) => r.user_id));
         if (rows.length < 1000) break;

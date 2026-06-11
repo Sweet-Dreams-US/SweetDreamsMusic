@@ -151,8 +151,11 @@ export async function POST(request: NextRequest) {
     const { evaluateGates } = await import('@/lib/career-rules');
     const customerEmail = String(check.booking.customer_email || '').toLowerCase();
     if (customerEmail) {
+      // .eq (not .ilike — '_'/'%' are ilike wildcards). profiles.email is
+      // lowercase-normalized, so an exact match is correct and can't pull a
+      // different customer's row.
       const { data: prof } = await service.from('profiles')
-        .select('user_id').ilike('email', customerEmail).limit(1).maybeSingle();
+        .select('user_id').eq('email', customerEmail).limit(1).maybeSingle();
       const uid = (prof as { user_id?: string } | null)?.user_id;
       if (uid) await evaluateGates(service, uid);
     }

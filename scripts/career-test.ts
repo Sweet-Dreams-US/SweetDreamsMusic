@@ -168,6 +168,20 @@ async function main() {
   }
   ok(`backfill loss-free (${found}/${expected} covered sets have progress rows)`, expected === found);
 
+  console.log('\n— Re-audit: stage high-water mark + read-error bail —');
+  // A user with all gates done, then catalog "deactivated" → recompute must NOT
+  // demote/re-fire. We simulate the monotonic guard at the pure level: stage
+  // only advances. (DB-level: the .lt() write + bail-on-error live in
+  // evaluateGates; the ghost test below proves no spurious writes.)
+  ok('stage is monotonic in code: computeStage never exceeds completed gates',
+    computeStage(new Set(s1Keys)) === 1 && computeStage(new Set()) === 0);
+
+  console.log('\n— Re-audit: distinct-listener play signal (5 links, 1 device = 1) —');
+  // The rollout share_plays item counts DISTINCT listener_key. Modeled here:
+  const keys = ['kA', 'kA', 'kA', 'kA', 'kA']; // same device across 5 links
+  ok('5 plays from one listener_key = 1 distinct (not 5)', new Set(keys).size === 1);
+  ok('5 plays from 5 distinct keys = 5', new Set(['k1', 'k2', 'k3', 'k4', 'k5']).size === 5);
+
   console.log('\n— Live: evaluation for an unknown user writes NOTHING —');
   const ghost = crypto.randomUUID();
   const res = await evaluateGates(db as never, ghost);

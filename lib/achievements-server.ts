@@ -42,11 +42,20 @@ export async function grantAchievement(db: Client, userId: string, key: string):
     .eq('user_id', userId).eq('action', 'unlock_achievement').eq('reference_id', refId).limit(1);
   if (xpDup && xpDup.length > 0) return { granted: true, xp: 0 };
 
-  await db.from('xp_log').insert({
+  // The xp_log insert is the CONCURRENCY GATE: the partial unique index
+  // (user, action, reference_id) from 083 means a racing grant loses here with
+  // 23505. Only the winner bumps the profile total — no double-credit.
+  const { error: xpErr } = await db.from('xp_log').insert({
     user_id: userId, action: 'unlock_achievement', xp_amount: def.xp,
     label: `Achievement: ${def.title}`, reference_id: refId,
     metadata: { achievement: key },
   } as never);
+  if (xpErr) {
+    // 23505 = another concurrent grant already logged this XP. Badge stands,
+    // XP not re-credited. Any other error: log it, still don't double-bump.
+    if ((xpErr as { code?: string }).code !== '23505') console.error(`[achievements] xp_log failed (${key}):`, xpErr.message);
+    return { granted: true, xp: 0 };
+  }
 
   // Bump profile totals (keyed by user_id; increment_xp RPC when available).
   try {
