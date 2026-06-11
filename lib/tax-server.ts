@@ -256,10 +256,12 @@ export async function computePnLRange(db: Client, from: string, to: string): Pro
 
   // Deductibility is keyed to each ROW'S OWN year — a cross-year range (the
   // Accounting Profit view's trailing-12-months preset) must apply 2025 rules
-  // to 2025 rows and 2026 rules to 2026 rows (staff meals 50% vs 0%).
-  const yearsInRange = Array.from(new Set([year, Number(to.slice(0, 4))]));
+  // to 2025 rows and 2026 rules to 2026 rows (staff meals 50% vs 0%). EVERY
+  // calendar year in the range is enumerated (a 3+-year custom range's middle
+  // years must not inherit the start year's rules).
+  const endYear = Number(to.slice(0, 4));
   const constantsByYear = new Map<number, TaxConstants | null>();
-  for (const y of yearsInRange) constantsByYear.set(y, await getTaxConstants(db, y));
+  for (let y = year; y <= endYear; y++) constantsByYear.set(y, await getTaxConstants(db, y));
   const constants = constantsByYear.get(year) ?? null; // range-start year (display/Sec-179)
 
   const byCat = new Map<string, { amount: number; deductible: number }>();

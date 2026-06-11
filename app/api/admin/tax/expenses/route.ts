@@ -33,9 +33,9 @@ export async function GET(request: NextRequest) {
     // Cross-year ranges: pcts PER YEAR so a 2026 staff-meal row never shows
     // the 2025 rule (and vice versa). categoryPcts = range-start year (legacy);
     // categoryPctsByYear = the accurate per-row lookup.
-    const years = Array.from(new Set([Number(from.slice(0, 4)), Number(to.slice(0, 4))]));
+    const startY = Number(from.slice(0, 4)), endY = Number(to.slice(0, 4));
     const byYear: Record<string, Record<string, number>> = {};
-    for (const y of years) byYear[String(y)] = await pctsFor(y);
+    for (let y = startY; y <= endY; y++) byYear[String(y)] = await pctsFor(y);
     return NextResponse.json({
       from, to, expenses: await listExpenses(db, from, to),
       categoryPcts: byYear[String(Number(from.slice(0, 4)))],

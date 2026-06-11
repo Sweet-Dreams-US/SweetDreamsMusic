@@ -77,7 +77,11 @@ export function deductiblePctFor(categoryKey: string, constants: TaxConstants | 
   const fromConstants = constants?.deductiblePcts?.[categoryKey] ?? constants?.deductiblePcts?.[key];
   if (fromConstants != null) return Number(fromConstants);
   if (key === 'entertainment') return 0;
-  if (key === 'meals_clients' || key === 'meals_staff') return 50;
+  // Staff meals are PERMANENTLY 0% from 2026 (TCJA disallowance) — the
+  // no-constants default must be the conservative permanent-law value, not the
+  // expired 50%. The 2025 row's explicit jsonb carries its 50% historically.
+  if (key === 'meals_staff') return 0;
+  if (key === 'meals_clients') return 50;
   return 100;
 }
 

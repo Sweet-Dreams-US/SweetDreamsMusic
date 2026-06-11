@@ -151,8 +151,9 @@ async function main() {
     deductiblePctFor('meals', C26) === 50 && normalizeCategory('meals') === 'meals_clients');
   ok('ordinary categories: 100%',
     deductiblePctFor('rent', C26) === 100 && deductiblePctFor('equipment', C26) === 100);
-  ok('no constants ⇒ conservative defaults (ent 0, meals 50, rest 100)',
-    deductiblePctFor('entertainment', null) === 0 && deductiblePctFor('meals_staff', null) === 50 && deductiblePctFor('supplies', null) === 100);
+  ok('no constants ⇒ permanent-law defaults (ent 0, staff meals 0, client meals 50, rest 100)',
+    deductiblePctFor('entertainment', null) === 0 && deductiblePctFor('meals_staff', null) === 0
+    && deductiblePctFor('meals_clients', null) === 50 && deductiblePctFor('supplies', null) === 100);
 
   console.log('\n— Pure: helpers —');
   ok('category normalize: known passes', normalizeCategory('rent') === 'rent');
@@ -305,6 +306,22 @@ async function main() {
       `amount ${staffCat?.amountCents} deductible ${staffCat?.deductibleCents}`);
   } finally {
     await db.from('business_expenses').delete().in('id', [(x25 as any).id, (x26 as any).id]);
+  }
+  // 3+-year range: a MIDDLE-year row (2026) must use 2026 rules even when the
+  // range starts in 2025 and ends in 2027 (an unseeded year).
+  const { data: xm } = await db.from('business_expenses').insert({
+    studio_id: null, category: 'meals_staff', description: 'tax-test midyear 2026',
+    amount_cents: 10000, incurred_on: '2026-06-01',
+  } as never).select('id').single();
+  try {
+    const xp3 = await (await import('../lib/tax-server')).computePnLRange(db as never, '2025-01-01', '2027-01-31');
+    const cat3 = xp3.expensesByCategory.find((c) => c.key === 'meals_staff');
+    // The seeded mid-year $100 contributes $0 deductible (2026 rule), and any
+    // unseeded-2027 rows would too (permanent-law default).
+    ok('3-year range: middle-year (2026) staff meal deducts $0 (own-year rule)',
+      (cat3?.deductibleCents ?? -1) === 0, `deductible ${cat3?.deductibleCents}`);
+  } finally {
+    await db.from('business_expenses').delete().eq('id', (xm as any).id);
   }
 
   console.log('\n— Live: recurring expense materializer (owner-audit fix) —');
