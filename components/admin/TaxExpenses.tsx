@@ -27,6 +27,7 @@ export default function TaxExpenses({ from, to, showRecurring = true, onChanged 
 }) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [categoryPcts, setCategoryPcts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -43,6 +44,7 @@ export default function TaxExpenses({ from, to, showRecurring = true, onChanged 
       if (showRecurring) fetches.push(fetch('/api/admin/tax/recurring'));
       const [er, tr] = await Promise.all(fetches.map((p) => p.then((r) => r.json())));
       if (er?.expenses) setExpenses(er.expenses);
+      if (er?.categoryPcts) setCategoryPcts(er.categoryPcts);
       if (tr?.templates) setTemplates(tr.templates);
     } catch { /* ignore */ }
     setLoading(false);
@@ -94,7 +96,10 @@ export default function TaxExpenses({ from, to, showRecurring = true, onChanged 
 
   function startEdit(e: Expense) {
     setEditing(e);
-    setForm({ incurred_on: e.incurredOn, amount: (e.amountCents / 100).toFixed(2), vendor: e.vendor ?? '', category: e.category, description: e.description });
+    // Legacy 'meals' rows map to meals_clients — the select has no 'meals'
+    // option anymore, and a value with no option renders a blank select.
+    const category = e.category === 'meals' ? 'meals_clients' : e.category;
+    setForm({ incurred_on: e.incurredOn, amount: (e.amountCents / 100).toFixed(2), vendor: e.vendor ?? '', category, description: e.description });
   }
 
   async function remove(id: string) {
@@ -211,7 +216,8 @@ export default function TaxExpenses({ from, to, showRecurring = true, onChanged 
                 const cat = EXPENSE_CATEGORIES.find((c) => c.key === e.category);
                 // Built-in defaults (entertainment 0, meals 50, else 100) are
                 // right for display — no constants fetch needed client-side.
-                const pct = deductiblePctFor(e.category, null);
+                const normKey = e.category === 'meals' ? 'meals_clients' : e.category;
+                const pct = categoryPcts[normKey] ?? deductiblePctFor(e.category, null);
                 return (
                   <div key={e.id} className="flex items-center gap-3 border border-black/10 px-3 py-2 font-mono text-sm">
                     <span className="text-black/50 text-xs w-20">{e.incurredOn}</span>

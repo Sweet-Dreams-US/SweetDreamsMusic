@@ -4,8 +4,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
-import { listExpenses, computePnL } from '@/lib/tax-server';
-import { normalizeCategory, EQUIPMENT_SUGGEST_CENTS } from '@/lib/tax';
+import { listExpenses, computePnL, getTaxConstants } from '@/lib/tax-server';
+import { normalizeCategory, EQUIPMENT_SUGGEST_CENTS, EXPENSE_CATEGORY_KEYS, deductiblePctFor } from '@/lib/tax';
 
 async function requireAdmin() {
   const user = await getSessionUser();
@@ -19,18 +19,30 @@ export async function GET(request: NextRequest) {
   if (g.error) return g.error;
   const params = new URL(request.url).searchParams;
   const db = createServiceClient();
+  // categoryPcts: the period-year's deductible percentages so UI chips are
+  // YEAR-AWARE (staff meals 50% in 2025, 0% in 2026 — client-side defaults
+  // can't know the year).
+  const pctsFor = async (y: number) => {
+    const c = await getTaxConstants(db, y);
+    return Object.fromEntries(EXPENSE_CATEGORY_KEYS.map((k) => [k, deductiblePctFor(k, c)]));
+  };
+
   // Range mode (the Accounting Profit view's period selector)…
   const from = params.get('from'), to = params.get('to');
   if (from && to && /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to)) {
-    return NextResponse.json({ from, to, expenses: await listExpenses(db, from, to) });
+    return NextResponse.json({
+      from, to, expenses: await listExpenses(db, from, to),
+      categoryPcts: await pctsFor(Number(from.slice(0, 4))),
+    });
   }
   // …or whole-year mode (the Tax Center).
   const year = Number(params.get('year')) || new Date().getUTCFullYear();
-  const [expenses, pnl] = await Promise.all([
+  const [expenses, pnl, categoryPcts] = await Promise.all([
     listExpenses(db, `${year}-01-01`, `${year}-12-31`),
     computePnL(db, year),
+    pctsFor(year),
   ]);
-  return NextResponse.json({ year, expenses, pnl });
+  return NextResponse.json({ year, expenses, pnl, categoryPcts });
 }
 
 export async function POST(request: NextRequest) {
