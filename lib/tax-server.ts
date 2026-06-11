@@ -13,7 +13,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   EXPENSE_CATEGORIES, normalizeCategory, computeQuarterlyEstimate,
-  contractorCompliance, quarterMonthRange,
+  contractorCompliance, quarterMonthRange, deductiblePctFor,
   type EntityType, type TaxConstants, type QuarterlyEstimate,
 } from '@/lib/tax';
 import { computeEarningsCore, normalizeName, revenueConfigFromConstants } from '@/lib/earnings-core';
@@ -31,12 +31,13 @@ export interface TaxProfile {
   state: string | null;
   fiscalYearStartMonth: number;
   estimatedIncomeTaxRatePct: number;
+  applyQbi: boolean;
   notes: string | null;
 }
 
 const DEFAULT_PROFILE: TaxProfile = {
   entityType: 'sole_prop', einLast4: null, state: null,
-  fiscalYearStartMonth: 1, estimatedIncomeTaxRatePct: 22, notes: null,
+  fiscalYearStartMonth: 1, estimatedIncomeTaxRatePct: 22, applyQbi: true, notes: null,
 };
 
 export async function getTaxProfile(db: Client): Promise<TaxProfile> {
@@ -48,6 +49,7 @@ export async function getTaxProfile(db: Client): Promise<TaxProfile> {
     entityType: r.entity_type, einLast4: r.ein_last4 ?? null, state: r.state ?? null,
     fiscalYearStartMonth: r.fiscal_year_start_month ?? 1,
     estimatedIncomeTaxRatePct: Number(r.estimated_income_tax_rate ?? 22),
+    applyQbi: r.apply_qbi ?? true,
     notes: r.notes ?? null,
   };
 }
@@ -66,6 +68,13 @@ export async function getTaxConstants(db: Client, year: number): Promise<TaxCons
     nineteen99ThresholdCents: Number(r.nineteen99_threshold_cents),
     dueDates: r.due_dates ?? {},
     reviewed: !!r.reviewed,
+    // OBBBA (v2): law-as-data — QBI + per-year deductibility + Sec 179 display.
+    qbiPct: r.qbi_pct != null ? Number(r.qbi_pct) : null,
+    qbiMinDeductionCents: r.qbi_min_deduction_cents != null ? Number(r.qbi_min_deduction_cents) : null,
+    qbiMinQbiFloorCents: r.qbi_min_qbi_floor_cents != null ? Number(r.qbi_min_qbi_floor_cents) : null,
+    deductiblePcts: (r.deductible_pcts as Record<string, number>) ?? {},
+    sec179LimitCents: r.sec179_limit_cents != null ? Number(r.sec179_limit_cents) : null,
+    sec179PhaseoutCents: r.sec179_phaseout_cents != null ? Number(r.sec179_phaseout_cents) : null,
   };
 }
 
@@ -208,12 +217,23 @@ export interface PnL {
   from: string; to: string;           // the actual period
   revenue: RevenueBreakdown;
   totalRevenueCents: number;          // gross + kept deposits (the P&L top line)
-  expensesByCategory: { key: string; label: string; scheduleCLine: string; amountCents: number }[];
+  expensesByCategory: {
+    key: string; label: string; scheduleCLine: string; amountCents: number;
+    deductiblePct: number;            // per YEAR from tax_constants (meals_staff 0% from 2026, etc.)
+    deductibleCents: number;          // amount × pct — the column the CPA packet shows
+  }[];
   contractLaborCents: number;         // EXACT staff earnings for the period's work (matches the revenue basis + the Overview)
   paidOutCents: number;               // cash payouts RECORDED in the period (reference; the 1099 basis)
   manualExpensesCents: number;        // business_expenses excluding any 'contract_labor' rows
-  totalExpensesCents: number;
-  netProfitCents: number;
+  totalExpensesCents: number;         // CASH expenses (all of them — the books)
+  deductibleExpensesCents: number;    // tax-deductible portion only (the taxable-net basis)
+  nondeductibleCents: number;         // entertainment / staff meals etc. — logged, not deducted
+  netProfitCents: number;             // cash net (revenue − all expenses)
+  taxableNetCents: number;            // revenue − deductible expenses (estimates use this)
+  // Equipment headline (OBBBA: 100% bonus depreciation permanent) —
+  // "YTD equipment invested next to its full deduction value".
+  equipmentInvestedCents: number;
+  equipmentDeductionCents: number;
 }
 
 /**
@@ -226,33 +246,53 @@ export interface PnL {
  * double-entered).
  */
 export async function computePnLRange(db: Client, from: string, to: string): Promise<PnL> {
-  const [revenue, expenses, contractLaborCents, paidOutCents] = await Promise.all([
+  const year = Number(from.slice(0, 4));
+  const [revenue, expenses, contractLaborCents, paidOutCents, constants] = await Promise.all([
     taxRevenueForRange(db, from, to),
     listExpenses(db, from, to),
     staffEarningsForRange(db, from, to),
     contractorPaidForRange(db, from, to),
+    getTaxConstants(db, year),
   ]);
 
   const byCat = new Map<string, number>();
   let manualExpensesCents = 0;
+  let equipmentInvestedCents = 0;
   for (const e of expenses) {
     if (e.category === 'contract_labor') continue; // auto-fed below; never double-count
-    byCat.set(e.category, (byCat.get(e.category) || 0) + e.amountCents);
+    const key = normalizeCategory(e.category);     // legacy 'meals' → meals_clients
+    byCat.set(key, (byCat.get(key) || 0) + e.amountCents);
     manualExpensesCents += e.amountCents;
+    if (e.isEquipment || key === 'equipment') equipmentInvestedCents += e.amountCents;
   }
   byCat.set('contract_labor', contractLaborCents);
 
   const expensesByCategory = EXPENSE_CATEGORIES
-    .map((c) => ({ key: c.key, label: c.label, scheduleCLine: c.scheduleCLine, amountCents: byCat.get(c.key) || 0 }))
+    .map((c) => {
+      const amountCents = byCat.get(c.key) || 0;
+      const deductiblePct = deductiblePctFor(c.key, constants);
+      return {
+        key: c.key, label: c.label, scheduleCLine: c.scheduleCLine, amountCents,
+        deductiblePct, deductibleCents: Math.round(amountCents * (deductiblePct / 100)),
+      };
+    })
     .filter((c) => c.amountCents > 0);
 
   const totalRevenueCents = revenue.grossCents + revenue.keptDepositsCents;
   const totalExpensesCents = manualExpensesCents + contractLaborCents;
+  const deductibleExpensesCents = expensesByCategory.reduce((s, c) => s + c.deductibleCents, 0);
   return {
-    year: Number(from.slice(0, 4)), from, to,
+    year, from, to,
     revenue, totalRevenueCents, expensesByCategory,
     contractLaborCents, paidOutCents, manualExpensesCents, totalExpensesCents,
+    deductibleExpensesCents,
+    nondeductibleCents: totalExpensesCents - deductibleExpensesCents,
     netProfitCents: totalRevenueCents - totalExpensesCents,
+    taxableNetCents: totalRevenueCents - deductibleExpensesCents,
+    equipmentInvestedCents,
+    // 100% bonus depreciation is permanent (OBBBA) → the full purchase is the
+    // year-one deduction candidate. The CPA elects bonus vs Section 179.
+    equipmentDeductionCents: equipmentInvestedCents,
   };
 }
 
@@ -275,6 +315,10 @@ export interface ContractorCard {
   addressLine1: string | null; addressLine2: string | null;
   city: string | null; state: string | null; zip: string | null;
   entityType: string | null;
+  /** The PAYMENT-YEAR threshold ($600 for 2025, $2,000 for 2026 — OBBBA). */
+  thresholdCents: number | null;
+  /** Studio chose to issue a 1099 below threshold (complete paper trail). */
+  voluntary1099: boolean;
 }
 
 /** Per-contractor YTD payments (ALL methods incl. cash) + 1099 status. */
@@ -333,6 +377,8 @@ export async function contractorDashboard(db: Client, year: number): Promise<Con
       addressLine1: c.address_line1 ?? null, addressLine2: c.address_line2 ?? null,
       city: c.city ?? null, state: c.state ?? null, zip: c.zip ?? null,
       entityType: c.entity_type ?? null,
+      thresholdCents: constants?.nineteen99ThresholdCents ?? null,
+      voluntary1099: !!c.voluntary_1099,
     };
   }).sort((a, b) => b.ytdPaidCents - a.ytdPaidCents);
 }
@@ -382,13 +428,18 @@ export async function computeEstimates(db: Client, year: number): Promise<{
       listExpenses(db, from, qEnd),
       staffEarningsForRange(db, from, qEnd), // same work-attribution basis as revenue
     ]);
-    const manualExp = expenses.filter((e) => e.category !== 'contract_labor').reduce((s, e) => s + e.amountCents, 0);
+    // DEDUCTIBLE basis (v2): entertainment and (from 2026) staff meals are
+    // logged for complete books but must not reduce the taxable-net estimate.
+    const manualExp = expenses
+      .filter((e) => e.category !== 'contract_labor')
+      .reduce((s, e) => s + Math.round(e.amountCents * (deductiblePctFor(normalizeCategory(e.category), constants) / 100)), 0);
     const est = computeQuarterlyEstimate({
       ytdRevenueCents: revenue.grossCents + revenue.keptDepositsCents,
       ytdExpensesCents: manualExp + contractLabor,
       entityType: profile.entityType,
       incomeTaxRatePct: profile.estimatedIncomeTaxRatePct,
       constants, priorSuggestedCents: priorBasis,
+      applyQbi: profile.applyQbi,
     });
     const paid = paidByQuarter.get(q);
     priorBasis += paid != null ? paid.cents : est.suggestedPaymentCents;

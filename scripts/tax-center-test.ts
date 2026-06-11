@@ -12,6 +12,7 @@ import { createClient } from '@supabase/supabase-js';
 import {
   seTaxCents, incomeTaxCents, computeQuarterlyEstimate, needs1099,
   contractorCompliance, normalizeCategory, quarterOfMonth, daysUntil,
+  qbiDeductionCents, deductiblePctFor,
   type TaxConstants,
 } from '../lib/tax';
 import {
@@ -34,13 +35,27 @@ function ok(name: string, cond: boolean, extra = '') {
 
 // 2026 draft constants (mirror the seed; the test asserts MATH, not that the
 // rates are IRS-correct — that's the CPA's job).
-const C: TaxConstants = {
-  taxYear: 2026, seNetFactor: 0.9235, seTaxRate: 0.1530,
+const BASE = {
+  seNetFactor: 0.9235, seTaxRate: 0.1530,
   ssWageBaseCents: 18420000, ssRate: 0.1240, medicareRate: 0.0290,
-  nineteen99ThresholdCents: 60000,
   dueDates: { '1': '2026-04-15', '2': '2026-06-15', '3': '2026-09-15', '4': '2027-01-15' },
   reviewed: false,
+  sec179LimitCents: null, sec179PhaseoutCents: null,
 };
+// 2025 law: $600 threshold, staff meals 50%, no QBI $400 minimum.
+const C: TaxConstants = {
+  ...BASE, taxYear: 2025, nineteen99ThresholdCents: 60000,
+  qbiPct: 20, qbiMinDeductionCents: null, qbiMinQbiFloorCents: null,
+  deductiblePcts: { meals_clients: 50, meals_staff: 50, entertainment: 0, meals: 50 },
+};
+// 2026 law (OBBBA): $2,000 threshold, staff meals 0%, QBI $400 min at $1,000+.
+const C26: TaxConstants = {
+  ...BASE, taxYear: 2026, nineteen99ThresholdCents: 200000,
+  qbiPct: 20, qbiMinDeductionCents: 40000, qbiMinQbiFloorCents: 100000,
+  deductiblePcts: { meals_clients: 50, meals_staff: 0, entertainment: 0, meals: 50 },
+};
+// QBI-off variant for the income-tax baseline assertions.
+const C_NOQBI: TaxConstants = { ...C, qbiPct: null };
 
 async function main() {
   console.log('\n— Pure: SE tax (hand-computed) —');
@@ -68,7 +83,7 @@ async function main() {
   for (let q = 1; q <= 4; q++) {
     const est = computeQuarterlyEstimate({
       ytdRevenueCents: q * 1_000_000, ytdExpensesCents: 0,
-      entityType: 's_corp', incomeTaxRatePct: 20, constants: C, priorSuggestedCents: prior,
+      entityType: 's_corp', incomeTaxRatePct: 20, constants: C_NOQBI, priorSuggestedCents: prior,
     });
     ok(`Q${q} suggested = $2,000`, est.suggestedPaymentCents === expected[q - 1],
       `got ${est.suggestedPaymentCents}`);
@@ -77,18 +92,67 @@ async function main() {
   // Flat income (no growth after Q1) ⇒ later quarters ask for $0, never negative.
   const flatQ2 = computeQuarterlyEstimate({
     ytdRevenueCents: 4_000_000, ytdExpensesCents: 0, entityType: 's_corp',
-    incomeTaxRatePct: 20, constants: C, priorSuggestedCents: 800000, // Q1 already suggested 20% of 40k
+    incomeTaxRatePct: 20, constants: C_NOQBI, priorSuggestedCents: 800000, // Q1 already suggested 20% of 40k
   });
   ok('no income growth ⇒ $0 this quarter (never negative)', flatQ2.suggestedPaymentCents === 0,
     `got ${flatQ2.suggestedPaymentCents}`);
 
   console.log('\n— Pure: 1099 threshold ($600 = 60000 cents) —');
-  ok('$599.99 ⇒ no 1099', !needs1099(59999, C));
-  ok('exactly $600.00 ⇒ 1099 required', needs1099(60000, C));
-  ok('$600.01 ⇒ 1099 required', needs1099(60001, C));
+  ok('2025 law: $599.99 ⇒ no 1099', !needs1099(59999, C));
+  ok('2025 law: exactly $600.00 ⇒ 1099 required', needs1099(60000, C));
+  ok('2025 law: $600.01 ⇒ 1099 required', needs1099(60001, C));
+  // OBBBA: the SAME dollar amounts against 2026-law constants — $600 paid in
+  // 2026 does NOT flag; $2,000 does. Same contractor, different payment year.
+  ok('2026 law: $600 paid in 2026 ⇒ NO 1099 (threshold is $2,000)', !needs1099(60000, C26));
+  ok('2026 law: $1,999.99 ⇒ no 1099', !needs1099(199999, C26));
+  ok('2026 law: exactly $2,000.00 ⇒ 1099 required', needs1099(200000, C26));
   ok('over threshold + no W-9 ⇒ loud flag', contractorCompliance({ ytdPaidCents: 60000, hasW9: false, constants: C }).flag === 'needs_1099_missing_w9');
   ok('over threshold + W-9 ⇒ needs_1099', contractorCompliance({ ytdPaidCents: 60000, hasW9: true, constants: C }).flag === 'needs_1099');
   ok('under threshold ⇒ below_threshold', contractorCompliance({ ytdPaidCents: 1, hasW9: false, constants: C }).flag === 'below_threshold');
+
+  console.log('\n— Pure (v2): QBI — hand-computed fixtures —');
+  // net $50,000 @ 22%, QBI ON: deduction = 20% of 5,000,000 = 1,000,000;
+  // income tax = 22% of 4,000,000 = 880,000. QBI OFF: 22% of 5,000,000 = 1,100,000.
+  const qbiOn = computeQuarterlyEstimate({
+    ytdRevenueCents: 5_000_000, ytdExpensesCents: 0, entityType: 's_corp',
+    incomeTaxRatePct: 22, constants: C26, priorSuggestedCents: 0, applyQbi: true,
+  });
+  const qbiOff = computeQuarterlyEstimate({
+    ytdRevenueCents: 5_000_000, ytdExpensesCents: 0, entityType: 's_corp',
+    incomeTaxRatePct: 22, constants: C26, priorSuggestedCents: 0, applyQbi: false,
+  });
+  ok('QBI on: $50k net ⇒ deduction $10,000, income tax $8,800',
+    qbiOn.qbiDeductionCents === 1_000_000 && qbiOn.incomeTaxCents === 880_000,
+    `qbi ${qbiOn.qbiDeductionCents} inc ${qbiOn.incomeTaxCents}`);
+  ok('QBI off: same net ⇒ income tax $11,000 (no deduction)',
+    qbiOff.qbiDeductionCents === 0 && qbiOff.incomeTaxCents === 1_100_000);
+  ok('SE tax identical with QBI on/off (QBI never reduces SE)',
+    computeQuarterlyEstimate({ ytdRevenueCents: 5_000_000, ytdExpensesCents: 0, entityType: 'sole_prop', incomeTaxRatePct: 22, constants: C26, priorSuggestedCents: 0, applyQbi: true }).seTaxCents
+    === computeQuarterlyEstimate({ ytdRevenueCents: 5_000_000, ytdExpensesCents: 0, entityType: 'sole_prop', incomeTaxRatePct: 22, constants: C26, priorSuggestedCents: 0, applyQbi: false }).seTaxCents);
+  // $400 minimum (2026): QBI $1,500 → 20% = $300 < $400 and ≥ $1,000 floor → $400.
+  ok('$400 minimum applies: $1,500 QBI ⇒ deduction $400 (not $300)',
+    qbiDeductionCents(150_000, C26) === 40_000, `got ${qbiDeductionCents(150_000, C26)}`);
+  // Below the $1,000 floor the minimum does NOT apply: $900 → 20% = $180.
+  ok('below $1,000 floor: $900 QBI ⇒ deduction $180 (no minimum)',
+    qbiDeductionCents(90_000, C26) === 18_000, `got ${qbiDeductionCents(90_000, C26)}`);
+  // 2025 law has no minimum: $1,500 → $300.
+  ok('2025 law: $1,500 QBI ⇒ $300 (no $400 minimum yet)',
+    qbiDeductionCents(150_000, C) === 30_000);
+  ok('deduction clamped to net (tiny net)', qbiDeductionCents(10, C26) <= 10);
+
+  console.log('\n— Pure (v2): per-year deductibility (meals/entertainment) —');
+  ok('meals_staff: 50% in 2025, 0% in 2026 (TCJA disallowance)',
+    deductiblePctFor('meals_staff', C) === 50 && deductiblePctFor('meals_staff', C26) === 0);
+  ok('meals_clients: 50% both years',
+    deductiblePctFor('meals_clients', C) === 50 && deductiblePctFor('meals_clients', C26) === 50);
+  ok('entertainment: 0% always',
+    deductiblePctFor('entertainment', C) === 0 && deductiblePctFor('entertainment', C26) === 0);
+  ok('legacy "meals" rows read as client meals (50%)',
+    deductiblePctFor('meals', C26) === 50 && normalizeCategory('meals') === 'meals_clients');
+  ok('ordinary categories: 100%',
+    deductiblePctFor('rent', C26) === 100 && deductiblePctFor('equipment', C26) === 100);
+  ok('no constants ⇒ conservative defaults (ent 0, meals 50, rest 100)',
+    deductiblePctFor('entertainment', null) === 0 && deductiblePctFor('meals_staff', null) === 50 && deductiblePctFor('supplies', null) === 100);
 
   console.log('\n— Pure: helpers —');
   ok('category normalize: known passes', normalizeCategory('rent') === 'rent');
@@ -130,7 +194,12 @@ async function main() {
   const cardsTotal = cards.reduce((s, c) => s + c.ytdPaidCents, 0);
   ok('sum of card YTD == total payouts (every dollar attributed)', cardsTotal === ytdPaid, `cards ${cardsTotal} vs ${ytdPaid}`);
   ok('cash is tracked first-class', cards.every((c) => typeof c.cashCents === 'number'));
-  ok('YTD over $600 trips the 1099 flag', cards.filter((c) => c.ytdPaidCents >= 60000).every((c) => c.needs1099));
+  // Year-keyed threshold (OBBBA): 2026 cards flag at $2,000, not $600. A card
+  // between the old and new threshold must NOT flag — the law changed.
+  ok('YTD over the YEAR\'S threshold trips the 1099 flag',
+    cards.filter((c) => !c.isOwner && c.thresholdCents != null && c.ytdPaidCents >= c.thresholdCents).every((c) => c.needs1099));
+  ok('between $600 and $2,000 in 2026 ⇒ NO flag (threshold moved)',
+    cards.filter((c) => !c.isOwner && c.ytdPaidCents >= 60000 && c.ytdPaidCents < 200000).every((c) => !c.needs1099));
 
   // Review-fleet critical regression: a payout with contractor_id NULL (e.g. an
   // older write path) must STILL count toward the named contractor's YTD —
@@ -160,6 +229,22 @@ async function main() {
   }
   const c2026 = await getTaxConstants(db as never, year);
   ok('2026 constants exist + reviewed=false', !!c2026 && c2026.reviewed === false);
+  // OBBBA seeds landed in the LIVE rows (085): 2026 threshold $2,000, 2025 $600.
+  ok('LIVE 2026 threshold = $2,000 (OBBBA)', c2026?.nineteen99ThresholdCents === 200000,
+    String(c2026?.nineteen99ThresholdCents));
+  const c2025 = await getTaxConstants(db as never, 2025);
+  ok('LIVE 2025 threshold = $600', c2025?.nineteen99ThresholdCents === 60000);
+  ok('LIVE 2026 staff meals 0% / 2025 staff meals 50%',
+    deductiblePctFor('meals_staff', c2026) === 0 && deductiblePctFor('meals_staff', c2025) === 50);
+  ok('LIVE QBI seeds: 20% both years, $400 min only 2026',
+    c2026?.qbiPct === 20 && c2026?.qbiMinDeductionCents === 40000
+    && c2025?.qbiPct === 20 && c2025?.qbiMinDeductionCents === null);
+  // P&L deductible columns are internally consistent.
+  ok('P&L: deductible + nondeductible = total expenses',
+    pnl.deductibleExpensesCents + pnl.nondeductibleCents === pnl.totalExpensesCents);
+  ok('P&L: taxable net = revenue − deductible', pnl.taxableNetCents === pnl.totalRevenueCents - pnl.deductibleExpensesCents);
+  ok('P&L: equipment invested == full first-year deduction value (100% bonus)',
+    pnl.equipmentInvestedCents === pnl.equipmentDeductionCents);
   ok('a year with no constants ⇒ estimates null (no crash)', (await computeEstimates(db as never, 1999)) === null);
 
   console.log('\n— Live: actual payments feed the catch-up (owner-audit fix) —');

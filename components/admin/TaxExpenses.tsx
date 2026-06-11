@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Trash2, ChevronDown, Receipt, Pencil, Repeat, X } from 'lucide-react';
 import { formatCents } from '@/lib/utils';
-import { EXPENSE_CATEGORIES, EQUIPMENT_SUGGEST_CENTS } from '@/lib/tax';
+import { EXPENSE_CATEGORIES, EQUIPMENT_SUGGEST_CENTS, deductiblePctFor } from '@/lib/tax';
 
 interface Expense { id: string; incurredOn: string; amountCents: number; vendor: string | null; category: string; description: string; isEquipment: boolean; receiptStoragePath: string | null }
 interface Template { id: string; label: string; category: string; amount_cents: number; vendor: string | null; day_of_month: number; active: boolean }
@@ -127,6 +127,9 @@ export default function TaxExpenses({ from, to, showRecurring = true, onChanged 
   }
 
   const total = expenses.reduce((s, e) => s + e.amountCents, 0);
+  // The teaching moment: the picker explains the rule at the moment of entry
+  // ("Entertainment: not deductible — logged for complete books").
+  const catHint = EXPENSE_CATEGORIES.find((c) => c.key === form.category)?.hint;
   return (
     <div className="space-y-5">
       <div className="border-2 border-accent/50 bg-accent/5 p-4">
@@ -143,6 +146,7 @@ export default function TaxExpenses({ from, to, showRecurring = true, onChanged 
           <input placeholder="Vendor" value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} className="border-2 border-black/15 px-2 py-1.5 font-mono text-xs focus:border-accent focus:outline-none" />
           <input placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="border-2 border-black/15 px-2 py-1.5 font-mono text-xs focus:border-accent focus:outline-none md:col-span-2" />
         </div>
+        {catHint && <p className="font-mono text-[10px] text-black/50 mb-2">{catHint}</p>}
         <div className="flex items-center gap-3 flex-wrap">
           <label className="font-mono text-[10px] text-black/50 cursor-pointer hover:text-black inline-flex items-center gap-1">
             <input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadReceipt(e.target.files[0])} />
@@ -205,11 +209,17 @@ export default function TaxExpenses({ from, to, showRecurring = true, onChanged 
             <div className="space-y-1">
               {expenses.map((e) => {
                 const cat = EXPENSE_CATEGORIES.find((c) => c.key === e.category);
+                // Built-in defaults (entertainment 0, meals 50, else 100) are
+                // right for display — no constants fetch needed client-side.
+                const pct = deductiblePctFor(e.category, null);
                 return (
                   <div key={e.id} className="flex items-center gap-3 border border-black/10 px-3 py-2 font-mono text-sm">
                     <span className="text-black/50 text-xs w-20">{e.incurredOn}</span>
                     <span className="flex-1 truncate">{e.description}{e.vendor ? <span className="text-black/40"> · {e.vendor}</span> : ''}</span>
-                    <span className="text-[10px] uppercase tracking-wider text-black/40 hidden sm:inline">{cat?.label}{e.isEquipment ? ' · equip' : ''}</span>
+                    {pct < 100 && (
+                      <span className="font-mono text-[9px] uppercase tracking-wider px-1 py-0.5 bg-amber-50 border border-amber-200 text-amber-700 flex-shrink-0">{pct}% deductible</span>
+                    )}
+                    <span className="text-[10px] uppercase tracking-wider text-black/40 hidden sm:inline">{cat?.label}{e.isEquipment ? ' · full first-year write-off' : ''}</span>
                     <span className="font-bold w-24 text-right">{formatCents(e.amountCents)}</span>
                     {e.receiptStoragePath && (
                       <button onClick={() => openSignedFile(`expense=${e.id}`)} title="View receipt" className="text-green-600 hover:text-green-800">

@@ -8,7 +8,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 const EDITABLE = new Set([
   'legal_name', 'display_name', 'business_name', 'entity_type',
   'address_line1', 'address_line2', 'city', 'state', 'zip',
-  'w9_storage_path', 'active', 'is_owner',
+  'w9_storage_path', 'active', 'is_owner', 'voluntary_1099',
 ]);
 
 export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {

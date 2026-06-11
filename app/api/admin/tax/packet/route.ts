@@ -7,6 +7,7 @@ import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import { computePnL, listExpenses, contractorDashboard, getTaxProfile, getTaxConstants } from '@/lib/tax-server';
 import { TAX_DISCLAIMER, EXPENSE_CATEGORIES, ENTITY_TYPES } from '@/lib/tax';
+import { formatCents } from '@/lib/utils';
 
 export const maxDuration = 60;
 
@@ -47,11 +48,17 @@ export async function GET(request: NextRequest) {
   pnlWs.addRow(['Kept deposits (cancellations)', usd(pnl.revenue.keptDepositsCents)]);
   pnlWs.addRow(['Total revenue', usd(pnl.totalRevenueCents)]).font = { bold: true };
   pnlWs.addRow([]);
-  head(pnlWs, ['Expense category', 'IRS Schedule C line', 'Amount (USD)']);
-  for (const c of pnl.expensesByCategory) pnlWs.addRow([c.label, c.scheduleCLine, usd(c.amountCents)]);
-  pnlWs.addRow(['Total expenses', '', usd(pnl.totalExpensesCents)]).font = { bold: true };
+  head(pnlWs, ['Expense category', 'IRS Schedule C line', 'Amount (USD)', 'Deductible (USD)', 'Deductible %']);
+  for (const c of pnl.expensesByCategory) {
+    pnlWs.addRow([c.label, c.scheduleCLine, usd(c.amountCents), usd(c.deductibleCents), `${c.deductiblePct}%`]);
+  }
+  pnlWs.addRow(['Total expenses', '', usd(pnl.totalExpensesCents), usd(pnl.deductibleExpensesCents), '']).font = { bold: true };
+  if (pnl.nondeductibleCents > 0) {
+    pnlWs.addRow(['Non-deductible (logged for books)', '', usd(pnl.nondeductibleCents), '', '']).font = { italic: true };
+  }
   pnlWs.addRow([]);
   pnlWs.addRow(['NET PROFIT', '', usd(pnl.netProfitCents)]).font = { bold: true, size: 12 };
+  pnlWs.addRow(['Taxable net (deductible basis)', '', '', usd(pnl.taxableNetCents)]).font = { bold: true };
   pnlWs.columns.forEach((c) => { c.width = 32; });
 
   // 2. Expense detail (every row + receipt indicator).
@@ -62,21 +69,31 @@ export async function GET(request: NextRequest) {
   }
   expWs.columns.forEach((c, i) => { c.width = [12, 22, 18, 20, 34, 14, 11, 14][i] ?? 18; });
 
-  // 3. Contractor summary (1099 readiness).
+  // 3. Contractor summary (1099 readiness — the required flag reflects the
+  // PAYMENT-YEAR threshold via contractorDashboard; voluntary = below-threshold
+  // issuances the studio chose to file anyway).
   const conWs = wb.addWorksheet('Contractors');
-  head(conWs, ['Legal name', 'Business name', 'TIN (last 4)', 'Total paid (USD)', 'Of which cash (USD)', 'W-9 on file', '1099-NEC required']);
+  head(conWs, ['Legal name', 'Business name', 'TIN (last 4)', 'Total paid (USD)', 'Of which cash (USD)', 'W-9 on file', '1099-NEC required', 'Voluntary']);
   for (const c of contractors) {
-    conWs.addRow([c.legalName, c.businessName ?? '', c.tinLast4 ? `…${c.tinLast4}` : '', usd(c.ytdPaidCents), usd(c.cashCents), c.hasW9 ? 'Yes' : 'No', c.needs1099 ? 'YES' : '']);
+    conWs.addRow([c.legalName, c.businessName ?? '', c.tinLast4 ? `…${c.tinLast4}` : '', usd(c.ytdPaidCents), usd(c.cashCents), c.hasW9 ? 'Yes' : 'No', c.needs1099 ? 'YES' : '', c.voluntary1099 ? 'Yes' : '']);
   }
-  conWs.columns.forEach((c, i) => { c.width = [26, 24, 12, 16, 18, 12, 18][i] ?? 18; });
+  conWs.columns.forEach((c, i) => { c.width = [26, 24, 12, 16, 18, 12, 18, 12][i] ?? 18; });
 
-  // 4. Equipment (Section 179 candidates).
-  const eqWs = wb.addWorksheet('Equipment (Sec 179)');
-  head(eqWs, ['Date', 'Vendor', 'Description', 'Amount (USD)']);
+  // 4. Equipment & first-year expensing (OBBBA: 100% bonus permanent; the CPA
+  // elects bonus vs Section 179).
+  const eqWs = wb.addWorksheet('Equipment & First-Year');
+  eqWs.addRow([`Equipment & first-year expensing — ${year}`]).font = { bold: true, size: 14 };
+  const sec179Note = constants?.sec179LimitCents != null && constants?.sec179PhaseoutCents != null
+    ? ` Sec 179 limit ${year}: ${formatCents(constants.sec179LimitCents)} / phaseout ${formatCents(constants.sec179PhaseoutCents)}.`
+    : '';
+  eqWs.addRow([`100% bonus depreciation permanent (OBBBA) OR Section 179 election — your CPA decides which.${sec179Note}`])
+    .font = { italic: true, color: { argb: 'FF888888' } };
+  eqWs.addRow([]);
+  head(eqWs, ['Placed in service', 'Vendor', 'Description', 'Amount (USD)']);
   for (const e of expenses.filter((x) => x.isEquipment || x.category === 'equipment')) {
     eqWs.addRow([e.incurredOn, e.vendor ?? '', e.description, usd(e.amountCents)]);
   }
-  eqWs.columns.forEach((c, i) => { c.width = [12, 22, 40, 14][i] ?? 18; });
+  eqWs.columns.forEach((c, i) => { c.width = [16, 22, 40, 14][i] ?? 18; });
 
   // 5. Revenue detail by stream (the headline streams, labeled).
   const revWs = wb.addWorksheet('Revenue Detail');
@@ -98,14 +115,18 @@ export async function GET(request: NextRequest) {
     ['Tax year', String(year)],
     ['Entity type', entityLabel],
     ['Est. income tax rate', `${profile.estimatedIncomeTaxRatePct}%`],
+    ['QBI applied', profile.applyQbi ? 'Yes — 20% (permanent, OBBBA); $400 minimum at $1,000+ QBI from 2026' : 'No — owner disabled'],
     ['EIN (last 4)', profile.einLast4 ? `…${profile.einLast4}` : '—'],
     ['State', profile.state ?? '—'],
     ['Contract labor basis', 'Staff earnings attributed to the period\'s work (same payroll engine + work-date basis as revenue); owner-marked payees excluded. The Contractors tab + 1099 totals use ACTUAL PAYMENTS per IRS rules — timing differences at period edges are expected; confirm treatment with your CPA.'],
+    ['1099 threshold (payment year)', constants
+      ? `${formatCents(constants.nineteen99ThresholdCents)} for ${year} payments — $600 (2025) → $2,000 (2026, OBBBA), indexed from 2027`
+      : `Not configured for ${year} — 1099 status unknown`],
     ['Revenue basis', 'Sessions by session date; beats/media by transaction date; GROSS of refunds and card-processing fees (log fees as Merchant/Processing Fees expenses)'],
     ['Sales tax', 'NOT computed or collected by this system (deliberate) — confirm state obligations with your CPA'],
     ['Not tracked here — bring separately', 'Vehicle mileage, home office, owner health insurance, retirement contributions, owner draws'],
-    ['Equipment tab note', 'Equipment rows also appear in the expense totals above — they are flagged for Section 179 review, not double-counted'],
-    ['Meals note', 'Meals are recorded at full amount; the 50% limitation is applied by your preparer'],
+    ['Equipment tab note', 'Equipment rows also appear in the expense totals above — they are flagged for first-year expensing (bonus depreciation or Section 179), not double-counted'],
+    ['Meals & entertainment', 'Client meals 50%; staff meals 50% (2025) → 0% (2026); entertainment 0%. Deductible columns reflect the year.'],
     ['Tax constants reviewed by CPA', constants?.reviewed ? 'Yes' : 'NO — figures are drafts pending review'],
     ['Generated', new Date().toISOString()],
   ].forEach((r) => asmWs.addRow(r));

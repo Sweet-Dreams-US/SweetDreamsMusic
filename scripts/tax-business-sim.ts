@@ -70,14 +70,14 @@ async function main() {
   const totalSeeded = expenses.reduce((s, e) => s + e.amount_cents, 0);
 
   // ── 3. Pay a new contractor past $600 (Payroll → Record Payout) ──────────
-  console.log('\n— 3. Paying a new contractor $700 cash —');
+  console.log('\n— 3. Paying a new contractor $2,100 cash (2026 threshold is $2,000 — OBBBA) —');
   // Mirrors the POST /api/admin/payouts logic exactly (find-or-create + link).
   const personName = `${TAG} Freelance Engineer`;
   const { data: created } = await db.from('contractors')
     .insert({ studio_id: null, legal_name: personName, display_name: personName } as never).select('id').single();
   contractorId = (created as { id: string }).id;
   const { data: payout } = await db.from('payroll_payouts').insert({
-    person_name: personName, amount: 70000, method: 'cash', note: `${TAG}`, contractor_id: contractorId,
+    person_name: personName, amount: 210000, method: 'cash', note: `${TAG}`, contractor_id: contractorId,
   } as never).select('id').single();
   payoutId = (payout as { id: string }).id;
   ok('payout recorded + linked', !!payoutId);
@@ -87,7 +87,7 @@ async function main() {
   const cards = await contractorDashboard(db as never, YEAR);
   const me = cards.find((c) => c.id === contractorId);
   ok('new contractor appears', !!me);
-  ok('$700 cash YTD counted', me?.ytdPaidCents === 70000 && me?.cashCents === 70000);
+  ok('$2,100 cash YTD counted', me?.ytdPaidCents === 210000 && me?.cashCents === 210000);
   ok('flagged: needs 1099 + MISSING W-9 (the loud one)', me?.flag === 'needs_1099_missing_w9');
   ok('real contractors unchanged', cards0.every((c0) => {
     const now = cards.find((c) => c.id === c0.id); return now && now.ytdPaidCents === c0.ytdPaidCents;
@@ -107,7 +107,7 @@ async function main() {
   ok('contract labor (work basis) unmoved by a work-less payout',
     pnl1.contractLaborCents === pnl0.contractLaborCents,
     `Δ ${pnl1.contractLaborCents - pnl0.contractLaborCents}`);
-  ok('cash paid-out reference up by exactly $700', pnl1.paidOutCents - pnl0.paidOutCents === 70000,
+  ok('cash paid-out reference up by exactly $2,100', pnl1.paidOutCents - pnl0.paidOutCents === 210000,
     `Δ ${pnl1.paidOutCents - pnl0.paidOutCents}`);
   ok('net dropped by exactly the expenses', pnl0.netProfitCents - pnl1.netProfitCents === totalSeeded);
   const equip = pnl1.expensesByCategory.find((c) => c.key === 'equipment');

@@ -7,7 +7,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { getTaxProfile } from '@/lib/tax-server';
 import { ENTITY_TYPES } from '@/lib/tax';
 
-const EDITABLE = new Set(['entity_type', 'ein_last4', 'state', 'fiscal_year_start_month', 'estimated_income_tax_rate', 'notes']);
+const EDITABLE = new Set(['entity_type', 'ein_last4', 'state', 'fiscal_year_start_month', 'estimated_income_tax_rate', 'apply_qbi', 'notes']);
 const ENTITY_VALUES = ENTITY_TYPES.map((e) => e.value);
 
 async function requireAdmin() {

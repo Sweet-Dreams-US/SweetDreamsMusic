@@ -27,7 +27,7 @@ export const entityOwesSeTax = (e: EntityType) => SE_TAX_ENTITIES.includes(e);
 // The IRS-line mapping is the CPA-reviewable part. Custom categories are NOT
 // admin-editable in v1 (documented cut) — anything off-list maps to 'other'.
 
-export interface ExpenseCategory { key: string; label: string; scheduleCLine: string }
+export interface ExpenseCategory { key: string; label: string; scheduleCLine: string; hint?: string }
 
 export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   { key: 'advertising',           label: 'Advertising & Marketing', scheduleCLine: 'Line 8' },
@@ -41,16 +41,45 @@ export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   { key: 'legal_professional',    label: 'Legal & Professional',    scheduleCLine: 'Line 17' },
   { key: 'merchant_fees',         label: 'Merchant / Processing Fees', scheduleCLine: 'Line 10' },
   { key: 'travel',                label: 'Travel',                  scheduleCLine: 'Line 24a' },
-  { key: 'meals',                 label: 'Meals (50%)',             scheduleCLine: 'Line 24b' },
-  { key: 'equipment',             label: 'Equipment (Sec. 179)',    scheduleCLine: 'Line 13 / Form 4562' },
+  // The three-way meals/entertainment split is deliberate UX (Plan 5 v2): the
+  // picker teaches the rule at the moment of entry. Deductible % per YEAR comes
+  // from tax_constants.deductible_pcts — see deductiblePctFor().
+  { key: 'meals_clients',         label: 'Meals — Clients (50%)',   scheduleCLine: 'Line 24b',
+    hint: 'Taking a client or collaborator to a meal.' },
+  { key: 'meals_staff',           label: 'Meals — Staff/Studio (0% from 2026)', scheduleCLine: 'Line 24b',
+    hint: 'Food/snacks provided to your team at the studio. 50% for 2025, 0% from 2026.' },
+  { key: 'entertainment',         label: 'Entertainment (0%)',      scheduleCLine: '—',
+    hint: 'Tickets, events, golf — even with clients. Not deductible; logged for complete books. Food bought separately at the venue can be Meals — Clients.' },
+  { key: 'equipment',             label: 'Equipment (full first-year write-off)', scheduleCLine: 'Line 13 / Form 4562',
+    hint: '100% bonus depreciation is permanent — cameras, drones, interfaces, computers are year-one deductions.' },
   { key: 'other',                 label: 'Other',                   scheduleCLine: 'Line 27a' },
 ];
 export const EXPENSE_CATEGORY_KEYS = EXPENSE_CATEGORIES.map((c) => c.key);
 export const expenseCategory = (key: string): ExpenseCategory =>
-  EXPENSE_CATEGORIES.find((c) => c.key === key) ?? EXPENSE_CATEGORIES[EXPENSE_CATEGORIES.length - 1];
-/** Normalize any input to a known category key ('other' fallback). */
-export const normalizeCategory = (key: string | null | undefined): string =>
-  EXPENSE_CATEGORY_KEYS.includes(String(key)) ? String(key) : 'other';
+  EXPENSE_CATEGORIES.find((c) => c.key === key)
+  ?? (key === 'meals' ? EXPENSE_CATEGORIES.find((c) => c.key === 'meals_clients')! : EXPENSE_CATEGORIES[EXPENSE_CATEGORIES.length - 1]);
+/** Normalize any input to a known category key. Legacy 'meals' reads as
+ *  meals_clients; anything off-list maps to 'other'. */
+export const normalizeCategory = (key: string | null | undefined): string => {
+  const k = String(key);
+  if (k === 'meals') return 'meals_clients';
+  return EXPENSE_CATEGORY_KEYS.includes(k) ? k : 'other';
+};
+
+/**
+ * Deductible % for a category in a given tax year. Year-specific overrides
+ * (meals_staff 50%→0% in 2026, etc.) live in tax_constants.deductible_pcts —
+ * the law is data, so a rule change is a row edit, not a deploy. Built-in
+ * conservative defaults when constants are missing.
+ */
+export function deductiblePctFor(categoryKey: string, constants: TaxConstants | null): number {
+  const key = categoryKey === 'meals' ? 'meals_clients' : categoryKey;
+  const fromConstants = constants?.deductiblePcts?.[categoryKey] ?? constants?.deductiblePcts?.[key];
+  if (fromConstants != null) return Number(fromConstants);
+  if (key === 'entertainment') return 0;
+  if (key === 'meals_clients' || key === 'meals_staff') return 50;
+  return 100;
+}
 
 /** Section 179 equipment auto-flag suggestion threshold ($2,500). */
 export const EQUIPMENT_SUGGEST_CENTS = 250000;
@@ -64,9 +93,35 @@ export interface TaxConstants {
   ssWageBaseCents: number;    // annual Social Security wage cap
   ssRate: number;             // 0.1240
   medicareRate: number;       // 0.0290
-  nineteen99ThresholdCents: number; // 60000
+  nineteen99ThresholdCents: number; // BY PAYMENT YEAR: $600 (2025) → $2,000 (2026, OBBBA) → indexed
   dueDates: Record<string, string>; // { "1": "2026-04-15", ... }
   reviewed: boolean;
+  // ── OBBBA (Plan 5 v2) ──
+  qbiPct: number | null;                 // 20 — permanent QBI deduction
+  qbiMinDeductionCents: number | null;   // $400 minimum (2026+), null before
+  qbiMinQbiFloorCents: number | null;    // requires $1,000+ active QBI
+  deductiblePcts: Record<string, number>;// category → % for THIS year
+  sec179LimitCents: number | null;       // display/lesson values
+  sec179PhaseoutCents: number | null;
+}
+
+// ── QBI (Section 199A — 20% permanent under OBBBA) ──────────────────────────
+
+/**
+ * QBI deduction on net profit. 20% of QBI, with the OBBBA $400 minimum when
+ * active QBI ≥ $1,000 (2026+; the floor/minimum constants are null for 2025).
+ * Clamped to net. Phase-outs start ~$400K joint — far above typical studio
+ * income; the assumptions sheet states this cap. Zero when qbiPct is null or
+ * the owner turned apply_qbi off.
+ */
+export function qbiDeductionCents(netCents: number, c: TaxConstants): number {
+  if (netCents <= 0 || c.qbiPct == null) return 0;
+  let deduction = Math.round(netCents * (Number(c.qbiPct) / 100));
+  if (c.qbiMinDeductionCents != null && c.qbiMinQbiFloorCents != null
+      && netCents >= c.qbiMinQbiFloorCents) {
+    deduction = Math.max(deduction, c.qbiMinDeductionCents);
+  }
+  return Math.min(deduction, netCents);
 }
 
 // ── self-employment tax (Schedule SE) ────────────────────────────────────────
@@ -106,11 +161,14 @@ export interface QuarterlyEstimateInput {
   constants: TaxConstants;
   /** Sum of the SUGGESTED payments from quarters before this one (catch-up basis). */
   priorSuggestedCents: number;
+  /** Owner toggle (business_tax_profiles.apply_qbi, default true). */
+  applyQbi?: boolean;
 }
 
 export interface QuarterlyEstimate {
   ytdNetCents: number;
   seTaxCents: number;
+  qbiDeductionCents: number;       // 0 when QBI off / not applicable
   incomeTaxCents: number;
   totalYtdLiabilityCents: number;
   suggestedPaymentCents: number;   // this quarter, after subtracting prior suggested
@@ -119,18 +177,22 @@ export interface QuarterlyEstimate {
 /**
  * YTD-catch-up method: estimate total tax owed on YTD net, then this quarter's
  * set-aside = that total minus what earlier quarters already suggested (never
- * negative). S corp / partnership skip the SE block (owner payroll / K-1 copy
- * carries that elsewhere).
+ * negative). With apply_qbi (default): income tax base = net − QBI deduction
+ * (20%, $400 minimum at $1,000+ QBI from 2026) — materially better accuracy
+ * for nearly every studio. SE tax is computed on FULL net (QBI doesn't reduce
+ * SE). S corp / partnership skip the SE block (owner payroll / K-1 carries it).
  */
 export function computeQuarterlyEstimate(input: QuarterlyEstimateInput): QuarterlyEstimate {
   const ytdNet = input.ytdRevenueCents - input.ytdExpensesCents;
   const se = seTaxCents(ytdNet, input.constants, input.entityType);
-  const inc = incomeTaxCents(ytdNet, input.incomeTaxRatePct);
+  const qbi = (input.applyQbi ?? true) ? qbiDeductionCents(ytdNet, input.constants) : 0;
+  const inc = incomeTaxCents(Math.max(0, ytdNet - qbi), input.incomeTaxRatePct);
   const total = se + inc;
   const suggested = Math.max(0, total - input.priorSuggestedCents);
   return {
     ytdNetCents: ytdNet,
     seTaxCents: se,
+    qbiDeductionCents: qbi,
     incomeTaxCents: inc,
     totalYtdLiabilityCents: total,
     suggestedPaymentCents: suggested,

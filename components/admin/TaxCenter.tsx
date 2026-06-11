@@ -84,10 +84,15 @@ export default function TaxCenter() {
 
 interface Quarter {
   quarter: number; dueDate: string | null; ytdNetCents: number; seTaxCents: number;
-  incomeTaxCents: number; suggestedPaymentCents: number;
+  qbiDeductionCents: number; incomeTaxCents: number; suggestedPaymentCents: number;
   paidCents: number | null; paidOn: string | null;
 }
-interface PnLData { totalRevenueCents: number; totalExpensesCents: number; contractLaborCents: number; netProfitCents: number; expensesByCategory: { key: string; label: string; scheduleCLine: string; amountCents: number }[] }
+interface PnLData {
+  totalRevenueCents: number; totalExpensesCents: number; contractLaborCents: number; netProfitCents: number;
+  deductibleExpensesCents: number; nondeductibleCents: number;
+  equipmentInvestedCents: number; equipmentDeductionCents: number;
+  expensesByCategory: { key: string; label: string; scheduleCLine: string; amountCents: number; deductiblePct: number; deductibleCents: number }[];
+}
 
 function HomeTab({ year }: { year: number }) {
   const [est, setEst] = useState<{ available: boolean; reviewed?: boolean; entityNote?: string; owesSeTax?: boolean; currentQuarter?: number; quarters?: Quarter[]; message?: string } | null>(null);
@@ -185,7 +190,12 @@ function HomeTab({ year }: { year: number }) {
                     <td className="py-1.5 font-bold">Q{q.quarter}</td><td className="text-black/60">{q.dueDate || '—'}</td>
                     <td className="text-right">{formatCents(q.ytdNetCents)}</td>
                     {est.owesSeTax && <td className="text-right">{formatCents(q.seTaxCents)}</td>}
-                    <td className="text-right font-bold">{formatCents(q.suggestedPaymentCents)}</td>
+                    <td className="text-right font-bold">
+                      {formatCents(q.suggestedPaymentCents)}
+                      {q.qbiDeductionCents > 0 && (
+                        <span className="block font-mono text-[9px] font-normal text-black/40">QBI −{formatCents(q.qbiDeductionCents)}</span>
+                      )}
+                    </td>
                     <td className="text-right">{q.paidCents != null
                       ? <span className="text-green-700 font-bold">{formatCents(q.paidCents)}</span>
                       : <span className="text-black/30">—</span>}</td>
@@ -229,7 +239,24 @@ function HomeTab({ year }: { year: number }) {
             <div><p className="font-heading text-xl">{formatCents(pnl.totalExpensesCents)}</p><p className="font-mono text-[10px] text-black/50 uppercase">Expenses</p></div>
             <div><p className={`font-heading text-xl ${pnl.netProfitCents >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatCents(pnl.netProfitCents)}</p><p className="font-mono text-[10px] text-black/50 uppercase">Net profit</p></div>
           </div>
+          {pnl.nondeductibleCents > 0 && (
+            <p className="font-mono text-[11px] text-black/60 mb-2">
+              Deductible {formatCents(pnl.deductibleExpensesCents)} · Non-deductible {formatCents(pnl.nondeductibleCents)} (entertainment/staff meals — logged, not deducted)
+            </p>
+          )}
           <p className="font-mono text-[10px] text-black/40">Contract labor auto-filled from the payroll engine (staff earnings for the year&apos;s work): {formatCents(pnl.contractLaborCents)} — don&apos;t enter payouts as expenses.</p>
+        </div>
+      )}
+
+      {/* Equipment headline — OBBBA: 100% bonus depreciation is permanent */}
+      {pnl && pnl.equipmentInvestedCents > 0 && (
+        <div className="border-2 border-black/10 p-5">
+          <p className="font-mono text-[10px] uppercase tracking-wider text-black/50 mb-2">Equipment — first-year expensing</p>
+          <p className="font-mono text-sm">
+            Equipment invested {year}: <span className="font-bold">{formatCents(pnl.equipmentInvestedCents)}</span>
+            {' '}→ full first-year write-off candidate: <span className="font-bold">{formatCents(pnl.equipmentDeductionCents)}</span>
+          </p>
+          <p className="font-mono text-[10px] text-black/40 mt-1">100% bonus depreciation is permanent — your CPA elects bonus vs Section 179.</p>
         </div>
       )}
 
@@ -264,6 +291,7 @@ interface Card {
   isOwner: boolean; filed1099On: string | null;
   addressLine1: string | null; addressLine2: string | null; city: string | null; state: string | null; zip: string | null;
   entityType: string | null;
+  thresholdCents: number | null; voluntary1099: boolean;
 }
 
 function ContractorsTab({ year }: { year: number }) {
@@ -331,6 +359,7 @@ function ContractorsTab({ year }: { year: number }) {
   const noConstants = cards.some((c) => c.flag === 'no_constants');
   const need = cards.filter((c) => c.needs1099).length;
   const missingW9 = cards.filter((c) => c.flag === 'needs_1099_missing_w9').length;
+  const thresholdCents = cards[0]?.thresholdCents ?? null;
   const inputCls = 'border-2 border-black/15 px-2 py-1.5 font-mono text-xs focus:border-accent focus:outline-none';
 
   return (
@@ -350,7 +379,12 @@ function ContractorsTab({ year }: { year: number }) {
           <Download className="w-3.5 h-3.5" /> 1099 CSV ({year})
         </a>
       </div>
-      <p className="font-mono text-[10px] text-black/40">A 1099-NEC is required (by Jan 31) for anyone paid $600+ in a year. Cash counts. Click a contractor to fill in their W-9 details for the export.</p>
+      <p className="font-mono text-[10px] text-black/40">
+        A 1099-NEC is required (by Jan 31) for anyone paid {thresholdCents != null ? `${formatCents(thresholdCents)}+ in ${year}` : '$600+ in a year'}. Cash counts. Click a contractor to fill in their W-9 details for the export.
+      </p>
+      <p className="font-mono text-[10px] text-black/40">
+        The income is still taxable to them and the expense still deductible to you — the form requirement changed, not the tax.
+      </p>
 
       <div className="flex gap-2">
         <input placeholder="Add a contractor paid outside payroll…" value={newName} onChange={(e) => setNewName(e.target.value)} className={`${inputCls} flex-1`} />
@@ -375,7 +409,11 @@ function ContractorsTab({ year }: { year: number }) {
                     : c.flag === 'no_constants' ? <span className="font-mono text-[10px] uppercase px-1.5 py-0.5 bg-red-100 text-red-700">1099 status unknown</span>
                     : c.needs1099
                       ? <span className="font-mono text-[10px] font-bold uppercase px-1.5 py-0.5 bg-accent text-black">1099-NEC required</span>
-                      : <span className="font-mono text-[10px] uppercase px-1.5 py-0.5 bg-black/5 text-black/40">under $600</span>}
+                      : <span className="font-mono text-[10px] uppercase px-1.5 py-0.5 bg-black/5 text-black/40">
+                          {c.thresholdCents != null
+                            ? `No 1099 required at current total (${formatCents(c.ytdPaidCents)} of ${formatCents(c.thresholdCents)})`
+                            : 'under $600'}
+                        </span>}
                   {!c.isOwner && (c.hasW9
                     ? <span className="font-mono text-[10px] uppercase px-1.5 py-0.5 bg-green-100 text-green-700 inline-flex items-center gap-1"><Check className="w-3 h-3" /> W-9 on file</span>
                     : <span className="font-mono text-[10px] uppercase px-1.5 py-0.5 bg-red-100 text-red-700">No W-9</span>)}
@@ -428,6 +466,15 @@ function ContractorsTab({ year }: { year: number }) {
                       </button>
                     )}
                   </div>
+                  {!c.isOwner && (
+                    <div>
+                      <label className="font-mono text-[10px] text-black/50 inline-flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" checked={c.voluntary1099} onChange={(e) => patch(c.id, { voluntary_1099: e.target.checked })} disabled={busy} />
+                        Voluntary 1099
+                      </label>
+                      <p className="font-mono text-[10px] text-black/40 mt-0.5">Issue below threshold anyway — some studios prefer complete paper trails. Included in the CSV when on.</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

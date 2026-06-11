@@ -19,7 +19,9 @@ export async function GET(request: NextRequest) {
 
   const year = Number(new URL(request.url).searchParams.get('year')) || new Date().getUTCFullYear();
   const db = createServiceClient();
-  const cards = (await contractorDashboard(db, year)).filter((c) => c.needs1099);
+  // Required at the payment-year threshold PLUS voluntary issuances (a studio
+  // can choose complete paper trails below threshold — export marks them).
+  const cards = (await contractorDashboard(db, year)).filter((c) => c.needs1099 || (c.voluntary1099 && c.ytdPaidCents > 0 && !c.isOwner));
 
   // Pull address/TIN-last4 for the filers (dashboard omits them).
   const ids = cards.map((c) => c.id);
