@@ -95,7 +95,7 @@ interface PnLData {
 }
 
 function HomeTab({ year }: { year: number }) {
-  const [est, setEst] = useState<{ available: boolean; reviewed?: boolean; entityNote?: string; owesSeTax?: boolean; currentQuarter?: number; quarters?: Quarter[]; message?: string } | null>(null);
+  const [est, setEst] = useState<{ available: boolean; reviewed?: boolean; applyQbi?: boolean; entityNote?: string; owesSeTax?: boolean; currentQuarter?: number; quarters?: Quarter[]; message?: string } | null>(null);
   const [pnl, setPnl] = useState<PnLData | null>(null);
   const [loading, setLoading] = useState(true);
   const [payQ, setPayQ] = useState<Quarter | null>(null);
@@ -182,7 +182,7 @@ function HomeTab({ year }: { year: number }) {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px]">
               <thead><tr className="font-mono text-[10px] text-black/50 uppercase tracking-wider text-left">
-                <th className="py-1">Quarter</th><th>Due</th><th className="text-right">YTD net</th>{est.owesSeTax && <th className="text-right">SE tax</th>}<th className="text-right">Suggested</th><th className="text-right">Paid</th><th></th>
+                <th className="py-1">Quarter</th><th>Due</th><th className="text-right" title="Revenue minus DEDUCTIBLE expenses — matches the P&L card's deductible figure, not cash net">YTD taxable net</th>{est.owesSeTax && <th className="text-right">SE tax</th>}<th className="text-right">Suggested</th><th className="text-right">Paid</th><th></th>
               </tr></thead>
               <tbody className="font-mono text-sm">
                 {est.quarters.map((q) => (
@@ -211,6 +211,9 @@ function HomeTab({ year }: { year: number }) {
             </table>
           </div>
           <p className="font-mono text-[10px] text-black/40 mt-2">Recorded payments feed the next quarter&apos;s math — pay more, owe less later.</p>
+          {est.applyQbi === false && (
+            <p className="font-mono text-[10px] text-amber-700 mt-1">QBI deduction OFF (Tax Profile setting) — estimates exclude the 20% deduction.</p>
+          )}
         </div>
       )}
 
@@ -296,6 +299,7 @@ interface Card {
 
 function ContractorsTab({ year }: { year: number }) {
   const [cards, setCards] = useState<Card[]>([]);
+  const [routeThreshold, setRouteThreshold] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
   const [edit, setEdit] = useState<Record<string, string | boolean>>({});
@@ -307,7 +311,7 @@ function ContractorsTab({ year }: { year: number }) {
     try {
       const r = await fetch(`/api/admin/tax/contractors?year=${year}`);
       const j = await r.json();
-      if (r.ok) setCards(j.contractors);
+      if (r.ok) { setCards(j.contractors); setRouteThreshold(j.thresholdCents ?? null); }
     } catch { /* ignore */ }
     setLoading(false);
   }, [year]);
@@ -359,7 +363,7 @@ function ContractorsTab({ year }: { year: number }) {
   const noConstants = cards.some((c) => c.flag === 'no_constants');
   const need = cards.filter((c) => c.needs1099).length;
   const missingW9 = cards.filter((c) => c.flag === 'needs_1099_missing_w9').length;
-  const thresholdCents = cards[0]?.thresholdCents ?? null;
+  const thresholdCents = routeThreshold ?? cards[0]?.thresholdCents ?? null;
   const inputCls = 'border-2 border-black/15 px-2 py-1.5 font-mono text-xs focus:border-accent focus:outline-none';
 
   return (
@@ -380,7 +384,7 @@ function ContractorsTab({ year }: { year: number }) {
         </a>
       </div>
       <p className="font-mono text-[10px] text-black/40">
-        A 1099-NEC is required (by Jan 31) for anyone paid {thresholdCents != null ? `${formatCents(thresholdCents)}+ in ${year}` : '$600+ in a year'}. Cash counts. Click a contractor to fill in their W-9 details for the export.
+        A 1099-NEC is required (by Jan 31) for anyone paid {thresholdCents != null ? `${formatCents(thresholdCents)}+ in ${year}` : `— threshold unknown for ${year}; tax tables not configured`}. Cash counts. Click a contractor to fill in their W-9 details for the export.
       </p>
       <p className="font-mono text-[10px] text-black/40">
         The income is still taxable to them and the expense still deductible to you — the form requirement changed, not the tax.

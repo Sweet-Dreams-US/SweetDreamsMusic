@@ -30,9 +30,16 @@ export async function GET(request: NextRequest) {
   // Range mode (the Accounting Profit view's period selector)…
   const from = params.get('from'), to = params.get('to');
   if (from && to && /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    // Cross-year ranges: pcts PER YEAR so a 2026 staff-meal row never shows
+    // the 2025 rule (and vice versa). categoryPcts = range-start year (legacy);
+    // categoryPctsByYear = the accurate per-row lookup.
+    const years = Array.from(new Set([Number(from.slice(0, 4)), Number(to.slice(0, 4))]));
+    const byYear: Record<string, Record<string, number>> = {};
+    for (const y of years) byYear[String(y)] = await pctsFor(y);
     return NextResponse.json({
       from, to, expenses: await listExpenses(db, from, to),
-      categoryPcts: await pctsFor(Number(from.slice(0, 4))),
+      categoryPcts: byYear[String(Number(from.slice(0, 4)))],
+      categoryPctsByYear: byYear,
     });
   }
   // …or whole-year mode (the Tax Center).
@@ -42,7 +49,7 @@ export async function GET(request: NextRequest) {
     computePnL(db, year),
     pctsFor(year),
   ]);
-  return NextResponse.json({ year, expenses, pnl, categoryPcts });
+  return NextResponse.json({ year, expenses, pnl, categoryPcts, categoryPctsByYear: { [String(year)]: categoryPcts } });
 }
 
 export async function POST(request: NextRequest) {

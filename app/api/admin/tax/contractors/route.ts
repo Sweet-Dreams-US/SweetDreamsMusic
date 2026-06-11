@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
-import { contractorDashboard } from '@/lib/tax-server';
+import { contractorDashboard, getTaxConstants } from '@/lib/tax-server';
 
 async function requireAdmin() {
   const user = await getSessionUser();
@@ -17,7 +17,13 @@ export async function GET(request: NextRequest) {
   const g = await requireAdmin();
   if (g.error) return g.error;
   const year = Number(new URL(request.url).searchParams.get('year')) || new Date().getUTCFullYear();
-  return NextResponse.json({ year, contractors: await contractorDashboard(createServiceClient(), year) });
+  const db = createServiceClient();
+  const [contractors, constants] = await Promise.all([
+    contractorDashboard(db, year), getTaxConstants(db, year),
+  ]);
+  // Top-level threshold (independent of the card list) so the UI never falls
+  // back to the repealed $600 copy; null = tax tables not configured for year.
+  return NextResponse.json({ year, contractors, thresholdCents: constants?.nineteen99ThresholdCents ?? null });
 }
 
 export async function POST(request: NextRequest) {

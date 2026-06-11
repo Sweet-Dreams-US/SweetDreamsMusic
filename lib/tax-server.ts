@@ -247,33 +247,48 @@ export interface PnL {
  */
 export async function computePnLRange(db: Client, from: string, to: string): Promise<PnL> {
   const year = Number(from.slice(0, 4));
-  const [revenue, expenses, contractLaborCents, paidOutCents, constants] = await Promise.all([
+  const [revenue, expenses, contractLaborCents, paidOutCents] = await Promise.all([
     taxRevenueForRange(db, from, to),
     listExpenses(db, from, to),
     staffEarningsForRange(db, from, to),
     contractorPaidForRange(db, from, to),
-    getTaxConstants(db, year),
   ]);
 
-  const byCat = new Map<string, number>();
+  // Deductibility is keyed to each ROW'S OWN year — a cross-year range (the
+  // Accounting Profit view's trailing-12-months preset) must apply 2025 rules
+  // to 2025 rows and 2026 rules to 2026 rows (staff meals 50% vs 0%).
+  const yearsInRange = Array.from(new Set([year, Number(to.slice(0, 4))]));
+  const constantsByYear = new Map<number, TaxConstants | null>();
+  for (const y of yearsInRange) constantsByYear.set(y, await getTaxConstants(db, y));
+  const constants = constantsByYear.get(year) ?? null; // range-start year (display/Sec-179)
+
+  const byCat = new Map<string, { amount: number; deductible: number }>();
   let manualExpensesCents = 0;
   let equipmentInvestedCents = 0;
   for (const e of expenses) {
     if (e.category === 'contract_labor') continue; // auto-fed below; never double-count
     const key = normalizeCategory(e.category);     // legacy 'meals' → meals_clients
-    byCat.set(key, (byCat.get(key) || 0) + e.amountCents);
+    const rowYear = Number(String(e.incurredOn).slice(0, 4));
+    const rowConstants = constantsByYear.has(rowYear) ? constantsByYear.get(rowYear)! : constants;
+    const pct = deductiblePctFor(key, rowConstants);
+    const cur = byCat.get(key) ?? { amount: 0, deductible: 0 };
+    cur.amount += e.amountCents;
+    cur.deductible += Math.round(e.amountCents * (pct / 100));
+    byCat.set(key, cur);
     manualExpensesCents += e.amountCents;
     if (e.isEquipment || key === 'equipment') equipmentInvestedCents += e.amountCents;
   }
-  byCat.set('contract_labor', contractLaborCents);
+  byCat.set('contract_labor', { amount: contractLaborCents, deductible: contractLaborCents });
 
   const expensesByCategory = EXPENSE_CATEGORIES
     .map((c) => {
-      const amountCents = byCat.get(c.key) || 0;
-      const deductiblePct = deductiblePctFor(c.key, constants);
+      const agg = byCat.get(c.key) ?? { amount: 0, deductible: 0 };
       return {
-        key: c.key, label: c.label, scheduleCLine: c.scheduleCLine, amountCents,
-        deductiblePct, deductibleCents: Math.round(amountCents * (deductiblePct / 100)),
+        key: c.key, label: c.label, scheduleCLine: c.scheduleCLine, amountCents: agg.amount,
+        // pct shown = the range-START year's rule (display); deductibleCents is
+        // the per-row-year-accurate sum.
+        deductiblePct: deductiblePctFor(c.key, constants),
+        deductibleCents: agg.deductible,
       };
     })
     .filter((c) => c.amountCents > 0);

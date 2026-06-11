@@ -30,7 +30,10 @@ export async function GET(request: NextRequest) {
     : { data: [] };
   const detailById = new Map((details ?? []).map((d: any) => [d.id, d]));
 
-  const header = ['Recipient Name', 'Business Name', 'Address 1', 'Address 2', 'City', 'State', 'ZIP', 'TIN (last 4)', 'W-9 on file', 'Box 1 Nonemployee Comp (USD)'];
+  // Filing basis distinguishes required (over the payment-year threshold) from
+  // voluntary below-threshold issuances. Trailing column — e-file importers
+  // ignore unknown extras.
+  const header = ['Recipient Name', 'Business Name', 'Address 1', 'Address 2', 'City', 'State', 'ZIP', 'TIN (last 4)', 'W-9 on file', 'Box 1 Nonemployee Comp (USD)', 'Filing basis'];
   const rows = cards.map((c) => {
     const d: any = detailById.get(c.id) ?? {};
     return [
@@ -38,6 +41,7 @@ export async function GET(request: NextRequest) {
       d.address_line1 ?? '', d.address_line2 ?? '', d.city ?? '', d.state ?? '', d.zip ?? '',
       d.tin_last4 ? `xxx-xx-${d.tin_last4}` : 'MISSING', d.w9_received_at ? 'YES' : 'NO',
       (c.ytdPaidCents / 100).toFixed(2),
+      c.needs1099 ? 'REQUIRED' : 'VOLUNTARY',
     ].map(csvCell).join(',');
   });
   const csv = [header.map(csvCell).join(','), ...rows].join('\n');

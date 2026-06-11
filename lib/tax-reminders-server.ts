@@ -57,7 +57,7 @@ export async function sweepTaxReminders(
       studio_id: null, tax_year: year, quarter: q.quarter,
       ytd_net_cents: q.ytdNetCents, se_tax_cents: q.seTaxCents,
       income_tax_cents: q.incomeTaxCents, suggested_payment_cents: q.suggestedPaymentCents,
-      assumptions: { ...((snap as any)?.assumptions ?? {}), reminders: [...reminders, hit] },
+      assumptions: { ...((snap as any)?.assumptions ?? {}), reminders: [...reminders, hit], qbi_deduction_cents: q.qbiDeductionCents, expense_basis: 'deductible' },
       computed_at: new Date().toISOString(),
     } as never, { onConflict: 'studio_id,tax_year,quarter' });
     if (dedupErr) {

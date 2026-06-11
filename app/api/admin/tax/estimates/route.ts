@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
         assumptions: {
           ...(((existing as { assumptions?: Record<string, unknown> })?.assumptions) ?? {}),
           entity_type: est.entityType, income_rate_pct: profile.estimatedIncomeTaxRatePct, reviewed: est.reviewed,
+          apply_qbi: profile.applyQbi, qbi_deduction_cents: cur.qbiDeductionCents, expense_basis: 'deductible',
         },
         computed_at: new Date().toISOString(),
       } as never, { onConflict: 'studio_id,tax_year,quarter' });
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
 
   const entityNote = ENTITY_TYPES.find((e) => e.value === est.entityType)?.note ?? '';
   return NextResponse.json({
-    year, available: true, reviewed: est.reviewed,
+    year, available: true, reviewed: est.reviewed, applyQbi: profile.applyQbi,
     entityType: est.entityType, entityNote, owesSeTax: entityOwesSeTax(est.entityType),
     currentQuarter: curQ, quarters: est.quarters,
   });

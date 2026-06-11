@@ -28,6 +28,7 @@ export default function TaxExpenses({ from, to, showRecurring = true, onChanged 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [categoryPcts, setCategoryPcts] = useState<Record<string, number>>({});
+  const [categoryPctsByYear, setCategoryPctsByYear] = useState<Record<string, Record<string, number>>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -45,6 +46,7 @@ export default function TaxExpenses({ from, to, showRecurring = true, onChanged 
       const [er, tr] = await Promise.all(fetches.map((p) => p.then((r) => r.json())));
       if (er?.expenses) setExpenses(er.expenses);
       if (er?.categoryPcts) setCategoryPcts(er.categoryPcts);
+      if (er?.categoryPctsByYear) setCategoryPctsByYear(er.categoryPctsByYear);
       if (tr?.templates) setTemplates(tr.templates);
     } catch { /* ignore */ }
     setLoading(false);
@@ -217,7 +219,8 @@ export default function TaxExpenses({ from, to, showRecurring = true, onChanged 
                 // Built-in defaults (entertainment 0, meals 50, else 100) are
                 // right for display — no constants fetch needed client-side.
                 const normKey = e.category === 'meals' ? 'meals_clients' : e.category;
-                const pct = categoryPcts[normKey] ?? deductiblePctFor(e.category, null);
+                const rowYearPcts = categoryPctsByYear[e.incurredOn.slice(0, 4)];
+                const pct = rowYearPcts?.[normKey] ?? categoryPcts[normKey] ?? deductiblePctFor(e.category, null);
                 return (
                   <div key={e.id} className="flex items-center gap-3 border border-black/10 px-3 py-2 font-mono text-sm">
                     <span className="text-black/50 text-xs w-20">{e.incurredOn}</span>

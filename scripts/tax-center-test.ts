@@ -286,6 +286,27 @@ async function main() {
     await db.from('contractors').delete().eq('id', ownerId);
   }
 
+  console.log('\n— Live (v2): cross-year range applies each ROW\'S year rules —');
+  // Staff meals: 50% in 2025, 0% in 2026. A Dec-2025 + Jan-2026 pair inside one
+  // range must deduct 50% + 0% — not the from-year's rule for both.
+  const { data: x25 } = await db.from('business_expenses').insert({
+    studio_id: null, category: 'meals_staff', description: 'tax-test xyear 2025',
+    amount_cents: 10000, incurred_on: '2025-12-15',
+  } as never).select('id').single();
+  const { data: x26 } = await db.from('business_expenses').insert({
+    studio_id: null, category: 'meals_staff', description: 'tax-test xyear 2026',
+    amount_cents: 10000, incurred_on: '2026-01-15',
+  } as never).select('id').single();
+  try {
+    const xp = await (await import('../lib/tax-server')).computePnLRange(db as never, '2025-12-01', '2026-01-31');
+    const staffCat = xp.expensesByCategory.find((c) => c.key === 'meals_staff');
+    ok('cross-year staff meals: $100 (2025) + $100 (2026) ⇒ deductible exactly $50',
+      (staffCat?.amountCents ?? 0) >= 20000 && (staffCat?.deductibleCents ?? -1) === 5000,
+      `amount ${staffCat?.amountCents} deductible ${staffCat?.deductibleCents}`);
+  } finally {
+    await db.from('business_expenses').delete().in('id', [(x25 as any).id, (x26 as any).id]);
+  }
+
   console.log('\n— Live: recurring expense materializer (owner-audit fix) —');
   const { data: tpl } = await db.from('recurring_expense_templates').insert({
     studio_id: null, label: 'TAXTEST monthly rent', category: 'rent', amount_cents: 99901, day_of_month: 1, active: true,
