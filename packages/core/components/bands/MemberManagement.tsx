@@ -15,6 +15,7 @@ import {
 import type { BandMember, BandInvite } from '@/lib/bands';
 import { memberHasFlag, isOwner } from '@/lib/bands';
 import { fmtStampDate } from '@/lib/studio-time';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 type ProfileLookup = Record<string, { display_name: string | null; public_profile_slug: string | null }>;
 
@@ -45,6 +46,7 @@ export default function MemberManagement({
   pendingInvites,
 }: Props) {
   const router = useRouter();
+  const b = useBrand();
   const canManage = memberHasFlag(currentUserMembership, 'can_manage_members');
 
   // Invite form state
@@ -205,7 +207,7 @@ export default function MemberManagement({
                   disabled={sending}
                 />
                 <p className="font-mono text-xs text-black/50 mt-1.5">
-                  If they don&apos;t have a Sweet Dreams account yet, they&apos;ll be prompted to create one.
+                  If they don&apos;t have a {b.name} account yet, they&apos;ll be prompted to create one.
                 </p>
               </div>
 

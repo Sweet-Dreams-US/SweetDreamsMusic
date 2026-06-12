@@ -18,7 +18,8 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function SellBeatsPage() {
+export default async function SellBeatsPage() {
+  const brand = await getBrand();
   return (
     <>
       {/* Hero */}
@@ -29,7 +30,7 @@ export default function SellBeatsPage() {
           </p>
           <h1 className="text-display-md mb-6">SELL YOUR BEATS</h1>
           <p className="font-mono text-white/70 text-body-md max-w-2xl">
-            Partner with Sweet Dreams Music to reach more artists. We handle
+            Partner with {brand.name} to reach more artists. We handle
             the storefront, marketing, and payments — you focus on making heat.
           </p>
         </div>

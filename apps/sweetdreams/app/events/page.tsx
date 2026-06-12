@@ -41,6 +41,7 @@ export const dynamic = 'force-dynamic';
  */
 export default async function EventsPage() {
   await requireHref('/events'); // 404 when Events is disabled in the control panel
+  const brand = await getBrand();
   const events = await getUpcomingListedEvents();
 
   return (
@@ -49,7 +50,7 @@ export default async function EventsPage() {
       <section className="relative bg-black text-white py-20 sm:py-28 overflow-hidden">
         <Image
           src={STUDIO_IMAGES.adamCloseupWide}
-          alt="Sweet Dreams Music studio"
+          alt={`${brand.name} studio`}
           fill
           className="object-cover opacity-25"
           priority
@@ -61,7 +62,7 @@ export default async function EventsPage() {
           </p>
           <h1 className="text-display-md mb-6">EVENTS</h1>
           <p className="font-mono text-white/70 text-body-md max-w-2xl">
-            Showcases, sessions, open nights, and special broadcasts from the Sweet Dreams Music floor.
+            Showcases, sessions, open nights, and special broadcasts from the {brand.name} floor.
             Keep this page bookmarked — new events post regularly.
           </p>
         </div>
@@ -75,7 +76,7 @@ export default async function EventsPage() {
             <h2 className="text-heading-lg mb-6">NO EVENTS LISTED RIGHT NOW</h2>
             <p className="font-mono text-black/70 text-body-md max-w-2xl mx-auto mb-10">
               We&apos;re booking our first round of <strong className="text-black">The Sweet Spot</strong> band
-              showcases — live-tracked performances from the Sweet Dreams Music floor. First dates post soon.
+              showcases — live-tracked performances from the {brand.name} floor. First dates post soon.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">

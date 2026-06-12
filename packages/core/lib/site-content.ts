@@ -22,14 +22,16 @@ export const CONTENT_REGISTRY: readonly ContentField[] = [
   // ── footer (renders on every page) ──
   { key: 'footer.brand.blurb', group: 'footer', label: 'Brand blurb', kind: 'richtext', default: 'Professional recording studio in Fort Wayne, IN. Sessions starting at $60/hour.' },
   { key: 'footer.hours.headline', group: 'footer', label: 'Hours headline', kind: 'text', default: 'Open 24 Hours — 7 Days a Week' },
-  { key: 'footer.company.label', group: 'footer', label: 'Company link label', kind: 'text', default: 'A Sweet Dreams Company' },
+  // Brand-neutral default — the production site_content row carries the real copy ('A Sweet Dreams Company'); this only renders if the CMS row is missing.
+  { key: 'footer.company.label', group: 'footer', label: 'Company link label', kind: 'text', default: 'Our Company' },
   // ── home ──
   { key: 'home.hero.kicker', group: 'home', label: 'Hero kicker', kind: 'text', default: 'Fort Wayne Recording Studio' },
   { key: 'home.hero.image', group: 'home', label: 'Hero background image', kind: 'image', default: STUDIO_IMAGES.studioBSideLowAngleWide },
   // ── about ──
   { key: 'about.hero.kicker', group: 'about', label: 'Hero kicker', kind: 'text', default: 'About Us' },
   { key: 'about.hero.title', group: 'about', label: 'Hero title', kind: 'text', default: 'THE STUDIO' },
-  { key: 'about.hero.intro', group: 'about', label: 'Hero intro', kind: 'richtext', default: "Sweet Dreams Music is Fort Wayne's premier recording studio. We provide a professional, creative environment where artists can bring their vision to life." },
+  // Brand-neutral default — the production site_content row carries the real branded copy; this only renders if the CMS row is missing.
+  { key: 'about.hero.intro', group: 'about', label: 'Hero intro', kind: 'richtext', default: 'We provide a professional, creative environment where artists can bring their vision to life.' },
   { key: 'about.body.heading', group: 'about', label: 'Body heading', kind: 'text', default: 'TWO STUDIOS. ONE MISSION.' },
   // ── contact ──
   { key: 'contact.hero.kicker', group: 'contact', label: 'Hero kicker', kind: 'text', default: 'Get in Touch' },

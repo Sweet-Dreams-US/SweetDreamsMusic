@@ -21,6 +21,7 @@ import { studioInputToUtcISO, fmtStampDateTime } from '@/lib/studio-time';
 import { SESSION_KIND_LABELS, type MediaSessionKind } from '@/lib/media-scheduling';
 import { SITE_URL } from '@/lib/constants';
 import { emailIdentity } from '@/lib/email';
+import { getBrand } from '@/lib/brand-server';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const VALID_KINDS: MediaSessionKind[] = ['video', 'photo', 'storyboard', 'marketing-meeting', 'planning_call', 'other'];
@@ -95,13 +96,14 @@ export async function POST(request: NextRequest) {
   // Notify the client.
   const whenLabel = fmtStampDateTime(startsAt, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   try {
+    const b = await getBrand();
     await resend.emails.send({
       from: await emailIdentity(),
       to: [clientEmail],
       subject: `Your ${SESSION_KIND_LABELS[sessionKind]} is booked — ${whenLabel}`,
       html: `
         <h2>You're on the calendar 🎬</h2>
-        <p>The Sweet Dreams media team scheduled a <strong>${SESSION_KIND_LABELS[sessionKind]}</strong> for you on <strong>${whenLabel}</strong> (Fort Wayne).</p>
+        <p>The ${b.mediaName} team scheduled a <strong>${SESSION_KIND_LABELS[sessionKind]}</strong> for you on <strong>${whenLabel}</strong> (${b.address.city}).</p>
         <p>Location: ${location === 'external' ? (externalText || 'On location') : 'At the studio'}.</p>
         ${vision ? `<p>Notes: ${vision.replace(/</g, '&lt;')}</p>` : ''}
         <p><a href="${SITE_URL}/dashboard/hub?tab=media">View in your Artist Hub</a></p>

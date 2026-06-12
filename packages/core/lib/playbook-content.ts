@@ -36,7 +36,7 @@ export const ROADMAP_SECTIONS: PlaybookSection[] = [
         heading: 'Budgeting Your Music Career',
         body: [
           'Here\'s a realistic monthly breakdown for an emerging artist with a $300/month music budget:',
-          'Studio time: $120-150 (2-3 hours at Sweet Dreams). Distribution: $20/month (DistroKid) or $0 if annual. Marketing/ads: $50-80. Beats/production: $30-75 (leases). Miscellaneous (artwork, photography): $25-50.',
+          'Studio time: $120-150 (2-3 hours at the studio). Distribution: $20/month (DistroKid) or $0 if annual. Marketing/ads: $50-80. Beats/production: $30-75 (leases). Miscellaneous (artwork, photography): $25-50.',
           'As your music starts generating revenue, reinvest 100% back into your career until you\'re consistently earning. The goal for Year 1 isn\'t profit — it\'s building a catalog, audience, and skills.',
           'Track your ROI per release: If you spent $300 making a single and it earned $50 in streams + got you 200 new followers, that\'s data you can use. Which singles performed best relative to cost? Double down on what works.',
         ],

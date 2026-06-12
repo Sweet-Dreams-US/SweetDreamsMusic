@@ -17,10 +17,12 @@
 
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
 import { Send, MessageCircle } from 'lucide-react';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '0x4AAAAAAC-NKDZ6-U5VzVto';
 
 export default function SweetSpotInquiryForm() {
+  const b = useBrand();
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const turnstileRef = useRef<HTMLDivElement>(null);
@@ -226,8 +228,8 @@ export default function SweetSpotInquiryForm() {
       {status === 'error' && (
         <p className="font-mono text-sm text-red-400">
           Something went wrong. Please try again or email{' '}
-          <a href="mailto:jayvalleo@sweetdreams.us" className="text-accent underline">
-            jayvalleo@sweetdreams.us
+          <a href={`mailto:${b.email}`} className="text-accent underline">
+            {b.email}
           </a>{' '}
           directly.
         </p>

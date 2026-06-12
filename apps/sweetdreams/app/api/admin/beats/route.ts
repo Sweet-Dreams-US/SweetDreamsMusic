@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifyAdminAccess } from '@/lib/admin-auth';
 import { sendBeatReviewNotification } from '@/lib/email';
+import { getBrand } from '@/lib/brand-server';
 
 // GET - list all beats with producer info (admin sees ALL statuses including pending_approval)
 export async function GET() {
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
 
   const serviceClient = createServiceClient();
   const formData = await request.formData();
+  const b = await getBrand();
 
   const previewFile = formData.get('preview_file') as File;
   const title = formData.get('title') as string;
@@ -141,15 +143,27 @@ export async function POST(request: NextRequest) {
       }
       const fontSize = title.length <= 10 ? 56 : title.length <= 18 ? 44 : title.length <= 28 ? 36 : 28;
 
+      // Brand wordmark: one uppercased word per line, bottom-anchored at y=740
+      // so a two-word brand reproduces the legacy SWEET/DREAMS layout exactly
+      // (y=660/740, font-size 72); the accent bar + beat title track the first line.
+      const words = b.name.trim().toUpperCase().split(/\s+/).filter(Boolean);
+      const brandWords = words.length > 0 ? words : ['BEATS'];
+      const lineHeight = 80;
+      const firstY = 740 - lineHeight * (brandWords.length - 1);
+      const brandLines = brandWords
+        .map((word, i) => `<text x="60" y="${firstY + i * lineHeight}" font-family="Impact,'Arial Black',sans-serif" font-size="${Math.min(72, Math.floor(1080 / word.length))}" font-weight="900" letter-spacing="4" fill="${textColor}" opacity="0.9">${escapeXml(word)}</text>`)
+        .join('\n        ');
+      const barY = firstY - 80; // legacy 580
+      const titleY = barY - 40; // legacy 540
+
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800">
         <defs><linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:${bg}" /><stop offset="100%" style="stop-color:${adjustColor(bg, -30)}" /></linearGradient></defs>
         <rect width="800" height="800" fill="url(#bg)" />
         <line x1="0" y1="600" x2="800" y2="600" stroke="${textColor}" stroke-opacity="0.08" stroke-width="1" />
         <line x1="0" y1="200" x2="800" y2="200" stroke="${textColor}" stroke-opacity="0.08" stroke-width="1" />
-        <rect x="60" y="580" width="120" height="4" fill="${textColor}" opacity="0.7" />
-        <text x="60" y="660" font-family="Impact,'Arial Black',sans-serif" font-size="72" font-weight="900" letter-spacing="4" fill="${textColor}" opacity="0.9">SWEET</text>
-        <text x="60" y="740" font-family="Impact,'Arial Black',sans-serif" font-size="72" font-weight="900" letter-spacing="4" fill="${textColor}" opacity="0.9">DREAMS</text>
-        <text x="60" y="540" font-family="'Helvetica Neue',sans-serif" font-size="${fontSize}" font-weight="700" fill="white" opacity="0.95">${escapeXml(title)}</text>
+        <rect x="60" y="${barY}" width="120" height="4" fill="${textColor}" opacity="0.7" />
+        ${brandLines}
+        <text x="60" y="${titleY}" font-family="'Helvetica Neue',sans-serif" font-size="${fontSize}" font-weight="700" fill="white" opacity="0.95">${escapeXml(title)}</text>
         <text x="60" y="120" font-family="monospace" font-size="18" font-weight="600" fill="${textColor}" opacity="0.5" letter-spacing="6">${escapeXml(genre.toUpperCase())}</text>
         <rect x="740" y="40" width="24" height="24" fill="${textColor}" opacity="0.15" />
       </svg>`;
@@ -180,7 +194,7 @@ export async function POST(request: NextRequest) {
       genre: genre || null,
       bpm: bpm ? parseInt(bpm) : null,
       musical_key: key || null,
-      tags: tags ? tags.split(',').map((t: string) => t.trim()).filter(Boolean).concat(['Sweet Dreams']) : ['Sweet Dreams'],
+      tags: tags ? tags.split(',').map((t: string) => t.trim()).filter(Boolean).concat([b.name]) : [b.name],
       preview_url: previewUrl,
       audio_file_path: previewPath,
       mp3_file_path: mp3FilePath,

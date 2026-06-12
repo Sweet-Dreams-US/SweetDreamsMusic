@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { Send, Clock, Search, X, ChevronDown, Mail, Users, Mic, Music, CheckCircle, PartyPopper } from 'lucide-react';
 import { isEventListed, type SweetEvent } from '@/lib/events';
 import { fmtStampDate, fmtStampTime, fmtStampDateTime } from '@/lib/studio-time';
+import { SITE_URL } from '@/lib/constants';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 // ── Email Templates ──────────────────────────────────────────────────
 interface EmailTemplate {
@@ -31,7 +33,7 @@ function escapeHtml(s: string): string {
  * Compose subject + HTML body for an event announcement email.
  * Styled to match the existing templates (dark bg, accent gold headline).
  */
-function buildEventAnnouncement(event: SweetEvent): { subject: string; body: string } {
+function buildEventAnnouncement(event: SweetEvent, brandName: string): { subject: string; body: string } {
   const dateStr = fmtStampDate(event.starts_at, {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
@@ -60,20 +62,24 @@ function buildEventAnnouncement(event: SweetEvent): { subject: string; body: str
     description
       ? `<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 16px;white-space:pre-wrap">${description}</p>`
       : '',
-    `<a href="https://sweetdreamsmusic.com/events/${encodeURIComponent(event.slug)}" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">VIEW EVENT &amp; RSVP</a>`,
+    `<a href="${SITE_URL}/events/${encodeURIComponent(event.slug)}" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">VIEW EVENT &amp; RSVP</a>`,
     '<br/><br/>',
-    '<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— Sweet Dreams Music</p>',
+    `<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— ${escapeHtml(brandName)}</p>`,
   ].join('\n');
 
   return { subject, body };
 }
 
-const TEMPLATES: EmailTemplate[] = [
+// Templates are brand-parameterized: the sign-offs, "at <studio>" copy, and
+// site links render from the active brand (byte-identical for Sweet Dreams).
+function buildTemplates(brandName: string): EmailTemplate[] {
+  const name = escapeHtml(brandName);
+  return [
   {
     key: 'disregard',
     name: 'Disregard',
     subject: 'Please Disregard — Previous Email Sent in Error',
-    body: '<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">PLEASE DISREGARD</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Hey there, we apologize for the confusion!</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">You may have received an email from us recently that was sent in error. <strong>Please disregard it — no action is needed on your part.</strong></p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We\'re sorry for any inconvenience. If you have any questions, feel free to reach out.</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— Sweet Dreams Music</p>',
+    body: `<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">PLEASE DISREGARD</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Hey there, we apologize for the confusion!</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">You may have received an email from us recently that was sent in error. <strong>Please disregard it — no action is needed on your part.</strong></p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We're sorry for any inconvenience. If you have any questions, feel free to reach out.</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— ${name}</p>`,
     icon: 'X',
     color: 'bg-red-50 border-red-200 text-red-700',
   },
@@ -81,7 +87,7 @@ const TEMPLATES: EmailTemplate[] = [
     key: 'studio_update',
     name: 'Studio Update',
     subject: 'Studio Update — ',
-    body: '<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">STUDIO UPDATE</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Hey there!</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We wanted to let you know about some exciting changes at Sweet Dreams Music.</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Your update here]</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— Sweet Dreams Music</p>',
+    body: `<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">STUDIO UPDATE</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Hey there!</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We wanted to let you know about some exciting changes at ${name}.</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Your update here]</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— ${name}</p>`,
     icon: 'Studio',
     color: 'bg-blue-50 border-blue-200 text-blue-700',
   },
@@ -89,7 +95,7 @@ const TEMPLATES: EmailTemplate[] = [
     key: 'new_service',
     name: 'New Service',
     subject: 'Now Available — ',
-    body: '<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">NOW AVAILABLE</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We\'re excited to announce a new service at Sweet Dreams Music!</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Describe the new service]</p>\n<a href="https://sweetdreamsmusic.com" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">CHECK IT OUT</a>\n<br/><br/>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— Sweet Dreams Music</p>',
+    body: `<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">NOW AVAILABLE</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We're excited to announce a new service at ${name}!</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Describe the new service]</p>\n<a href="${SITE_URL}" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">CHECK IT OUT</a>\n<br/><br/>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— ${name}</p>`,
     icon: 'New',
     color: 'bg-green-50 border-green-200 text-green-700',
   },
@@ -107,7 +113,7 @@ const TEMPLATES: EmailTemplate[] = [
     key: 'holiday_hours',
     name: 'Holiday Hours',
     subject: 'Holiday Hours — ',
-    body: '<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">HOLIDAY HOURS</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Just a heads up about our upcoming holiday schedule:</p>\n<table style="margin:20px 0;border-collapse:collapse"><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">DATES</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">[dates here]</td></tr><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">HOURS</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">[hours here]</td></tr></table>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Regular hours resume [date]. Book your sessions now before slots fill up!</p>\n<a href="https://sweetdreamsmusic.com/book" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">BOOK A SESSION</a>\n<br/><br/>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— Sweet Dreams Music</p>',
+    body: `<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">HOLIDAY HOURS</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Just a heads up about our upcoming holiday schedule:</p>\n<table style="margin:20px 0;border-collapse:collapse"><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">DATES</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">[dates here]</td></tr><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">HOURS</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">[hours here]</td></tr></table>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Regular hours resume [date]. Book your sessions now before slots fill up!</p>\n<a href="${SITE_URL}/book" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">BOOK A SESSION</a>\n<br/><br/>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— ${name}</p>`,
     icon: 'Holiday',
     color: 'bg-amber-50 border-amber-200 text-amber-700',
   },
@@ -115,7 +121,7 @@ const TEMPLATES: EmailTemplate[] = [
     key: 'promotion',
     name: 'Promotion',
     subject: 'Special Offer — ',
-    body: '<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">SPECIAL OFFER</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We\'ve got something special for you!</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Describe the promotion/offer]</p>\n<a href="https://sweetdreamsmusic.com/book" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">BOOK NOW</a>\n<br/><br/>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— Sweet Dreams Music</p>',
+    body: `<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">SPECIAL OFFER</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We've got something special for you!</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Describe the promotion/offer]</p>\n<a href="${SITE_URL}/book" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">BOOK NOW</a>\n<br/><br/>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— ${name}</p>`,
     icon: 'Promo',
     color: 'bg-purple-50 border-purple-200 text-purple-700',
   },
@@ -123,7 +129,7 @@ const TEMPLATES: EmailTemplate[] = [
     key: 'thank_you',
     name: 'Thank You',
     subject: 'Thank You — ',
-    body: '<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">THANK YOU</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We just wanted to take a moment to say thank you.</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Your message here]</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We appreciate your support and look forward to seeing you again!</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— Sweet Dreams Music</p>',
+    body: `<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">THANK YOU</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We just wanted to take a moment to say thank you.</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Your message here]</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We appreciate your support and look forward to seeing you again!</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— ${name}</p>`,
     icon: 'Thanks',
     color: 'bg-pink-50 border-pink-200 text-pink-700',
   },
@@ -131,7 +137,7 @@ const TEMPLATES: EmailTemplate[] = [
     key: 'policy_update',
     name: 'Policy Update',
     subject: 'Important Update — ',
-    body: '<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">IMPORTANT UPDATE</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We\'re writing to let you know about an update to our policies.</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Describe the policy change]</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">These changes take effect [date]. If you have any questions, don\'t hesitate to reach out.</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— Sweet Dreams Music</p>',
+    body: `<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">IMPORTANT UPDATE</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We're writing to let you know about an update to our policies.</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Describe the policy change]</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">These changes take effect [date]. If you have any questions, don't hesitate to reach out.</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— ${name}</p>`,
     icon: 'Policy',
     color: 'bg-orange-50 border-orange-200 text-orange-700',
   },
@@ -139,11 +145,12 @@ const TEMPLATES: EmailTemplate[] = [
     key: 'custom',
     name: 'Custom',
     subject: '',
-    body: '<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">[TITLE]</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Your message here]</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— Sweet Dreams Music</p>',
+    body: `<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">[TITLE]</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Your message here]</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— ${name}</p>`,
     icon: 'Custom',
     color: 'bg-black/5 border-black/20 text-black/70',
   },
-];
+  ];
+}
 
 // ── Types ────────────────────────────────────────────────────────────
 interface Recipient {
@@ -167,7 +174,11 @@ type SubView = 'compose' | 'history';
 
 // ── Component ────────────────────────────────────────────────────────
 export default function Notifications() {
+  const brand = useBrand();
   const [subView, setSubView] = useState<SubView>('compose');
+
+  // Brand-aware template set (sign-offs + copy render from the active brand).
+  const templates = useMemo(() => buildTemplates(brand.name), [brand.name]);
 
   // Compose state
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null);
@@ -281,7 +292,7 @@ export default function Notifications() {
 
   function selectEventForAnnouncement(event: SweetEvent) {
     setSelectedEventId(event.id);
-    const { subject: s, body: b } = buildEventAnnouncement(event);
+    const { subject: s, body: b } = buildEventAnnouncement(event, brand.name);
     setSubject(s);
     setBodyHtml(b);
   }
@@ -398,7 +409,7 @@ export default function Notifications() {
           <div>
             <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-black/60 mb-3">1. Choose a Template</h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {TEMPLATES.map(t => (
+              {templates.map(t => (
                 <button
                   key={t.key}
                   onClick={() => selectTemplate(t)}

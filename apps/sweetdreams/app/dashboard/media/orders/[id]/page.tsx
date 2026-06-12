@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth';
 import { getUserBands } from '@/lib/bands-server';
+import { getBrand } from '@/lib/brand-server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { getSessionsForBooking, getEngineerByUserId } from '@/lib/media-scheduling-server';
 import { SESSION_KIND_LABELS } from '@/lib/media-scheduling';
@@ -36,9 +37,10 @@ import PackageReview from '@/components/media/PackageReview';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Order — Sweet Dreams Media',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const b = await getBrand();
+  return { title: `Order — ${b.mediaName}` };
+}
 
 export default async function OrderDetailPage({
   params,
@@ -49,6 +51,7 @@ export default async function OrderDetailPage({
   const user = await getSessionUser();
   if (!user) redirect(`/login?redirect=/dashboard/media/orders/${id}`);
 
+  const b = await getBrand();
   const service = createServiceClient();
   const { data: bookingRow } = await service
     .from('media_bookings')
@@ -218,7 +221,7 @@ export default async function OrderDetailPage({
             </p>
             <MessageThread bookingId={booking.id} />
             <p className="font-mono text-[11px] text-black/40 mt-2">
-              Cole or Jay will reply here. References, ideas, and date proposals all
+              Our team will reply here. References, ideas, and date proposals all
               live in this thread so nothing gets lost.
             </p>
           </div>
@@ -335,7 +338,7 @@ export default async function OrderDetailPage({
                           <p className="flex items-center gap-1">
                             <MapPin className="w-3 h-3" />
                             {s.location === 'studio'
-                              ? 'Sweet Dreams Studio'
+                              ? `${b.name} Studio`
                               : s.external_location_text || 'External (TBD)'}
                           </p>
                           <p>Engineer: {engineerName}</p>

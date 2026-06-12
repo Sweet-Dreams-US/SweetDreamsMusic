@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Users, Video, ArrowRight } from 'lucide-react';
 import { STUDIO_IMAGES } from '@/lib/images';
+import { getBrand } from '@/lib/brand-server';
 
 /**
  * BuiltForBands — homepage marketing section announcing Sweet Dreams' band capabilities
@@ -12,7 +13,8 @@ import { STUDIO_IMAGES } from '@/lib/images';
  *  2. Surfaces the band pivot before users land on mic showcases,
  *  3. Links directly to /bands (the Sweet Spot program landing page).
  */
-export default function BuiltForBands() {
+export default async function BuiltForBands() {
+  const b = await getBrand();
   return (
     <section className="relative bg-yellow-300 text-black py-20 sm:py-28 overflow-hidden border-y-4 border-black">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -20,7 +22,7 @@ export default function BuiltForBands() {
           {/* Left — copy */}
           <div>
             <p className="font-mono text-black text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-3">
-              New at Sweet Dreams
+              New at {b.name}
             </p>
             <h2 className="text-heading-xl mb-6">BUILT FOR BANDS</h2>
             <p className="font-mono text-black/80 text-body-md mb-6 max-w-xl">

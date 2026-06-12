@@ -18,6 +18,7 @@ import { Clock, MapPin, FileText, DollarSign, Inbox } from 'lucide-react';
 import { formatCents } from '@/lib/utils';
 import { SESSION_KIND_LABELS, type MediaSessionKind } from '@/lib/media-scheduling';
 import { fmtStampDateTime, fmtStampTime, fmtStampDate } from '@/lib/studio-time';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 interface SessionRow {
   id: string;
@@ -193,6 +194,7 @@ function SessionCard({
   profileMap: Map<string, ProfileRow>;
   bandMap: Map<string, BandRow>;
 }) {
+  const b = useBrand();
   const offering = parent ? offeringMap.get(parent.offering_id) : undefined;
   const buyer = parent ? profileMap.get(parent.user_id) : undefined;
   const buyerLabel =
@@ -232,7 +234,7 @@ function SessionCard({
         <p className="flex items-center gap-1">
           <MapPin className="w-3 h-3" />
           {session.location === 'studio'
-            ? 'Sweet Dreams Studio'
+            ? `${b.name} Studio`
             : session.external_location_text || 'External (TBD)'}
         </p>
         {session.notes && (

@@ -22,6 +22,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Calendar, MapPin, Plus, Loader2, AlertCircle, CheckCircle2, ArrowRight, Building2, RotateCcw } from 'lucide-react';
 import { ENGINEERS } from '@/lib/constants';
 import { fmtStampDateTime, fmtStampTime } from '@/lib/studio-time';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 interface Session {
   id: string;
@@ -61,6 +62,7 @@ interface Props {
 }
 
 export default function SessionScheduler({ bookingId, lineId, lineLabel, defaultKind = 'other' }: Props) {
+  const b = useBrand();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [role, setRole] = useState<'admin' | 'buyer' | 'engineer' | null>(null);
   const [loading, setLoading] = useState(true);
@@ -266,7 +268,7 @@ export default function SessionScheduler({ bookingId, lineId, lineLabel, default
               onChange={(e) => setLocation(e.target.value as 'studio' | 'external')}
               className="border border-black/20 px-2 py-1 font-mono text-[11px]"
             >
-              <option value="studio">Sweet Dreams Studio</option>
+              <option value="studio">{b.name} Studio</option>
               <option value="external">External location</option>
             </select>
           </div>
@@ -331,6 +333,7 @@ function SessionRow({
   approverEngineerId: string;
   setApproverEngineerId: (v: string) => void;
 }) {
+  const b = useBrand();
   const startLabel = fmtStampDateTime(session.starts_at, { weekday: 'short' });
   const endLabel = fmtStampTime(session.ends_at);
   const statusColor =
@@ -377,7 +380,7 @@ function SessionRow({
           </div>
           <p className="font-mono text-[11px] text-black/65 mt-0.5 inline-flex items-center gap-1">
             {session.location === 'studio' ? (
-              <><Building2 className="w-3 h-3" /> Sweet Dreams Studio</>
+              <><Building2 className="w-3 h-3" /> {b.name} Studio</>
             ) : (
               <><MapPin className="w-3 h-3" /> {session.external_location_text || 'External (TBD)'}</>
             )}

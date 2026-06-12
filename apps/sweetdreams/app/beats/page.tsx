@@ -23,6 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function BeatsPage() {
+  const brand = await getBrand();
   const supabase = await createClient();
 
   const { data: beats } = await supabase
@@ -41,7 +42,7 @@ export default async function BeatsPage() {
           </p>
           <h1 className="text-display-md mb-6">FIND YOUR SOUND</h1>
           <p className="font-mono text-white/70 text-body-md max-w-2xl">
-            Professionally produced beats, curated by Sweet Dreams Music.
+            Professionally produced beats, curated by {brand.name}.
             Browse, preview, and buy — instant download delivery.
           </p>
         </div>
@@ -96,7 +97,7 @@ export default async function BeatsPage() {
             <div>
               <h2 className="text-heading-lg mb-4">ARE YOU A PRODUCER?</h2>
               <p className="font-mono text-black/70 text-body-sm mb-6">
-                Sell your beats on Sweet Dreams Music. You keep 60% of every sale.
+                Sell your beats on {brand.name}. You keep 60% of every sale.
               </p>
               <Link href="/sell-beats"
                 className="border-2 border-black text-black font-mono text-sm font-bold tracking-wider uppercase px-6 py-3 hover:bg-black hover:text-white transition-colors no-underline inline-flex items-center justify-center">

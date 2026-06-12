@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifyProducerAccess } from '@/lib/admin-auth';
 import { sendAdminBeatApprovalNotification } from '@/lib/email';
 import { SUPER_ADMINS } from '@/lib/constants';
+import { getBrand } from '@/lib/brand-server';
 
 export async function GET() {
   const supabase = await createClient();
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
 
   const serviceClient = createServiceClient();
   const body = await request.json();
+  const b = await getBrand();
 
   const {
     title, genre, bpm, key, tags,
@@ -68,7 +70,7 @@ export async function POST(request: NextRequest) {
   let coverImageUrl: string | null = null;
   try {
     const { generateBeatCover } = await import('@/lib/beat-cover');
-    const svg = generateBeatCover(genre || null);
+    const svg = generateBeatCover(genre || null, b.name);
     const coverPath = `beats/covers/${Date.now()}_cover.svg`;
     const { error: coverErr } = await serviceClient.storage
       .from('media')
@@ -89,7 +91,7 @@ export async function POST(request: NextRequest) {
       genre: genre || null,
       bpm: bpm ? parseInt(bpm) : null,
       musical_key: key || null,
-      tags: tags ? (typeof tags === 'string' ? tags.split(',') : tags).map((t: string) => t.trim()).filter(Boolean).concat(['Sweet Dreams']) : ['Sweet Dreams'],
+      tags: tags ? (typeof tags === 'string' ? tags.split(',') : tags).map((t: string) => t.trim()).filter(Boolean).concat([b.name]) : [b.name],
       preview_url: previewUrl,
       audio_file_path: preview_file_path,
       mp3_file_path: mp3_file_path || null,

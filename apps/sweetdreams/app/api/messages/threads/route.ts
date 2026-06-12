@@ -16,6 +16,7 @@ import type { Thread, ThreadWithMeta } from '@/lib/messaging';
 import { defaultThreadDisplayName } from '@/lib/messaging';
 import { DM_KINDS, STUDIO_KIND } from '@/lib/messaging-matrix';
 import { resolveParty, engineerClientUserIds, mediaClientUserIds } from '@/lib/messaging-server';
+import { getBrand } from '@/lib/brand-server';
 
 const STAFF_STUDIO_LIMIT = 200;
 
@@ -212,6 +213,7 @@ export async function GET() {
     }
   }
 
+  const b = await getBrand();
   const enriched: (ThreadWithMeta & { mine: boolean })[] = allThreads
     .map((t) => {
       const latest = latestByThread.get(t.id);
@@ -227,7 +229,7 @@ export async function GET() {
         mine,
         display_name: t.kind === STUDIO_KIND && !mine
           ? (ownerNames.get(t.owner_user_id as string) ?? 'User')
-          : defaultThreadDisplayName(t),
+          : defaultThreadDisplayName(t, b.name),
         unread,
         last_message_preview: latest?.body?.slice(0, 120) ?? undefined,
         last_message_role: latest?.role as ThreadWithMeta['last_message_role'],

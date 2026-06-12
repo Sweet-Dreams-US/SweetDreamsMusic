@@ -16,6 +16,7 @@ import {
   type EventVisibility,
   type EventRsvpStatus,
 } from '@/lib/events';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 // ─── Types ─────────────────────────────────────────────────────────────
 type SubView = 'list' | 'form' | 'detail';
@@ -509,6 +510,7 @@ function FormView(props: {
   onCancel: () => void;
 }) {
   const { form, setForm, editingId, saving, onSave, onCancel } = props;
+  const b = useBrand();
 
   function update<K extends keyof SweetEvent>(key: K, value: SweetEvent[K] | string | null) {
     setForm({ ...form, [key]: value });
@@ -578,12 +580,12 @@ function FormView(props: {
         </Field>
       </div>
 
-      <Field label="Location" hint="Free-form. e.g. Sweet Dreams Studio A, 123 Main St, or TBA.">
+      <Field label="Location" hint={`Free-form. e.g. ${b.name} Studio A, 123 Main St, or TBA.`}>
         <input
           type="text"
           value={form.location || ''}
           onChange={(e) => update('location', e.target.value)}
-          placeholder="Sweet Dreams Music · Studio A"
+          placeholder={`${b.name} · Studio A`}
           className="w-full border-2 border-black px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none"
         />
       </Field>

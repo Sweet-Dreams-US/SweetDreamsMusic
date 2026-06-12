@@ -65,12 +65,6 @@ function sameAsLinks(b: Brand): string[] {
     .map(([, url]) => url);
 }
 
-// TRANSITION (W0): the beat store's public name is NOT derivable from the
-// Brand object ("Sweet Dreams" ≠ brand.name "Sweet Dreams Music" — appending
-// "Beat Store" to brand.name would NOT be byte-identical). Needs its own
-// brand field (e.g. brand.storeName) in a later whitelabel phase.
-const BEAT_STORE_NAME = 'Sweet Dreams Beat Store';
-
 function script(data: unknown) {
   return (
     <script
@@ -101,8 +95,8 @@ function LocalBusinessSchema({ brand, engineers }: { brand: Brand; engineers: Js
     },
     geo: {
       '@type': 'GeoCoordinates',
-      latitude: 41.0793,
-      longitude: -85.1394,
+      latitude: brand.geo.lat,
+      longitude: brand.geo.lng,
     },
     openingHoursSpecification: {
       '@type': 'OpeningHoursSpecification',
@@ -245,7 +239,7 @@ function MusicStoreSchema({ brand }: { brand: Brand }) {
     '@context': 'https://schema.org',
     '@type': 'MusicStore',
     '@id': `${SITE_URL}/#beatstore`,
-    name: BEAT_STORE_NAME,
+    name: brand.storeName,
     description: `Online beat marketplace by ${brand.name}. Browse and license beats from ${brand.address.city} producers. MP3 leases, trackout leases, and exclusive rights available.`,
     url: `${SITE_URL}/beats`,
     image: OG_IMAGE,
@@ -336,7 +330,7 @@ function FAQSchema({ brand, engineers }: { brand: Brand; engineers: JsonLdEngine
         'Both. Band recording happens in Studio A on flat-rate packages: $440 for 4 hours, $700 for 8 hours, or $1,800 for a 3-day × 8-hour block. Each package includes a free 1-hour setup window before the metered session starts.',
     },
     {
-      question: `How do beat licenses work on ${BEAT_STORE_NAME}?`,
+      question: `How do beat licenses work on ${brand.storeName}?`,
       answer:
         'Three license tiers: MP3 Lease ($29.99, 1-year, MP3 only), Trackout Lease ($74.99, 2-year, stems + MP3), and Exclusive Rights (starting at $400, permanent ownership with the beat removed from the store on purchase). Producers receive 60% of every sale.',
     },

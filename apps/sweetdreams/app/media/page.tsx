@@ -69,6 +69,7 @@ const PORTFOLIO_VIDEOS = [
  */
 export default async function MediaPage() {
   await requireHref('/media'); // 404 when Media is disabled in the control panel
+  const brand = await getBrand();
   const user = await getSessionUser();
   const bandMemberships = user ? await getUserBands(user.id) : [];
   const viewer: 'anonymous' | 'solo' | 'band' = !user
@@ -103,7 +104,7 @@ export default async function MediaPage() {
       <section className="relative bg-black text-white py-20 sm:py-28 overflow-hidden">
         <Image
           src={STUDIO_IMAGES.prvrbTopStudioAWide}
-          alt="Sweet Dreams Media"
+          alt={brand.mediaName}
           fill
           className="object-cover opacity-30"
           priority

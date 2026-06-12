@@ -5,6 +5,11 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Loader2, Upload, AlertCircle, Users, ImageIcon, Save } from 'lucide-react';
 import type { Band } from '@/lib/bands';
+import { SITE_URL } from '@/lib/constants';
+
+// Bare host for display copy ("sweetdreamsmusic.com/bands/slug") — SITE_URL is
+// the per-instance NEXT_PUBLIC_SITE_URL, so this follows the deployed brand.
+const SITE_HOST = SITE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
 type SocialField =
   | 'spotify_link'
@@ -327,7 +332,7 @@ export default function EditBandForm({ band, isOwner }: { band: Band; isOwner: b
           <div>
             <p className="font-mono text-sm font-bold">Public band page</p>
             <p className="font-mono text-xs text-black/60 mt-0.5">
-              When on, your band page is live at sweetdreamsmusic.com/bands/{band.slug}
+              When on, your band page is live at {SITE_HOST}/bands/{band.slug}
             </p>
           </div>
         </label>

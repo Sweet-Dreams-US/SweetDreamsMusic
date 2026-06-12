@@ -8,6 +8,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { computePnL, listExpenses, contractorDashboard, getTaxProfile, getTaxConstants } from '@/lib/tax-server';
 import { TAX_DISCLAIMER, EXPENSE_CATEGORIES, ENTITY_TYPES } from '@/lib/tax';
 import { formatCents } from '@/lib/utils';
+import { getBrand } from '@/lib/brand-server';
 
 export const maxDuration = 60;
 
@@ -22,13 +23,13 @@ export async function GET(request: NextRequest) {
   const db = createServiceClient();
   const from = `${year}-01-01`, to = `${year}-12-31`;
 
-  const [pnl, profile, expenses, contractors, constants] = await Promise.all([
+  const [pnl, profile, expenses, contractors, constants, b] = await Promise.all([
     computePnL(db, year), getTaxProfile(db), listExpenses(db, from, to),
-    contractorDashboard(db, year), getTaxConstants(db, year),
+    contractorDashboard(db, year), getTaxConstants(db, year), getBrand(),
   ]);
 
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Sweet Dreams Music — Tax Center';
+  wb.creator = `${b.name} — Tax Center`;
   wb.created = new Date();
   const catLabel = (k: string) => EXPENSE_CATEGORIES.find((c) => c.key === k)?.label ?? k;
   const catLine = (k: string) => EXPENSE_CATEGORIES.find((c) => c.key === k)?.scheduleCLine ?? '';

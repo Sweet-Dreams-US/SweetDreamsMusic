@@ -62,32 +62,34 @@ const SWEET_SPOT_PHOTOS = [
 
 // What you actually get with a Sweet Spot booking. This is the whole pitch —
 // straight, no "apply / review / maybe" language, because this is pay-to-book.
-const SWEET_SPOT_INCLUDES = [
-  {
-    icon: Film,
-    title: 'Full Video',
-    description:
-      'A full-length video of your Sweet Spot session, multicam, color-graded, ready for YouTube, press, label pitches, and your release rollout.',
-  },
-  {
-    icon: Mic2,
-    title: 'Two Songs, Professional Mix',
-    description:
-      'Two songs recorded live in our tracking room, mixed by our team. Delivered as finished masters you can release or use for sync.',
-  },
-  {
-    icon: Sparkles,
-    title: '3–6 Short-Form Clips',
-    description:
-      'Vertical cuts built for Reels, TikTok, and Shorts — formatted to push the video (and your band) on social.',
-  },
-  {
-    icon: Video,
-    title: 'Featured on Sweet Dreams YouTube',
-    description:
-      'Your Sweet Spot lands on our YouTube channel with full credit links, so our audience finds you alongside everything else we publish.',
-  },
-] as const;
+// Function of the brand name so the YouTube tile follows brand_settings.
+const sweetSpotIncludes = (brandName: string) =>
+  [
+    {
+      icon: Film,
+      title: 'Full Video',
+      description:
+        'A full-length video of your Sweet Spot session, multicam, color-graded, ready for YouTube, press, label pitches, and your release rollout.',
+    },
+    {
+      icon: Mic2,
+      title: 'Two Songs, Professional Mix',
+      description:
+        'Two songs recorded live in our tracking room, mixed by our team. Delivered as finished masters you can release or use for sync.',
+    },
+    {
+      icon: Sparkles,
+      title: '3–6 Short-Form Clips',
+      description:
+        'Vertical cuts built for Reels, TikTok, and Shorts — formatted to push the video (and your band) on social.',
+    },
+    {
+      icon: Video,
+      title: `Featured on ${brandName} YouTube`,
+      description:
+        'Your Sweet Spot lands on our YouTube channel with full credit links, so our audience finds you alongside everything else we publish.',
+    },
+  ] as const;
 
 // Standard band recording pricing. Mirrors BAND_PRICING in lib/constants.ts.
 // Updated 2026-04-28 per Cole: 4hr → $440 (was $400), 8hr → $700 flat (was
@@ -139,6 +141,8 @@ const BAND_FEATURES = [
 
 export default async function BandsPage() {
   await requireHref('/bands'); // 404 when Bands is disabled in the control panel
+  const brand = await getBrand();
+  const includes = sweetSpotIncludes(brand.name);
   // DB-driven band prices (studio_rooms band tiers) so this page matches the
   // booking engine + /pricing. Constants fallback baked into the loader.
   const studios = await getStudioConfigs(createServiceClient());
@@ -154,7 +158,7 @@ export default async function BandsPage() {
       <section className="relative bg-black text-white py-20 sm:py-28 overflow-hidden">
         <Image
           src={SWEET_SPOT_PHOTOS[0].src}
-          alt="Sweet Dreams band sessions"
+          alt={`${brand.name} band sessions`}
           fill
           className="object-cover opacity-25"
           priority
@@ -163,7 +167,7 @@ export default async function BandsPage() {
         <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/50 to-black/85" />
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <p className="font-mono text-accent text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-3">
-            Bands at Sweet Dreams Music
+            Bands at {brand.name}
           </p>
           <h1 className="text-display-md sm:text-display-lg mb-8">RECORD. FILM. RELEASE.</h1>
           <div className="flex flex-col sm:flex-row gap-4">
@@ -234,13 +238,13 @@ export default async function BandsPage() {
               className="w-12 h-12 sm:w-14 sm:h-14 object-contain"
             />
             <p className="font-mono text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase text-black/50">
-              Sweet Dreams Music — Live Band Video Series
+              {brand.name} — Live Band Video Series
             </p>
           </div>
           <h2 className="text-heading-xl mb-8">A RELEASE-READY VIDEO SESSION</h2>
           <div className="max-w-3xl mb-12 sm:mb-16">
             <p className="font-mono text-black/80 text-body-md mb-4">
-              The Sweet Spot is the Sweet Dreams Music <strong>live-band video series</strong>. You come in,
+              The Sweet Spot is the {brand.name} <strong>live-band video series</strong>. You come in,
               play two songs live on our tracking floor, and leave with finished video, finished audio, and
               clips built to push the session on social.
             </p>
@@ -252,7 +256,7 @@ export default async function BandsPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
-            {SWEET_SPOT_INCLUDES.map((item) => (
+            {includes.map((item) => (
               <div
                 key={item.title}
                 className="border-2 border-black/10 p-8 sm:p-10 hover:border-accent transition-colors"
@@ -294,7 +298,7 @@ export default async function BandsPage() {
           >
             <iframe
               src="https://www.youtube.com/embed/hvfjYGGmcMQ"
-              title="The Sweet Spot — Sweet Dreams Music live-band video session"
+              title={`The Sweet Spot — ${brand.name} live-band video session`}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               referrerPolicy="strict-origin-when-cross-origin"
               allowFullScreen
@@ -309,7 +313,7 @@ export default async function BandsPage() {
             />
           </div>
           <p className="font-mono text-white/50 text-body-sm mt-4">
-            Follow Sweet Dreams Music on YouTube to catch every Sweet Spot release as it drops.
+            Follow {brand.name} on YouTube to catch every Sweet Spot release as it drops.
           </p>
         </div>
       </section>
@@ -329,12 +333,12 @@ export default async function BandsPage() {
               <div className="flex items-center gap-3 mb-6">
                 <Users className="w-8 h-8 text-accent" strokeWidth={1.5} />
                 <p className="font-mono text-xs font-semibold tracking-[0.3em] uppercase text-black/60">
-                  Path A · Already on Sweet Dreams
+                  Path A · Already on {brand.name}
                 </p>
               </div>
               <h3 className="text-heading-md mb-4">Book it directly</h3>
               <p className="font-mono text-black/70 text-body-sm mb-4">
-                If your band is set up on Sweet Dreams Music, you can book a Sweet Spot the same way you book
+                If your band is set up on {brand.name}, you can book a Sweet Spot the same way you book
                 any band session. We reserve <strong>4 hours for filming</strong> plus{' '}
                 <strong>2 hours for setup</strong> (same day or day prior) — both blocks show up on the
                 studio calendar so nothing double-books.

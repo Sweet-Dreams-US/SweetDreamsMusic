@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifyProducerAccess } from '@/lib/admin-auth';
 import { BEAT_AGREEMENT_VERSION, BEAT_AGREEMENT_TEXT, PRODUCER_COMMISSION, PLATFORM_COMMISSION } from '@/lib/constants';
+import { getBrand } from '@/lib/brand-server';
 
 // GET — fetch agreement details for a beat
 export async function GET(request: NextRequest) {
@@ -124,7 +125,8 @@ export async function POST(request: NextRequest) {
   if (!coverImageUrl) {
     try {
       const { generateBeatCover } = await import('@/lib/beat-cover');
-      const svg = generateBeatCover(beat.genre);
+      const b = await getBrand();
+      const svg = generateBeatCover(beat.genre, b.name);
       const coverPath = `beats/covers/${beatId}_cover.svg`;
       const { error: coverErr } = await serviceClient.storage
         .from('media')

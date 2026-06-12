@@ -210,6 +210,7 @@ export async function POST(request: NextRequest) {
         date: dateStr,
         startTime: timeStr,
         duration: booking.duration,
+        engineerName,
       });
 
       return NextResponse.json({ success: true, action: 'passed', band: true });

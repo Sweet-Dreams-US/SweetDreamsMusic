@@ -7,6 +7,7 @@ import { ROOM_LABELS, type Room } from '@/lib/constants';
 import { formatCents, formatDuration } from '@/lib/utils';
 import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
 import { createBrowserClient } from '@supabase/ssr';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 type BookingData = {
   id: string;
@@ -26,6 +27,7 @@ type BookingData = {
 };
 
 export default function InvitePage() {
+  const b = useBrand();
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -311,7 +313,7 @@ export default function InvitePage() {
         <div className="border-2 border-black p-8">
           <h1 className="text-heading-sm mb-2">YOU&apos;RE INVITED</h1>
           <p className="font-mono text-sm text-black/60 mb-6">
-            A recording session has been set up for you at Sweet Dreams Music.
+            A recording session has been set up for you at {b.name}.
             Review the details below and pay your deposit to confirm.
           </p>
 

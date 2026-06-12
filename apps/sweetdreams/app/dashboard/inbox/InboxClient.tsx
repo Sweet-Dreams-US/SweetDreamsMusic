@@ -19,6 +19,7 @@ import { Loader2, ChevronRight, ArrowLeft, PenSquare, Megaphone, Search, X } fro
 import type { ThreadWithMeta } from '@/lib/messaging';
 import { fmtStampDate } from '@/lib/studio-time';
 import MessageThreadView from '@/components/messaging/MessageThreadView';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 type InboxThread = ThreadWithMeta & { mine?: boolean };
 type FilterTab = 'all' | 'studio' | 'bookings' | 'dms';
@@ -42,6 +43,7 @@ const SEGMENTS_BY_ROLE: Record<string, { value: string; label: string }[]> = {
 };
 
 export default function InboxClient() {
+  const b = useBrand();
   const router = useRouter();
   const params = useSearchParams();
   const selectedFromUrl = params.get('thread');
@@ -345,7 +347,7 @@ export default function InboxClient() {
       {threads.length === 0 ? (
         <div className="border-2 border-dashed border-black/10 p-12 text-center">
           <p className="font-mono text-sm text-black/60">
-            Your inbox is empty. Notifications from Sweet Dreams will land here.
+            Your inbox is empty. Notifications from {b.name} will land here.
           </p>
         </div>
       ) : (

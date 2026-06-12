@@ -14,7 +14,7 @@ import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import { canBroadcast, type BroadcastSegment } from '@/lib/messaging-matrix';
 import { resolveParty, resolveParties, resolveAudience, broadcastFanOut } from '@/lib/messaging-server';
-import { sendBroadcastEmailBatch, broadcastHtml } from '@/lib/email';
+import { sendBroadcastEmailBatch, broadcastHtml, emailIdentity } from '@/lib/email';
 
 export async function POST(request: NextRequest) {
   const user = await getSessionUser();
@@ -61,6 +61,10 @@ export async function POST(request: NextRequest) {
   }
 
   // Audit row first — the broadcast id tags every fanned message.
+  // Warm the email-brand cache BEFORE composing html: broadcastHtml() reads it
+  // synchronously (footer/signature), and on a cold start it would otherwise
+  // render the fail-open fallback brand into body_html + the mirrored emails.
+  await emailIdentity();
   const recipients = await resolveParties(db, audience.userIds);
   const emails = recipients.map((r) => r.email).filter(Boolean);
   const { data: audit, error: auditErr } = await db.from('admin_broadcasts').insert({

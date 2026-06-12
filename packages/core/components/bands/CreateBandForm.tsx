@@ -3,6 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, Loader2 } from 'lucide-react';
+import { SITE_URL } from '@/lib/constants';
+
+// Bare host for display copy ("sweetdreamsmusic.com/bands/[slug]") — SITE_URL is
+// the per-instance NEXT_PUBLIC_SITE_URL, so this follows the deployed brand.
+const SITE_HOST = SITE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
 /**
  * Minimal "new band" form: just enough to create the record. Cover image, bio,
@@ -136,7 +141,7 @@ export default function CreateBandForm() {
             <div>
               <p className="font-mono text-sm font-bold">Public</p>
               <p className="font-mono text-xs text-black/60 mt-0.5">
-                Listed on sweetdreamsmusic.com/bands/[slug]. Anyone can find your page.
+                Listed on {SITE_HOST}/bands/[slug]. Anyone can find your page.
               </p>
             </div>
           </label>

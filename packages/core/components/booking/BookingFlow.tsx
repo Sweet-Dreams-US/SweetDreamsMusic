@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { Calendar, Clock, Home, User, Users, ChevronLeft, ChevronRight, AlertTriangle, Star, Video, Music2 } from 'lucide-react';
 import { formatCents, cn, isSameDay, formatTime, parseTimeSlot, decimalToTimeStr } from '@/lib/utils';
 import { priceSessionFromConfig, priceBandFromConfig, hourSurchargeFromConfig, sweetSpotAddonCents, type StudioConfig } from '@/lib/studio-config';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 // Self-serve band tiers. As of 2026-04-28 the 24h ("3 Days") tier is
 // self-serve bookable — checkout creates 3 linked bookings rows and the
@@ -79,6 +80,7 @@ export default function BookingFlow({
    */
   band?: { id: string; display_name: string } | null;
 }) {
+  const b = useBrand();
   const isBandMode = !!band;
 
   // ── DB-driven config accessors (replace the old lib/constants reads) ──
@@ -837,7 +839,7 @@ export default function BookingFlow({
                     Multicam live-band video at the end of your session — we add
                     <strong> 2 hours of filming time</strong>{' '}
                     {duration === 8 ? 'after your 8hr block.' : 'after one of your 8hr session days.'}{' '}
-                    Two songs mixed, short-form clips, featured on Sweet Dreams YouTube.
+                    Two songs mixed, short-form clips, featured on {b.name} YouTube.
                     {duration === 24 && ' Pick the day below.'}
                   </p>
                 </label>

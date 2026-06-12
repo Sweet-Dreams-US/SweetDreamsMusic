@@ -67,7 +67,7 @@ export default async function Footer({
 
         <div className="mt-12 pt-8 border-t border-white/10 flex flex-col sm:flex-row justify-between items-center gap-4">
           <p className="font-mono text-xs text-white/60">
-            &copy; {new Date().getFullYear()} Sweet Dreams Music LLC. All rights reserved.
+            &copy; {new Date().getFullYear()} {brand.legalName}. All rights reserved.
           </p>
           <Link
             href="https://sweetdreams.us"

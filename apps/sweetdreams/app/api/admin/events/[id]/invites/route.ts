@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifyAdminAccess } from '@/lib/admin-auth';
 import { generateRsvpToken } from '@/lib/events';
 import { sendEventInvitation } from '@/lib/email';
+import { getBrand } from '@/lib/brand-server';
 
 /**
  * POST /api/admin/events/[id]/invites — bulk invite by email.
@@ -70,7 +71,8 @@ export async function POST(
     .select('display_name')
     .eq('user_id', user.id)
     .maybeSingle();
-  const inviterName = inviterProfile?.display_name || user.email || 'A Sweet Dreams admin';
+  const b = await getBrand();
+  const inviterName = inviterProfile?.display_name || user.email || `A ${b.name} admin`;
 
   // Batch-lookup profiles for all invitee emails — lets us link user_id when
   // available, so invites also surface in their /dashboard/events.

@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { MessageSquare, X, Loader2, ArrowRight } from 'lucide-react';
 import MessageThreadView from './MessageThreadView';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 interface Props {
   /** Whether the user is signed in. The widget hides for anonymous visitors. */
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export default function FloatingChatWidget({ authenticated }: Props) {
+  const b = useBrand();
   const [open, setOpen] = useState(false);
   const [sweetDreamsThreadId, setSweetDreamsThreadId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -80,7 +82,7 @@ export default function FloatingChatWidget({ authenticated }: Props) {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          aria-label="Open Sweet Dreams chat"
+          aria-label={`Open ${b.name} chat`}
           className="fixed bottom-6 right-6 z-40 bg-black text-white shadow-lg hover:bg-accent hover:text-black transition-colors w-14 h-14 rounded-full flex items-center justify-center"
         >
           <MessageSquare className="w-6 h-6" />
@@ -104,7 +106,7 @@ export default function FloatingChatWidget({ authenticated }: Props) {
             <div className="bg-black text-white px-4 py-3 flex items-center justify-between">
               <div>
                 <p className="font-mono text-[10px] uppercase tracking-wider text-white/60">
-                  Sweet Dreams Music
+                  {b.name}
                 </p>
                 <p className="font-bold text-base">Your studio chat</p>
               </div>
@@ -126,7 +128,7 @@ export default function FloatingChatWidget({ authenticated }: Props) {
                 <MessageThreadView threadId={sweetDreamsThreadId} className="flex-1" />
               ) : (
                 <p className="font-mono text-xs text-black/50 text-center py-8">
-                  Your Sweet Dreams thread is being set up. Refresh in a moment.
+                  Your {b.name} thread is being set up. Refresh in a moment.
                 </p>
               )}
             </div>

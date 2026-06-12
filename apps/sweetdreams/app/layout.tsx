@@ -8,6 +8,7 @@ import JsonLd from '@/components/seo/JsonLd';
 import { AudioPlayerProvider } from '@/components/audio/AudioPlayerContext';
 import AudioPlayerBar from '@/components/audio/AudioPlayerBar';
 import MessageWidgetSlot from '@/components/messaging/MessageWidgetSlot';
+import { BrandProvider } from '@/components/brand/BrandProvider';
 import { SITE_URL } from '@/lib/constants';
 import { getBrand } from '@/lib/brand-server';
 import { getEngineers } from '@/lib/engineers-server';
@@ -136,18 +137,25 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <head>
-        <Script
-          src="https://www.googletagmanager.com/gtag/js?id=G-85S88F3K6K"
-          strategy="afterInteractive"
-        />
-        <Script id="gtag-init" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', 'G-85S88F3K6K');
-          `}
-        </Script>
+        {/* Analytics id comes from brand_settings.ga_id (seeded for this studio);
+            no id in the row = no tag, so a scaffolded studio never ships another
+            studio's analytics. */}
+        {brand.gaId && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${brand.gaId}`}
+              strategy="afterInteractive"
+            />
+            <Script id="gtag-init" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${brand.gaId}');
+              `}
+            </Script>
+          </>
+        )}
         <JsonLd brand={brand} engineers={engineers} />
       </head>
       <body className={ibmPlexMono.className}>
@@ -161,18 +169,20 @@ export default async function RootLayout({
         >
           Skip to main content
         </a>
-        <AudioPlayerProvider>
-          <HeaderSlot />
-          <main id="main-content" tabIndex={-1} className="min-h-screen pt-16 sm:pt-20 pb-20">
-            {children}
-          </main>
-          <FooterSlot />
-          <AudioPlayerBar />
-          {/* Authenticated-only messaging widget — bottom-right floating
-              chat button. Server component checks session + only renders
-              for logged-in users; anonymous visitors see nothing. */}
-          <MessageWidgetSlot />
-        </AudioPlayerProvider>
+        <BrandProvider brand={brand}>
+          <AudioPlayerProvider>
+            <HeaderSlot />
+            <main id="main-content" tabIndex={-1} className="min-h-screen pt-16 sm:pt-20 pb-20">
+              {children}
+            </main>
+            <FooterSlot />
+            <AudioPlayerBar />
+            {/* Authenticated-only messaging widget — bottom-right floating
+                chat button. Server component checks session + only renders
+                for logged-in users; anonymous visitors see nothing. */}
+            <MessageWidgetSlot />
+          </AudioPlayerProvider>
+        </BrandProvider>
         <Analytics />
       </body>
     </html>

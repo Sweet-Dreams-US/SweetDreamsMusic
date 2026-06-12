@@ -78,6 +78,7 @@ export default async function HomePage() {
   // Hide the bands marketing section when Bands is turned off (its CTA would 404).
   const flags = await getSiteSettings();
   const c = await getSiteContent();
+  const brand = await getBrand();
 
   return (
     <>
@@ -85,7 +86,7 @@ export default async function HomePage() {
       <section className="relative bg-black text-white min-h-[90vh] flex items-center justify-center overflow-hidden">
         <Image
           src={content(c, 'home.hero.image')}
-          alt="Sweet Dreams Music Studio"
+          alt={`${brand.name} Studio`}
           fill
           className="object-cover opacity-40"
           priority

@@ -55,6 +55,36 @@ export function footerLine(): string {
   return cachedBrand ? `${cachedBrand.legalName} &mdash; ${cityState(cachedBrand)}` : FOOTER_LINE_FALLBACK;
 }
 
+// Studio display name for subjects + body copy. Sync like footerLine() (same
+// cache, warmed by the `await emailIdentity()` in every send); cold-start
+// fallback is the exact historical literal.
+export function brandName(): string {
+  return cachedBrand?.name ?? 'Sweet Dreams Music';
+}
+
+// Beat-store sub-brand for store copy. Sync like brandName() (same warmed
+// cache); cold-start FALLBACK is the exact historical literal.
+function beatStoreName(): string {
+  return cachedBrand?.storeName ?? 'Sweet Dreams Beat Store';
+}
+
+// Public review CTA target (Google review link). Sync like brandName() (same
+// warmed cache); cold-start FALLBACK is the exact historical literal. An
+// EMPTY string means "this studio has no review link" — callers must omit
+// the review ask entirely rather than render a dead URL.
+function reviewUrl(): string {
+  return cachedBrand?.reviewUrl ?? 'https://g.page/r/CcWAY0XlIQNpEBM/review';
+}
+
+// Location copy — sync like brandName() (same warmed cache); cold-start
+// FALLBACKs are the exact historical literals.
+function brandCity(): string {
+  return cachedBrand?.address.city ?? 'Fort Wayne';
+}
+function brandCityState(): string {
+  return cachedBrand ? cityState(cachedBrand) : 'Fort Wayne, IN';
+}
+
 function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
@@ -119,7 +149,7 @@ export async function sendBookingConfirmation(to: string, details: {
     const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
     const prepUrl = details.bookingId ? `${SITE_URL}/dashboard/prep/${details.bookingId}` : `${SITE_URL}/dashboard`;
     await resend.emails.send({
-      from: await emailIdentity(), to, subject: 'Booking Confirmed — Sweet Dreams Music',
+      from: await emailIdentity(), to, subject: `Booking Confirmed — ${brandName()}`,
       html: wrap(`
         ${h1('Booking Confirmed')}
         ${p(`Hey ${details.customerName}, your session is booked!`)}
@@ -246,7 +276,7 @@ export async function sendEngineerAssignedNonRequested(to: string, details: {
   try {
     await resend.emails.send({
       from: await emailIdentity(), to,
-      subject: 'Engineer Update — Sweet Dreams Music',
+      subject: `Engineer Update — ${brandName()}`,
       html: wrap(`
         ${h1('Your Session Engineer')}
         ${p(`Hey ${details.customerName},`)}
@@ -298,10 +328,11 @@ export async function sendEngineerPassNotification(engineerEmails: string[], det
 }
 
 /**
- * Sent to SUPER_ADMINS when Iszac passes a band session. Bands route only to
- * Iszac — there's no fallback claim path — so when he passes, admins need to
- * step in and coordinate a reschedule with the band directly. The buyer is
- * NOT auto-notified (Round 8b chat thread is the right surface for that).
+ * Sent to SUPER_ADMINS when the band engineer passes a band session. There's
+ * no automatic fallback claim path for band sessions, so when the engineer
+ * passes, admins need to step in and coordinate a reschedule with the band
+ * directly. The buyer is NOT auto-notified (Round 8b chat thread is the
+ * right surface for that).
  */
 export async function sendBandSessionNeedsRescheduleAdmin(details: {
   bookingId: string;
@@ -310,15 +341,17 @@ export async function sendBandSessionNeedsRescheduleAdmin(details: {
   date: string;
   startTime: string;
   duration: number;
+  engineerName?: string; // engineer who passed; defaults to historical value
 }) {
+  const engineerName = details.engineerName || 'Iszac';
   try {
     await resend.emails.send({
       from: await emailIdentity(),
       to: [...SUPER_ADMINS],
-      subject: `Iszac passed band session — coordinate reschedule (${details.customerName})`,
+      subject: `${engineerName} passed band session — coordinate reschedule (${details.customerName})`,
       html: wrap(`
         ${h1('Band Session — Needs Reschedule')}
-        ${p(`Iszac passed on this band session. Bands route only to him, so no other engineer can pick it up — admins need to coordinate a reschedule with the band directly.`)}
+        ${p(`${engineerName} passed on this band session. There's no automatic fallback for band sessions — admins need to coordinate a reschedule with the band directly.`)}
         ${detailTable(`
           ${detail('Band', details.bandName || details.customerName)}
           ${detail('Booker', details.customerName)}
@@ -346,7 +379,7 @@ export async function sendPriorityExpiredToClient(to: string, details: {
   try {
     await resend.emails.send({
       from: await emailIdentity(), to,
-      subject: 'Engineer Update — Sweet Dreams Music',
+      subject: `Engineer Update — ${brandName()}`,
       html: wrap(`
         ${h1('Engineer Update')}
         ${p(`Hey ${details.customerName},`)}
@@ -435,7 +468,7 @@ export async function sendEngineerAssigned(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: await emailIdentity(), to, subject: 'Engineer Assigned — Sweet Dreams Music',
+      from: await emailIdentity(), to, subject: `Engineer Assigned — ${brandName()}`,
       html: wrap(`
         ${h1('Engineer Assigned')}
         ${p(`Hey ${details.customerName}, your engineer has been confirmed!`)}
@@ -458,7 +491,7 @@ export async function sendEngineerClaimConfirmation(to: string, details: {
   try {
     const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
     await resend.emails.send({
-      from: await emailIdentity(), to, subject: 'Session Claimed — Sweet Dreams Music',
+      from: await emailIdentity(), to, subject: `Session Claimed — ${brandName()}`,
       html: wrap(`
         ${h1('Session Claimed')}
         ${p(`Hey ${details.engineerName}, you've claimed this session.`)}
@@ -517,7 +550,7 @@ export async function sendSessionReminder(to: string, details: {
     const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
     const prepUrl = details.bookingId ? `${SITE_URL}/dashboard/prep/${details.bookingId}` : null;
     await resend.emails.send({
-      from: await emailIdentity(), to, subject: 'Session in 1 Hour — Sweet Dreams Music',
+      from: await emailIdentity(), to, subject: `Session in 1 Hour — ${brandName()}`,
       html: wrap(`
         ${h1('Session Reminder')}
         ${p(`Hey ${details.customerName}, your session starts in 1 hour!`)}
@@ -611,7 +644,7 @@ export async function sendSessionReminderToStaff(emails: string[], details: {
 export async function sendPasswordReset(to: string, resetLink: string, name?: string) {
   try {
     await resend.emails.send({
-      from: await emailIdentity(), to, subject: 'Reset Your Password — Sweet Dreams Music',
+      from: await emailIdentity(), to, subject: `Reset Your Password — ${brandName()}`,
       html: wrap(`
         ${h1('Reset Password')}
         ${p(name ? `Hey ${name}, we received a request to reset your password.` : 'We received a request to reset your password.')}
@@ -625,19 +658,22 @@ export async function sendPasswordReset(to: string, resetLink: string, name?: st
 }
 
 export async function sendWelcomeEmail(to: string, name: string) {
+  // Warm the brand cache BEFORE composing — the mirror body below reads
+  // brandName(), which is only guaranteed fresh after an emailIdentity() await.
+  const from = await emailIdentity();
   // First message in the user's brand-new Sweet Dreams thread.
   await mirrorToThread({
     userEmail: to,
     kind: 'update',
     subject: `Welcome, ${name}`,
-    body: `Glad to have you at Sweet Dreams Music. This is your inbox — every receipt, booking confirmation, engineer assignment, and platform update lands here. You can reply directly to talk to Cole, Jay, or any of the engineers. They'll see it and respond from this same thread.`,
+    body: `Glad to have you at ${brandName()}. This is your inbox — every receipt, booking confirmation, engineer assignment, and platform update lands here. You can reply directly to talk to our team — every engineer sees it and responds from this same thread.`,
   });
   try {
     await resend.emails.send({
-      from: await emailIdentity(), to, subject: 'Welcome to Sweet Dreams Music',
+      from, to, subject: `Welcome to ${brandName()}`,
       html: wrap(`
         ${h1('Welcome')}
-        ${p(`Hey ${name}, welcome to Sweet Dreams Music!`)}
+        ${p(`Hey ${name}, welcome to ${brandName()}!`)}
         ${p('Your account is set up. You can now book recording sessions, browse beats, and build your public artist profile.')}
         ${btn('Book a Session', `${SITE_URL}/book`)}
         ${p('See you in the studio.')}
@@ -657,19 +693,27 @@ export async function sendSessionFilesDelivered(to: string, details: {
     body: `${details.engineerName} uploaded ${details.fileCount} file${details.fileCount > 1 ? 's' : ''} from your ${ROOM_LABELS[details.room as Room] || details.room} session. Download from your dashboard.`,
   });
   try {
+    // Warm the brand cache BEFORE composing — reviewUrl() + brandName() below
+    // read the sync cache, which is only guaranteed fresh after this await.
+    const from = await emailIdentity();
     const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
-    const reviewUrl = 'https://g.page/r/CcWAY0XlIQNpEBM/review';
+    // No review link configured for this brand → omit the review ask entirely
+    // (new studios without a Google link shouldn't beg at a dead URL).
+    const reviewLink = reviewUrl();
+    const reviewBlock = reviewLink
+      ? `<div style="margin-top:32px;padding:24px;background:#111;border-left:3px solid #F4C430">
+          ${p(`We hope you had a great experience at ${brandName()}. If you did, it would mean a lot if you left us a quick review on Google.`)}
+          <a href="${reviewLink}" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:12px">Leave a Review</a>
+        </div>`
+      : '';
     await resend.emails.send({
-      from: await emailIdentity(), to, subject: 'Your Session Files Are Ready — Sweet Dreams Music',
+      from, to, subject: `Your Session Files Are Ready — ${brandName()}`,
       html: wrap(`
         ${h1('Your Files Are Ready')}
         ${p(`Hey ${details.customerName},`)}
         ${p(`Thanks for coming in! ${details.engineerName} has uploaded ${details.fileCount} file${details.fileCount > 1 ? 's' : ''} from your ${roomLabel} session. You can download them from your dashboard.`)}
         ${btn('Download Files', `${SITE_URL}/dashboard`)}
-        <div style="margin-top:32px;padding:24px;background:#111;border-left:3px solid #F4C430">
-          ${p('We hope you had a great experience at Sweet Dreams Music. If you did, it would mean a lot if you left us a quick review on Google.')}
-          <a href="${reviewUrl}" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:12px">Leave a Review</a>
-        </div>
+        ${reviewBlock}
         ${p('See you next time!')}
       `),
     });
@@ -688,7 +732,7 @@ export async function sendPaymentLink(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: await emailIdentity(), to, subject: 'Complete Your Remaining Balance — Sweet Dreams Music',
+      from: await emailIdentity(), to, subject: `Complete Your Remaining Balance — ${brandName()}`,
       html: wrap(`
         ${h1('Remaining Balance')}
         ${p(`Hey ${details.customerName}, your session is complete! Please pay the remaining balance below.`)}
@@ -716,16 +760,18 @@ export async function sendSessionInvite(to: string, details: {
     attachments: [{ label: details.isCash ? 'View session' : 'Confirm + pay', url: details.inviteUrl, kind: 'link' as const }],
   });
   try {
+    // Warm the brand cache before building the subject (brandName() below).
+    const from = await emailIdentity();
     const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
     const subject = details.isCash
-      ? 'Cash Deposit Due — Sweet Dreams Music'
-      : 'You\'re Invited to a Session — Sweet Dreams Music';
+      ? `Cash Deposit Due — ${brandName()}`
+      : `You're Invited to a Session — ${brandName()}`;
 
     await resend.emails.send({
-      from: await emailIdentity(), to, subject,
+      from, to, subject,
       html: wrap(`
         ${h1(details.isCash ? 'Cash Deposit Due' : 'Session Invite')}
-        ${p(`Hey ${details.customerName}, ${details.engineerName} has ${details.isCash ? 'set up a session for you' : 'invited you to a session'} at Sweet Dreams Music!`)}
+        ${p(`Hey ${details.customerName}, ${details.engineerName} has ${details.isCash ? 'set up a session for you' : 'invited you to a session'} at ${brandName()}!`)}
         ${detailTable(`
           ${detail('Date', details.date)}
           ${detail('Time', details.startTime)}
@@ -852,7 +898,7 @@ export async function sendUnreadMessageNudge(to: string, details: {
   try {
     await resend.emails.send({
       from: await emailIdentity(), to,
-      subject: 'You have an unread message — Sweet Dreams Music',
+      subject: `You have an unread message — ${brandName()}`,
       html: wrap(`
         ${h1('Unread Message')}
         ${p(`Hey ${escapeHtml(details.name)} — there's a message waiting for you:`)}
@@ -889,12 +935,17 @@ export async function sendBroadcastEmailBatch(recipients: string[], subject: str
   return { sent, failed };
 }
 
-/** Dark-shell wrapper for a plain-text broadcast body (staff composer sends text). */
+/**
+ * Dark-shell wrapper for a plain-text broadcast body (staff composer sends text).
+ * ⚠ Sync — reads the brand cache (brandName()/footerLine() via wrap()). Callers
+ * MUST `await emailIdentity()` BEFORE composing, or a cold start renders the
+ * Sweet Dreams fallback brand for non-SD studios.
+ */
 export function broadcastHtml(subject: string, bodyText: string, senderName: string): string {
   return wrap(`
     ${h1(escapeHtml(subject))}
     ${p(escapeHtml(bodyText))}
-    ${p(`— ${escapeHtml(senderName)}, Sweet Dreams Music`)}
+    ${p(`— ${escapeHtml(senderName)}, ${brandName()}`)}
     ${btn('Open your inbox', `${SITE_URL}/dashboard/inbox`)}
   `);
 }
@@ -1113,7 +1164,7 @@ export async function sendBeatApprovedNotification(to: string, details: {
       subject: `Beat Approved — ${details.beatTitle}`,
       html: wrap(
         h1('BEAT APPROVED') +
-        p(`Your beat has been approved by the Sweet Dreams team.`) +
+        p(`Your beat has been approved by the ${brandName()} team.`) +
         detailTable(
           detail('Beat', details.beatTitle) +
           detail('Status', 'Approved — Agreement Required')
@@ -1140,7 +1191,7 @@ export async function sendBeatRejectedNotification(to: string, details: {
       subject: `Beat Not Approved — ${details.beatTitle}`,
       html: wrap(
         h1('BEAT NOT APPROVED') +
-        p(`Unfortunately, your beat was not approved for the Sweet Dreams store.`) +
+        p(`Unfortunately, your beat was not approved for the ${beatStoreName()}.`) +
         detailTable(
           detail('Beat', details.beatTitle) +
           (details.reason ? detail('Reason', details.reason) : '')
@@ -1412,18 +1463,18 @@ export async function sendBandInviteEmail(details: {
     await resend.emails.send({
       from: await emailIdentity(),
       to: details.toEmail,
-      subject: `You're invited to join ${details.bandName} on Sweet Dreams Music`,
+      subject: `You're invited to join ${details.bandName} on ${brandName()}`,
       html: wrap(`
         ${h1('Band Invite')}
         ${p(`<strong style="color:#fff">${details.inviterName}</strong> invited you to join <strong style="color:#F4C430">${details.bandName}</strong> as ${details.role === 'admin' ? 'an admin' : 'a member'}.`)}
-        ${p('Sweet Dreams Music is a full-service studio in Fort Wayne, IN. The band hub lets you collaborate on bookings, releases, and live showcases with your bandmates.')}
+        ${p(`${brandName()} is a full-service studio in ${brandCityState()}. The band hub lets you collaborate on bookings, releases, and live showcases with your bandmates.`)}
         ${detailTable(`
           ${detail('Band', details.bandName)}
           ${detail('Role', details.role.charAt(0).toUpperCase() + details.role.slice(1))}
           ${detail('Invited by', details.inviterName)}
         `)}
         ${btn('Review & Accept Invite', acceptUrl)}
-        ${p('<span style="color:#888;font-size:12px">This invite expires in 14 days. If you don\'t have a Sweet Dreams account yet, you\'ll be prompted to create one.</span>')}
+        ${p(`<span style="color:#888;font-size:12px">This invite expires in 14 days. If you don't have a ${brandName()} account yet, you'll be prompted to create one.</span>`)}
       `),
     });
   } catch (e) { console.error('Email error (band invite):', e); }
@@ -1655,7 +1706,7 @@ export async function sendEventRsvpDecision(details: {
               <p style="font-size:14px;color:#ccc;margin:0;white-space:pre-wrap">${details.declineReason}</p>
             </div>
           ` : ''}
-          ${p('We hope to see you at another Sweet Dreams Music event soon — keep an eye on the events page for what\'s coming up.')}
+          ${p(`We hope to see you at another ${brandName()} event soon — keep an eye on the events page for what's coming up.`)}
           ${btn('See upcoming events', `${SITE_URL}/events`)}
         `
       ),
@@ -1921,6 +1972,9 @@ export async function sendMediaSessionScheduled(to: string, details: {
   engineerName: string;
   bookingId?: string; // routes mirror into the booking thread when present
 }) {
+  // Warm the brand cache BEFORE composing — locationLabel below reads
+  // brandName()/brandCity(), only guaranteed fresh after this await.
+  const from = await emailIdentity();
   // media_session_bookings.starts_at/ends_at are true-UTC instants → fmtStamp*
   const when = fmtStampDateTime(details.startsAt, {
     weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
@@ -1928,7 +1982,7 @@ export async function sendMediaSessionScheduled(to: string, details: {
   });
   const endTime = fmtStampTime(details.endsAt);
   const locationLabel = details.location === 'studio'
-    ? 'Sweet Dreams Studio (Fort Wayne)'
+    ? `${brandName()} Studio (${brandCity()})`
     : details.externalLocationText || 'External — details to follow';
   await mirrorToThread({
     userEmail: to,
@@ -1940,7 +1994,7 @@ export async function sendMediaSessionScheduled(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: await emailIdentity(),
+      from,
       to,
       subject: `Session Scheduled — ${details.sessionKindLabel} for ${details.offeringTitle}`,
       html: wrap(
@@ -1981,6 +2035,8 @@ export async function sendMediaSessionEngineerAlert(to: string, details: {
   notes: string | null;
 }) {
   try {
+    // Warm the brand cache before building locationLabel (brandName() below).
+    const from = await emailIdentity();
     // media_session_bookings.starts_at/ends_at are true-UTC instants → fmtStamp*
     const when = fmtStampDateTime(details.startsAt, {
       weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
@@ -1988,7 +2044,7 @@ export async function sendMediaSessionEngineerAlert(to: string, details: {
     });
     const endTime = fmtStampTime(details.endsAt);
     const locationLabel = details.location === 'studio'
-      ? 'Sweet Dreams Studio'
+      ? `${brandName()} Studio`
       : details.externalLocationText || 'External (location TBD)';
     const notesSection = details.notes
       ? `
@@ -1999,7 +2055,7 @@ export async function sendMediaSessionEngineerAlert(to: string, details: {
       `
       : '';
     await resend.emails.send({
-      from: await emailIdentity(),
+      from,
       to,
       subject: `Media Session Booked — ${details.sessionKindLabel} for ${details.buyerName}`,
       html: wrap(
@@ -2037,13 +2093,16 @@ export async function sendMediaSessionReminder(to: string, details: {
   engineerName: string;
   bookingId?: string; // routes mirror into the booking thread when present
 }) {
+  // Warm the brand cache BEFORE composing — locationLabel below reads
+  // brandName()/brandCity(), only guaranteed fresh after this await.
+  const from = await emailIdentity();
   // media_session_bookings.starts_at/ends_at are true-UTC instants → fmtStamp*
   const startLabel = fmtStampDateTime(details.startsAt, {
     weekday: 'short', month: 'long', day: 'numeric',
   });
   const endLabel = fmtStampTime(details.endsAt);
   const locationLabel = details.location === 'studio'
-    ? 'Sweet Dreams Studio (Fort Wayne)'
+    ? `${brandName()} Studio (${brandCity()})`
     : details.externalLocationText || 'External — see scheduling notes';
   await mirrorToThread({
     userEmail: to,
@@ -2054,7 +2113,7 @@ export async function sendMediaSessionReminder(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: await emailIdentity(),
+      from,
       to,
       subject: `Session in 1 Hour — ${details.sessionKindLabel}`,
       html: wrap(
@@ -2086,16 +2145,18 @@ export async function sendMediaSessionReminderToEngineer(to: string, details: {
   externalLocationText: string | null;
 }) {
   try {
+    // Warm the brand cache before building locationLabel (brandName() below).
+    const from = await emailIdentity();
     // media_session_bookings.starts_at/ends_at are true-UTC instants → fmtStamp*
     const startLabel = fmtStampDateTime(details.startsAt, {
       weekday: 'short', month: 'long', day: 'numeric',
     });
     const endLabel = fmtStampTime(details.endsAt);
     const locationLabel = details.location === 'studio'
-      ? 'Sweet Dreams Studio'
+      ? `${brandName()} Studio`
       : details.externalLocationText || 'External (see scheduling notes)';
     await resend.emails.send({
-      from: await emailIdentity(),
+      from,
       to,
       subject: `Heads up — ${details.sessionKindLabel} for ${details.buyerName} in 1 hour`,
       html: wrap(
@@ -2181,7 +2242,7 @@ export async function sendMediaPaymentLink(to: string, details: {
     await resend.emails.send({
       from: await emailIdentity(),
       to,
-      subject: 'Complete Your Media Order Balance — Sweet Dreams Music',
+      subject: `Complete Your Media Order Balance — ${brandName()}`,
       html: wrap(
         h1('Remaining Balance') +
         p(`Hey ${details.buyerName}, your media order is ready for the next step.`) +

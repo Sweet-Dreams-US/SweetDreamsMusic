@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Music, Headphones, Mail, DollarSign } from 'lucide-react';
+import { getBrand } from '@/lib/brand-server';
 
 type CTAType = 'book' | 'beats' | 'contact' | 'sell-beats';
 
@@ -9,11 +10,11 @@ interface BlogCTAProps {
   customUrl?: string | null;
 }
 
-const CTA_CONFIG: Record<CTAType, { icon: typeof Music; title: string; description: string; buttonText: string; href: string }> = {
+const ctaConfig = (brandName: string): Record<CTAType, { icon: typeof Music; title: string; description: string; buttonText: string; href: string }> => ({
   book: {
     icon: Headphones,
     title: 'Ready to Record?',
-    description: 'Book a session at Sweet Dreams Music. Two studios, four engineers, professional results.',
+    description: `Book a session at ${brandName}. Two studios, four engineers, professional results.`,
     buttonText: 'BOOK A SESSION',
     href: '/book',
   },
@@ -38,9 +39,11 @@ const CTA_CONFIG: Record<CTAType, { icon: typeof Music; title: string; descripti
     buttonText: 'START SELLING',
     href: '/sell-beats',
   },
-};
+});
 
-export default function BlogCTA({ type, customText, customUrl }: BlogCTAProps) {
+export default async function BlogCTA({ type, customText, customUrl }: BlogCTAProps) {
+  const b = await getBrand();
+  const CTA_CONFIG = ctaConfig(b.name);
   const config = CTA_CONFIG[type] || CTA_CONFIG.book;
   const Icon = config.icon;
 

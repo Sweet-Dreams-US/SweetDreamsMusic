@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth';
 import { getUserBands } from '@/lib/bands-server';
+import { getBrand } from '@/lib/brand-server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { ENGINEERS } from '@/lib/constants';
 import DashboardNav from '@/components/layout/DashboardNav';
@@ -19,9 +20,10 @@ import MediaSessionScheduler from '@/components/media/MediaSessionScheduler';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Schedule Session — Sweet Dreams Media',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const b = await getBrand();
+  return { title: `Schedule Session — ${b.mediaName}` };
+}
 
 export default async function SchedulePage({
   params,

@@ -1,15 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BEAT_GENRES } from '@/lib/constants';
+import { getBrand } from '@/lib/brand-server';
 
-// Generate a cover art SVG for a beat based on genre
+// Generate a cover art SVG for a beat based on genre.
+// NOTE: this stays inline (vs packages/core/lib/beat-cover.ts generateBeatCover)
+// because it embeds the BEAT TITLE in a left-aligned layout the shared
+// generator doesn't support — only the brand literals are converted.
 export async function POST(request: NextRequest) {
   const { genre, title } = await request.json();
+  const b = await getBrand();
 
   const genreConfig = BEAT_GENRES.find(g => g.value === genre);
   const bg = genreConfig?.bg || '#1a1a1a';
   const textColor = genreConfig?.text || '#e6c94a';
 
-  // Create SVG cover art — Sweet Dreams branding + beat title
+  // Brand wordmark: one uppercased word per line, bottom-anchored at y=740 so
+  // a two-word brand reproduces the legacy SWEET/DREAMS layout exactly
+  // (y=660/740, font-size 72); the accent bar + beat title slide up to track
+  // the first line, and long words scale down to stay inside the canvas.
+  const words = b.name.trim().toUpperCase().split(/\s+/).filter(Boolean);
+  const brandWords = words.length > 0 ? words : ['BEATS'];
+  const lineHeight = 80;
+  const firstY = 740 - lineHeight * (brandWords.length - 1);
+  const brandLines = brandWords
+    .map((word, i) => `<text x="60" y="${firstY + i * lineHeight}" font-family="'Anton', Impact, 'Arial Black', sans-serif" font-size="${Math.min(72, Math.floor(1080 / word.length))}" font-weight="900" letter-spacing="4" fill="${textColor}" opacity="0.9">${escapeXml(word)}</text>`)
+    .join('\n  ');
+  const barY = firstY - 80; // legacy 580
+  const titleY = barY - 40; // legacy 540
+
+  // Create SVG cover art — brand wordmark + beat title
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -32,14 +51,13 @@ export async function POST(request: NextRequest) {
   <line x1="200" y1="0" x2="200" y2="800" stroke="${textColor}" stroke-opacity="0.05" stroke-width="1" />
 
   <!-- Accent bar -->
-  <rect x="60" y="580" width="120" height="4" fill="${textColor}" opacity="0.7" />
+  <rect x="60" y="${barY}" width="120" height="4" fill="${textColor}" opacity="0.7" />
 
-  <!-- SWEET DREAMS branding -->
-  <text x="60" y="660" font-family="'Anton', Impact, 'Arial Black', sans-serif" font-size="72" font-weight="900" letter-spacing="4" fill="${textColor}" opacity="0.9">SWEET</text>
-  <text x="60" y="740" font-family="'Anton', Impact, 'Arial Black', sans-serif" font-size="72" font-weight="900" letter-spacing="4" fill="${textColor}" opacity="0.9">DREAMS</text>
+  <!-- Brand wordmark -->
+  ${brandLines}
 
   <!-- Beat title -->
-  <text x="60" y="540" font-family="'Inter', 'Helvetica Neue', sans-serif" font-size="${getTitleFontSize(title || 'Untitled')}" font-weight="700" fill="white" opacity="0.95">${escapeXml(title || 'Untitled')}</text>
+  <text x="60" y="${titleY}" font-family="'Inter', 'Helvetica Neue', sans-serif" font-size="${getTitleFontSize(title || 'Untitled')}" font-weight="700" fill="white" opacity="0.95">${escapeXml(title || 'Untitled')}</text>
 
   <!-- Genre tag -->
   ${genre ? `<text x="60" y="120" font-family="'Inter', monospace" font-size="18" font-weight="600" fill="${textColor}" opacity="0.5" letter-spacing="6" text-transform="uppercase">${escapeXml(genre.toUpperCase())}</text>` : ''}

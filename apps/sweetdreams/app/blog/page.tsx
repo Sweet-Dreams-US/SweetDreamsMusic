@@ -29,6 +29,7 @@ interface BlogPageProps {
 
 export default async function BlogPage({ searchParams }: BlogPageProps) {
   await requireHref('/blog'); // 404 when the Blog is disabled
+  const brand = await getBrand();
   const params = await searchParams;
   const currentCategory = params.category || '';
   const searchQuery = params.search || '';
@@ -87,7 +88,7 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
       <section className="bg-black text-white py-20 sm:py-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <p className="font-mono text-accent text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-3">
-            Sweet Dreams Music
+            {brand.name}
           </p>
           <h1 className="text-display-md mb-6">BLOG</h1>
           <p className="font-mono text-white/70 text-body-md max-w-2xl">

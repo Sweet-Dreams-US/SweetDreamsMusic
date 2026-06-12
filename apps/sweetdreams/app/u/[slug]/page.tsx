@@ -45,6 +45,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function PublicProfilePage({ params }: Props) {
   const { slug } = await params;
+  const b = await getBrand();
   const supabase = createServiceClient();
 
   const { data: profile } = await supabase
@@ -293,7 +294,7 @@ export default async function PublicProfilePage({ params }: Props) {
         <section className={`${hasReleased ? 'bg-black/[0.02]' : 'bg-white'} text-black py-16 sm:py-24`}>
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
             <h2 className="text-heading-xl mb-2">UNRELEASED</h2>
-            <p className="font-mono text-xs text-black/60 mb-8">Exclusive previews — recorded at Sweet Dreams Music</p>
+            <p className="font-mono text-xs text-black/60 mb-8">Exclusive previews — recorded at {b.name}</p>
             <div className="space-y-4">
               {unreleasedItems.map((item) => {
                 const deliverable = deliverables[item.deliverable_id];
@@ -437,7 +438,7 @@ export default async function PublicProfilePage({ params }: Props) {
             </p>
             <Link href="/login"
               className="font-mono text-sm font-bold text-accent hover:underline">
-              Create an account at Sweet Dreams Music
+              Create an account at {b.name}
             </Link>
           </div>
         </section>

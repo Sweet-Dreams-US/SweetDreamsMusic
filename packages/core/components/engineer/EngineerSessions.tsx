@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Eye } from 'lucide-react';
 import { formatCents, formatDuration } from '@/lib/utils';
-import { ENGINEERS } from '@/lib/constants';
+import { ENGINEERS, SITE_URL } from '@/lib/constants';
 import CashCorrectionModal from '@/components/booking/CashCorrectionModal';
 import ReassignCustomerButton from '@/components/booking/ReassignCustomerButton';
 import { fmtSessionDate, fmtSessionTime, fmtSessionDateTime, fmtStampDateTime } from '@/lib/studio-time';
@@ -415,7 +415,7 @@ function BookingCard({ booking, onUpdate, completed, unclaimed, onClaim, onPass,
   // Invite link (pending-deposit cards) — token lives in admin_notes.
   const inviteToken = booking.admin_notes?.match(/Token: ([a-f0-9-]+)/)?.[1];
   const inviteUrl = inviteToken
-    ? `https://sweetdreamsmusic.com/book/invite/${inviteToken}?booking=${booking.id}`
+    ? `${SITE_URL}/book/invite/${inviteToken}?booking=${booking.id}`
     : null;
 
   async function chargeRemainder(customAmount?: number) {

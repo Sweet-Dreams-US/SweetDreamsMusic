@@ -19,6 +19,7 @@ import Link from 'next/link';
 import { ArrowLeft, Check, Clock, Mail, Settings2, ArrowRight } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth';
 import { getUserBands } from '@/lib/bands-server';
+import { getBrand } from '@/lib/brand-server';
 import { getOfferingBySlug } from '@/lib/media-server';
 import {
   formatOfferingPrice,
@@ -38,8 +39,9 @@ export async function generateMetadata({
   const { slug } = await params;
   const offering = await getOfferingBySlug(slug);
   if (!offering) return { title: 'Not found' };
+  const b = await getBrand();
   return {
-    title: `${offering.title} — Sweet Dreams Media`,
+    title: `${offering.title} — ${b.mediaName}`,
     description: offering.public_blurb ?? offering.description ?? undefined,
   };
 }

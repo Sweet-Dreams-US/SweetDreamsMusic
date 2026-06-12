@@ -10,6 +10,7 @@ import {
 import { ROOM_LABELS, type Room } from '@/lib/constants';
 import { formatCents, formatDuration } from '@/lib/utils';
 import { fmtSessionDate, fmtSessionTime } from '@/lib/studio-time';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 type Booking = {
   id: string;
@@ -56,10 +57,10 @@ const SESSION_TYPES = [
   { key: 'recording_production', label: 'Record + Produce', icon: Music, desc: 'Build the beat and record in the same session' },
 ];
 
-const BEAT_SOURCES = [
+const beatSources = (brandName: string) => [
   { key: 'upload', label: 'Upload My Beat', desc: 'I have an audio file ready' },
   { key: 'link', label: 'Link to Beat', desc: 'YouTube, SoundCloud, or other URL' },
-  { key: 'purchased', label: 'Purchased from Beat Store', desc: 'I bought a beat from Sweet Dreams' },
+  { key: 'purchased', label: 'Purchased from Beat Store', desc: `I bought a beat from ${brandName}` },
   { key: 'need_beat', label: 'Need Help Finding One', desc: 'I need the engineer to help me find a beat' },
   { key: 'producing', label: 'Building from Scratch', desc: 'We\'re producing the beat in-session' },
 ];
@@ -92,6 +93,8 @@ const DEFAULT_PREP: PrepData = {
 };
 
 export default function SessionPrepPage() {
+  const b = useBrand();
+  const BEAT_SOURCES = beatSources(b.name);
   const params = useParams();
   const router = useRouter();
   const bookingId = params.bookingId as string;
@@ -402,7 +405,7 @@ export default function SessionPrepPage() {
               >
                 {prep.previous_session && <Check className="w-3 h-3 text-black" />}
               </button>
-              <span className="font-mono text-sm">I&apos;ve recorded at Sweet Dreams before</span>
+              <span className="font-mono text-sm">I&apos;ve recorded at {b.name} before</span>
             </div>
 
             <div className="flex justify-end">

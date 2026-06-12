@@ -9,10 +9,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Play, Pause, Lock, Heart, Check } from 'lucide-react';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 type State = 'loading' | 'gone' | 'ready';
 
 export default function ListenPage() {
+  const b = useBrand();
   const params = useParams<{ token: string }>();
   const token = params.token;
   const [state, setState] = useState<State>('loading');
@@ -138,7 +140,7 @@ export default function ListenPage() {
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="max-w-xl mx-auto px-6 py-16">
-        <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/40 mb-10 text-center">Private listening · Sweet Dreams Music</p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/40 mb-10 text-center">Private listening · {b.name}</p>
 
         {/* Player */}
         <div className="border-2 border-white/15 p-8 text-center">
@@ -214,7 +216,7 @@ export default function ListenPage() {
 
         {/* Studio join prompt — every share is lead gen */}
         <div className="border-2 border-white/15 border-t-0 p-6 text-center bg-white/[0.03]">
-          <p className="font-mono text-xs text-white/60 mb-3">Recorded at Sweet Dreams Music, Fort Wayne.</p>
+          <p className="font-mono text-xs text-white/60 mb-3">Recorded at {b.name}, {b.address.city}.</p>
           <Link href="/book" className="font-mono text-xs font-bold uppercase tracking-wider text-accent hover:underline">
             Make your own music here →
           </Link>

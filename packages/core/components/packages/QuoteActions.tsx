@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, CheckCircle2, X, AlertCircle } from 'lucide-react';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 interface Props {
   token: string;
@@ -19,6 +20,7 @@ interface Props {
 
 export default function QuoteActions({ token }: Props) {
   const router = useRouter();
+  const b = useBrand();
   const [accepting, setAccepting] = useState(false);
   const [declining, setDeclining] = useState(false);
   const [showDeclineModal, setShowDeclineModal] = useState(false);
@@ -155,7 +157,7 @@ export default function QuoteActions({ token }: Props) {
             </div>
             <div className="px-5 py-4 space-y-3">
               <p className="font-mono text-xs text-black/65">
-                Optional — let Sweet Dreams know why so they can refine the next offer. Or just
+                Optional — let {b.name} know why so they can refine the next offer. Or just
                 hit decline.
               </p>
               <textarea

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 interface BlogContentProps {
   content: string;
@@ -50,7 +51,9 @@ function parseInline(text: string): string {
   return result;
 }
 
-function renderMarkdown(content: string): string {
+// `brandName` feeds the "X Recommends" callout label; the default keeps the
+// function pure/standalone — the component always passes the live brand name.
+function renderMarkdown(content: string, brandName: string = 'Sweet Dreams'): string {
   const lines = content.split('\n');
   const html: string[] = [];
   let inList = false;
@@ -77,7 +80,7 @@ function renderMarkdown(content: string): string {
         `<div class="bg-gradient-to-r from-[#F4C430]/10 to-[#F4C430]/5 border-l-4 border-[#F4C430] p-6 my-8 rounded-r-lg">
           <div class="flex items-center gap-2 mb-3">
             <span class="w-6 h-6 bg-[#F4C430] rounded-full flex items-center justify-center text-black text-xs font-bold">★</span>
-            <p class="font-mono text-xs font-bold tracking-[0.2em] uppercase text-[#F4C430]">Sweet Dreams Recommends</p>
+            <p class="font-mono text-xs font-bold tracking-[0.2em] uppercase text-[#F4C430]">${escapeHtml(brandName)} Recommends</p>
           </div>
           <div class="text-black/80 text-sm leading-relaxed space-y-2">${calloutContent.map(l => `<p>${parseInline(l)}</p>`).join('')}</div>
         </div>`
@@ -270,7 +273,8 @@ function renderMarkdown(content: string): string {
 }
 
 export default function BlogContent({ content }: BlogContentProps) {
-  const html = useMemo(() => renderMarkdown(content), [content]);
+  const b = useBrand();
+  const html = useMemo(() => renderMarkdown(content, b.name), [content, b.name]);
 
   return (
     <div

@@ -22,6 +22,11 @@ import {
   getPendingInvitesForBand,
 } from '@/lib/bands-server';
 import DashboardNav from '@/components/layout/DashboardNav';
+import { SITE_URL } from '@/lib/constants';
+
+// Bare host for display copy ("sweetdreamsmusic.com/bands/[slug]") — SITE_URL is
+// the per-instance NEXT_PUBLIC_SITE_URL, so this follows the deployed brand.
+const SITE_HOST = SITE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
 export const metadata: Metadata = { title: 'Band Hub' };
 
@@ -148,7 +153,7 @@ export default async function BandHubPage({ params }: { params: Promise<{ id: st
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <p className="font-mono text-xs">
               <span className="font-bold uppercase tracking-wider">Public page:</span>{' '}
-              <span className="font-semibold">sweetdreamsmusic.com/bands/{band.slug}</span>
+              <span className="font-semibold">{SITE_HOST}/bands/{band.slug}</span>
             </p>
             <Link
               href={`/bands/${band.slug}`}

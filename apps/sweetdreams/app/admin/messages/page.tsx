@@ -19,6 +19,8 @@ export default async function AdminMessagesPage() {
   if (!user) redirect('/login?redirect=/admin/messages');
   if (user.role !== 'admin') redirect('/dashboard');
 
+  const b = await getBrand();
+
   return (
     <>
       <DashboardNav
@@ -33,9 +35,9 @@ export default async function AdminMessagesPage() {
           <p className="font-mono text-accent text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-2">
             Admin · Support Queue
           </p>
-          <h1 className="text-heading-xl mb-2">SWEET DREAMS THREADS</h1>
+          <h1 className="text-heading-xl mb-2">{b.name.toUpperCase()} THREADS</h1>
           <p className="font-mono text-xs text-black/60 max-w-2xl mb-6">
-            Every user&apos;s official Sweet Dreams thread. Threads where a buyer or producer is
+            Every user&apos;s official {b.name} thread. Threads where a buyer or producer is
             waiting for a reply are highlighted. Click a thread to open it in the inbox.
           </p>
           <AdminMessagesClient />

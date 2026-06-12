@@ -100,6 +100,7 @@ async function fetchQuote(token: string): Promise<{ quote: Quote; template: Temp
 
 export default async function QuotePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+  const b = await getBrand();
   const data = await fetchQuote(token);
   if (!data) notFound();
 
@@ -121,7 +122,7 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
           <div className="border-2 border-green-600 bg-green-50 p-4 mb-8 inline-flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-green-700" />
             <p className="font-mono text-sm text-green-900">
-              <strong>Accepted.</strong> Sweet Dreams will reach out to confirm payment + next steps.
+              <strong>Accepted.</strong> {b.name} will reach out to confirm payment + next steps.
             </p>
           </div>
         )}
@@ -137,14 +138,14 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
           <div className="border-2 border-orange-400 bg-orange-50 p-4 mb-8 inline-flex items-center gap-2">
             <AlertCircle className="w-5 h-5 text-orange-700" />
             <p className="font-mono text-sm text-orange-900">
-              <strong>This quote has expired.</strong> Reach out to Sweet Dreams for a fresh one.
+              <strong>This quote has expired.</strong> Reach out to {b.name} for a fresh one.
             </p>
           </div>
         )}
 
         {/* Header */}
         <p className="font-mono text-accent text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-3">
-          Sweet Dreams · Quote
+          {b.name} · Quote
         </p>
         <h1 className="text-heading-xl mb-2">{template.name.toUpperCase()}</h1>
         {template.description && (

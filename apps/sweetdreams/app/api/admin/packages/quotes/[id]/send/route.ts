@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import { sendPackageQuote, type PackageQuoteEmailLine } from '@/lib/email';
+import { getBrand } from '@/lib/brand-server';
 
 export async function POST(
   _request: Request,
@@ -132,7 +133,8 @@ export async function POST(
   });
 
   // Inviter name for the email's "X put together a package for you" line.
-  const inviterName = user.profile?.display_name ?? user.email.split('@')[0] ?? 'Sweet Dreams';
+  const b = await getBrand();
+  const inviterName = user.profile?.display_name ?? user.email.split('@')[0] ?? b.name;
 
   // Send the email + mirror to thread. We do this BEFORE flipping
   // status='sent' so a delivery failure leaves the quote in 'draft' for

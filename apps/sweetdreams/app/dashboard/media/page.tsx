@@ -38,7 +38,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const brand = await getBrand();
   return {
     title: `Media Hub — ${brand.name}`,
-    description: 'Browse, configure, and book Sweet Dreams media services and studio packages.',
+    description: `Browse, configure, and book ${brand.mediaName} services and studio packages.`,
   };
 }
 

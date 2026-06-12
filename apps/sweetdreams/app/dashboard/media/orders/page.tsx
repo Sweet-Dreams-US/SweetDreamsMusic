@@ -20,12 +20,14 @@ import { getMediaBookingsForOwner } from '@/lib/media-scheduling-server';
 import { formatCents } from '@/lib/utils';
 import { fmtStampDate } from '@/lib/studio-time';
 import DashboardNav from '@/components/layout/DashboardNav';
+import { getBrand } from '@/lib/brand-server';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Your Media Orders — Sweet Dreams',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const b = await getBrand();
+  return { title: `Your Media Orders — ${b.mediaName}` };
+}
 
 const STATUS_LABELS: Record<string, string> = {
   inquiry: 'Inquiry',

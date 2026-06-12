@@ -87,12 +87,26 @@ async function main() {
     snapshot[path] = parsePage(await res.text());
     console.log(`  captured ${path}`);
   }
-  // robots + sitemap: raw (they're small and fully deterministic).
+  // robots + sitemap: raw, with two sitemap normalizations. lastmod churns per
+  // build — stripped. <url> entries are sorted by <loc>: sitemap.ts orders
+  // /u/[slug] by profiles.updated_at DESC, which is LIVE data, so raw order
+  // drifts whenever any user touches their profile (caught 2026-06-12: a "diff"
+  // of 60 reordered URLs, identical 210-URL set). The URL SET is the SEO
+  // surface; entry order carries no meaning to crawlers.
   for (const f of ['/robots.txt', '/sitemap.xml']) {
     const res = await fetch(`${BASE}${f}`);
-    const raw = res.ok ? (await res.text()).trim() : `HTTP ${res.status}`;
-    // Sitemap lastmod timestamps churn per build — strip them for stability.
-    snapshot[f] = { raw: raw.replace(/<lastmod>[^<]*<\/lastmod>/g, '<lastmod/>') };
+    let raw = res.ok ? (await res.text()).trim() : `HTTP ${res.status}`;
+    raw = raw.replace(/<lastmod>[^<]*<\/lastmod>/g, '<lastmod/>');
+    if (f === '/sitemap.xml' && res.ok) {
+      const entries = raw.match(/<url>[\s\S]*?<\/url>/g);
+      if (entries) {
+        const loc = (s: string) => s.match(/<loc>([^<]*)<\/loc>/)?.[1] ?? '';
+        const sorted = [...entries].sort((x, y) => loc(x).localeCompare(loc(y)));
+        let i = 0;
+        raw = raw.replace(/<url>[\s\S]*?<\/url>/g, () => sorted[i++]);
+      }
+    }
+    snapshot[f] = { raw };
     console.log(`  captured ${f}`);
   }
 

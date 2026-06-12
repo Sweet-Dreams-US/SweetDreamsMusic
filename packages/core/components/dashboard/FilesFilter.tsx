@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { Search, SlidersHorizontal, ArrowUpDown, X, Download } from 'lucide-react';
 import { fmtStampDate } from '@/lib/studio-time';
 import FileShowcaseToggle from '@/components/dashboard/FileShowcaseToggle';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 // NOTE: this is a Client Component that renders the file list ITSELF. It must NOT
 // take a render-prop / function child — the parent (app/dashboard/files/page.tsx)
@@ -41,6 +42,7 @@ function formatFileSize(bytes: number): string {
 }
 
 export default function FilesFilter({ files, profileSlug }: FilesFilterProps) {
+  const b = useBrand();
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -223,7 +225,7 @@ export default function FilesFilter({ files, profileSlug }: FilesFilterProps) {
                           {file.display_name || file.file_name}
                         </p>
                         <div className="font-mono text-xs text-black/60 mt-1 flex items-center gap-3 flex-wrap">
-                          <span>by {file.uploaded_by_name || 'Sweet Dreams'}</span>
+                          <span>by {file.uploaded_by_name || b.name}</span>
                           <span className="uppercase">{file.file_type?.split('/')[1] || 'file'}</span>
                           {file.file_size > 0 && <span>{formatFileSize(file.file_size)}</span>}
                         </div>

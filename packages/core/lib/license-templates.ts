@@ -1,4 +1,10 @@
-import { BEAT_LICENSES, LEASE_DURATION_DAYS, type BeatLicenseType } from './constants';
+import { BEAT_LICENSES, LEASE_DURATION_DAYS, SITE_URL, type BeatLicenseType } from './constants';
+import { brandFromConstants, cityState, stateName, type Brand } from './brand';
+
+/** "sweetdreamsmusic.com" — bare host for in-document platform references. */
+function siteHost(): string {
+  return SITE_URL.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+}
 
 interface LicenseParams {
   buyerName: string;
@@ -49,15 +55,20 @@ const LICENSE_TERMS: Record<BeatLicenseType, {
   },
 };
 
-export function generateLicenseText(params: LicenseParams): string {
+// brand is optional so client-side previews (ContractsViewer) and legacy call
+// sites keep working — the default is the pure constants fallback. Server
+// callers that mint REAL licenses should pass `await getBrand()`.
+export function generateLicenseText(params: LicenseParams, brand: Brand = brandFromConstants()): string {
   const { buyerName, buyerEmail, beatTitle, producerName, licenseType, amountPaid, purchaseDate, purchaseId } = params;
+  const b = brand;
+  const host = siteHost();
   const license = BEAT_LICENSES[licenseType];
   const terms = LICENSE_TERMS[licenseType];
   const amountFormatted = `$${(amountPaid / 100).toFixed(2)}`;
 
   return `
 ════════════════════════════════════════════════════════
-           SWEET DREAMS MUSIC — BEAT LICENSE AGREEMENT
+           ${b.name.toUpperCase()} — BEAT LICENSE AGREEMENT
 ════════════════════════════════════════════════════════
 
 License Type: ${license.name}
@@ -67,7 +78,7 @@ Date of Agreement: ${purchaseDate}
 ────────────────────────────────────────────────────────
 PARTIES
 ────────────────────────────────────────────────────────
-Licensor: Sweet Dreams Music LLC, Fort Wayne, IN
+Licensor: ${b.legalName}, ${cityState(b)}
           (on behalf of producer "${producerName}")
 Licensee: ${buyerName}
           Email: ${buyerEmail}
@@ -125,10 +136,10 @@ removed from the store.`}
 DELIVERY & ACCESS
 ────────────────────────────────────────────────────────
 Files are available for download immediately after purchase
-through the Sweet Dreams Music platform. Downloads are
+through the ${b.name} platform. Downloads are
 limited to 10 per purchase. Files can also be accessed
 from the "My Purchases" section of your dashboard at
-sweetdreamsmusic.com/dashboard/purchases.
+${host}/dashboard/purchases.
 
 ${!terms.exclusive ? `────────────────────────────────────────────────────────
 UPGRADES
@@ -137,8 +148,7 @@ To upgrade your license (e.g., MP3 Lease to Trackout or
 Exclusive Rights), visit your purchases dashboard or
 contact us:
 
-  Jay Val Leo — jayvalleo@sweetdreamsmusic.com
-  Cole — cole@sweetdreams.us
+  ${b.email}
 
 Upgrade pricing is the difference between your current
 license and the target license.
@@ -152,11 +162,11 @@ acknowledges that they have read, understood, and agree
 to all terms stated in this agreement.
 
 This agreement is governed by the laws of the State of
-Indiana, United States.
+${stateName(b)}, United States.
 
 ════════════════════════════════════════════════════════
-Sweet Dreams Music LLC — Fort Wayne, IN
-sweetdreamsmusic.com
+${b.legalName} — ${cityState(b)}
+${host}
 ════════════════════════════════════════════════════════
 `.trim();
 }

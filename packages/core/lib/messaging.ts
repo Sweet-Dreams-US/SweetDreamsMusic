@@ -29,7 +29,7 @@ export interface Thread {
 }
 
 export interface ThreadWithMeta extends Thread {
-  display_name: string;        // computed at fetch time — "Sweet Dreams" / "Single Drop" / "Cole ↔ PRVRB"
+  display_name: string;        // computed at fetch time — studio brand name / "Single Drop" / "Cole ↔ PRVRB"
   unread: boolean;
   last_message_preview?: string;
   last_message_role?: AuthorRole;
@@ -69,10 +69,12 @@ export function bubbleStyleFor(message: Pick<Message, 'kind' | 'author_role'>): 
 // Display-name derivation for thread cards in the inbox list.
 // Threads don't carry rich metadata — we resolve at fetch time using
 // adjacent context (offering title for bookings, participants for DMs,
-// hardcoded "Sweet Dreams Music" for the SD thread).
+// the brand name for the studio thread). This lib is pure/client-safe,
+// so the brand name comes in as a param — server callers pass
+// (await getBrand()).name; the default is the constants fallback.
 // ────────────────────────────────────────────────────────────────────
-export function defaultThreadDisplayName(t: Thread): string {
-  if (t.kind === 'sweet_dreams') return 'Sweet Dreams Music';
+export function defaultThreadDisplayName(t: Thread, studioName: string = 'Sweet Dreams Music'): string {
+  if (t.kind === 'sweet_dreams') return studioName; // kind string is a frozen DB value
   if (t.kind === 'producer_dm' || t.kind === 'dm') return t.subject || 'Direct message';
   return t.subject || 'Booking conversation';
 }

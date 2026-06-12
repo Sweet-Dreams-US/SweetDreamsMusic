@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { ArrowLeft, Wallet } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth';
 import { getUserBands } from '@/lib/bands-server';
+import { getBrand } from '@/lib/brand-server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { ENGINEERS } from '@/lib/constants';
 import { formatCents } from '@/lib/utils';
@@ -23,9 +24,10 @@ import MediaCreditBookingForm from '@/components/media/MediaCreditBookingForm';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Use Prepaid Hours — Sweet Dreams Media',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const b = await getBrand();
+  return { title: `Use Prepaid Hours — ${b.mediaName}` };
+}
 
 export default async function CreditsBookingPage() {
   const user = await getSessionUser();

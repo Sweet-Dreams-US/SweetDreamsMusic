@@ -35,6 +35,7 @@ const ENGINEER_PHOTOS: Record<string, string> = {
 
 export default async function EngineersPage() {
   await requireHref('/engineers'); // 404 when the Engineers page is disabled
+  const brand = await getBrand();
   const engineers = await getEngineers();
   return (
     <>
@@ -42,7 +43,7 @@ export default async function EngineersPage() {
       <section className="relative bg-black text-white py-20 sm:py-28 overflow-hidden">
         <Image
           src={STUDIO_IMAGES.jayIszacPrvrbStudioAWide}
-          alt="Sweet Dreams engineers"
+          alt={`${brand.name} engineers`}
           fill
           className="object-cover opacity-30"
           priority

@@ -7,6 +7,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import type { BandInvite, Band } from '@/lib/bands';
 import InviteActions from '@/components/bands/InviteActions';
 import { fmtStampDate } from '@/lib/studio-time';
+import { getBrand } from '@/lib/brand-server';
 
 export const metadata: Metadata = { title: 'Band Invite' };
 
@@ -22,6 +23,7 @@ export default async function AcceptInvitePage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
+  const b = await getBrand();
   const supabase = createServiceClient();
 
   const { data: inviteRow } = await supabase
@@ -110,7 +112,7 @@ export default async function AcceptInvitePage({
           <>
             <p className="font-mono text-sm text-black/70 max-w-md mx-auto mb-6">
               Sign in with <strong>{invite.invited_email}</strong> to review this invite. If you don&apos;t
-              have a Sweet Dreams account yet, you can create one with that email.
+              have a {b.name} account yet, you can create one with that email.
             </p>
             <Link
               href={signInUrl}

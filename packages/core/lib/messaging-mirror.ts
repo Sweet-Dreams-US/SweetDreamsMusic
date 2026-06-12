@@ -2,18 +2,19 @@
 //
 // Round 9e: writes a parallel "message" into the messages table for
 // every transactional email we send. The user reads either the email
-// or the in-app thread — both render the same content. Sweet Dreams
-// thread is the default target; booking threads when the email is
-// about a specific media booking.
+// or the in-app thread — both render the same content. The user's
+// studio thread is the default target; booking threads when the email
+// is about a specific media booking.
 //
 // Server-only. Fire-and-forget — never blocks the email send. If the
 // mirror fails (RLS, missing thread, etc.) we console.error + continue.
 
 import { createServiceClient } from '@/lib/supabase/server';
+import { getBrand } from '@/lib/brand-server';
 import type { Attachment } from '@/lib/messaging';
 
 export interface MirrorArgs {
-  /** The user this notification is FOR. Mirrors to their Sweet Dreams thread. */
+  /** The user this notification is FOR. Mirrors to their studio thread. */
   userId?: string;
   /** Alternative to userId: look up the user by email. Useful when only email is in scope. */
   userEmail?: string;
@@ -32,7 +33,7 @@ export interface MirrorArgs {
 /**
  * Resolve the target thread for this mirror. For booking-scoped notifications
  * we use the booking thread (creating one lazily if missing). For everything
- * else we use the user's Sweet Dreams thread.
+ * else we use the user's studio thread (DB kind 'sweet_dreams' — frozen).
  *
  * Returns null if the thread can't be resolved (logged + skipped).
  */
@@ -92,17 +93,18 @@ async function resolveTargetThread(args: MirrorArgs): Promise<string | null> {
 
     // The signup trigger should have created one already, but if it
     // didn't, fail safe by creating it.
+    const brand = await getBrand();
     const { data: created, error } = await service
       .from('message_threads')
       .insert({
-        kind: 'sweet_dreams',
+        kind: 'sweet_dreams', // frozen DB value — NOT display copy
         owner_user_id: userId,
-        subject: 'Sweet Dreams Music',
+        subject: brand.name,
       })
       .select('id')
       .single();
     if (error || !created) {
-      console.error('[messaging-mirror] could not create Sweet Dreams thread:', error);
+      console.error('[messaging-mirror] could not create studio thread:', error);
       return null;
     }
     await service.from('message_thread_participants').insert({

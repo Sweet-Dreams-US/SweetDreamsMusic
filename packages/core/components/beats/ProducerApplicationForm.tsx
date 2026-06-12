@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import { Plus, X, Upload, CheckCircle, Loader2 } from 'lucide-react';
+import { useBrand } from '@/components/brand/BrandProvider';
 
 export default function ProducerApplicationForm() {
+  const b = useBrand();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [producerName, setProducerName] = useState('');
@@ -64,7 +66,7 @@ export default function ProducerApplicationForm() {
         <CheckCircle className="w-16 h-16 text-accent mx-auto mb-6" strokeWidth={1} />
         <h3 className="text-heading-lg mb-4">APPLICATION SUBMITTED</h3>
         <p className="font-mono text-black/60 text-body-sm max-w-lg mx-auto">
-          Thank you for your interest in selling beats on Sweet Dreams Music.
+          Thank you for your interest in selling beats on {b.name}.
           We&apos;ll review your application and get back to you within a few business days.
         </p>
       </div>
@@ -196,7 +198,7 @@ export default function ProducerApplicationForm() {
       {/* Reason */}
       <div>
         <label className="block font-mono text-xs text-black/60 uppercase tracking-wider mb-1">
-          Why do you want to sell on Sweet Dreams?
+          Why do you want to sell on {b.name}?
         </label>
         <textarea
           value={reason}

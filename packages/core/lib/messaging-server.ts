@@ -7,6 +7,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getUserRole } from '@/lib/utils';
+import { brandFromRow } from '@/lib/brand';
 import { TEST_EMAILS } from '@/lib/rewards-server';
 import {
   canDirectMessageAll, authorRoleFor, participantRoleFor,
@@ -121,13 +122,27 @@ export async function findOrCreateDmThread(db: Client, sender: Party, targets: P
 
 // ── studio thread (per-user front desk) ───────────────────────────────────────
 
+/**
+ * Brand display name via the INJECTED client (this file stays script-importable,
+ * so no brand-server/next imports). Only hit on the thread-create path. Fails
+ * open to the constants fallback inside brandFromRow.
+ */
+async function studioBrandName(db: Client): Promise<string> {
+  try {
+    const { data } = await db.from('brand_settings').select('*').is('studio_id', null).maybeSingle();
+    return brandFromRow(data).name;
+  } catch {
+    return brandFromRow(null).name;
+  }
+}
+
 /** Find-or-create the user's studio thread (DB kind 'sweet_dreams'). */
 export async function getOrCreateStudioThread(db: Client, userId: string): Promise<string | null> {
   const { data: existing } = await db.from('message_threads')
     .select('id').eq('kind', STUDIO_KIND).eq('owner_user_id', userId).maybeSingle();
   if (existing) return (existing as any).id;
   const { data: created, error } = await db.from('message_threads')
-    .insert({ kind: STUDIO_KIND, owner_user_id: userId, subject: 'Sweet Dreams Music' } as never)
+    .insert({ kind: STUDIO_KIND, owner_user_id: userId, subject: await studioBrandName(db) } as never)
     .select('id').single();
   if (error || !created) {
     console.error('[messaging] could not create studio thread for', userId, error?.message);
