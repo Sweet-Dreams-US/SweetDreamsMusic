@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "functions": {
+    "/api/admin/library/deliverables": {
+      "maxDuration": 60
+    },
+    "/api/admin/tax/packet": {
+      "maxDuration": 60
+    },
+    "/api/cron/career-sweep": {
+      "maxDuration": 300
+    },
+    "/api/cron/expire-entitlements": {
+      "maxDuration": 30
+    },
+    "/api/cron/lease-expiry": {
+      "maxDuration": 30
+    },
+    "/api/cron/message-nudges": {
+      "maxDuration": 60
+    },
+    "/api/cron/payment-reminders": {
+      "maxDuration": 30
+    },
+    "/api/cron/recurring-expenses": {
+      "maxDuration": 60
+    },
+    "/api/cron/rewards-recompute": {
+      "maxDuration": 60
+    },
+    "/api/cron/session-reminders": {
+      "maxDuration": 30
+    },
+    "/api/cron/tax-reminders": {
+      "maxDuration": 60
+    }
+  }
+}

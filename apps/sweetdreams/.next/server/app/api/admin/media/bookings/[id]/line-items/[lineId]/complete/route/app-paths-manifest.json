@@ -1,0 +1,3 @@
+{
+  "/api/admin/media/bookings/[id]/line-items/[lineId]/complete/route": "app/api/admin/media/bookings/[id]/line-items/[lineId]/complete/route.js"
+}

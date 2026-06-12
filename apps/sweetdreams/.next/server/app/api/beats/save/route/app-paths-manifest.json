@@ -1,0 +1,3 @@
+{
+  "/api/beats/save/route": "app/api/beats/save/route.js"
+}

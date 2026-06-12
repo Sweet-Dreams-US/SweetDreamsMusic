@@ -1,0 +1,3 @@
+{
+  "/api/admin/packages/quotes/[id]/send/route": "app/api/admin/packages/quotes/[id]/send/route.js"
+}

@@ -1,0 +1,11 @@
+var R=require("../../../../chunks/[turbopack]_runtime.js")("server/app/api/cron/fetch-metrics/route.js")
+R.c("server/chunks/[root-of-the-server]__a9829aab._.js")
+R.c("server/chunks/node_modules_next_dist_79f1aee4._.js")
+R.c("server/chunks/packages_core_lib_6b59ceac._.js")
+R.c("server/chunks/_11a27292._.js")
+R.c("server/chunks/[root-of-the-server]__d7355d04._.js")
+R.c("server/chunks/[root-of-the-server]__99a8b21a._.js")
+R.c("server/chunks/_09daa474._.js")
+R.c("server/chunks/afa24__next-internal_server_app_api_cron_fetch-metrics_route_actions_4f60f1d0.js")
+R.m(67548)
+module.exports=R.m(67548).exports

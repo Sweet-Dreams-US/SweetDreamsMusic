@@ -1,0 +1,3 @@
+{
+  "/api/media/bookings/[id]/line-items/[lineId]/sessions/route": "app/api/media/bookings/[id]/line-items/[lineId]/sessions/route.js"
+}

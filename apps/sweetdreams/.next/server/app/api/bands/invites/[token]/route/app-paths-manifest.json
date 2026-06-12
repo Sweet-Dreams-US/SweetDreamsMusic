@@ -1,0 +1,3 @@
+{
+  "/api/bands/invites/[token]/route": "app/api/bands/invites/[token]/route.js"
+}

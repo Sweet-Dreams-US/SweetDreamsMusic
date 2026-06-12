@@ -1,0 +1,11 @@
+var R=require("../../../../chunks/[turbopack]_runtime.js")("server/app/api/cron/session-reminders/route.js")
+R.c("server/chunks/packages_core_lib_900bd8cf._.js")
+R.c("server/chunks/[root-of-the-server]__d7355d04._.js")
+R.c("server/chunks/node_modules_next_dist_esm_build_templates_app-route_870cddea.js")
+R.c("server/chunks/_11a27292._.js")
+R.c("server/chunks/[root-of-the-server]__99a8b21a._.js")
+R.c("server/chunks/node_modules_next_dist_79f1aee4._.js")
+R.c("server/chunks/[root-of-the-server]__a9829aab._.js")
+R.c("server/chunks/afa24__next-internal_server_app_api_cron_session-reminders_route_actions_0a7ad3bf.js")
+R.m(42312)
+module.exports=R.m(42312).exports

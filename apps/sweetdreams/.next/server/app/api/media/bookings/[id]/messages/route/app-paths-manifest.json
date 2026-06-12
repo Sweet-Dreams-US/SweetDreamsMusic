@@ -1,0 +1,3 @@
+{
+  "/api/media/bookings/[id]/messages/route": "app/api/media/bookings/[id]/messages/route.js"
+}

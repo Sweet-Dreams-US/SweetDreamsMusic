@@ -1,0 +1,3 @@
+{
+  "/api/packages/entitlements/[id]/addon-request/route": "app/api/packages/entitlements/[id]/addon-request/route.js"
+}

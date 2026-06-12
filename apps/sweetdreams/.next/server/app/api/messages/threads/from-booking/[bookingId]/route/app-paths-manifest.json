@@ -1,0 +1,3 @@
+{
+  "/api/messages/threads/from-booking/[bookingId]/route": "app/api/messages/threads/from-booking/[bookingId]/route.js"
+}

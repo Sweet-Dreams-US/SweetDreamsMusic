@@ -1,0 +1,3 @@
+{
+  "/api/media/bookings/[id]/package/send/route": "app/api/media/bookings/[id]/package/send/route.js"
+}

@@ -1,0 +1,3 @@
+{
+  "/api/beats/private-sale/[token]/checkout/route": "app/api/beats/private-sale/[token]/checkout/route.js"
+}

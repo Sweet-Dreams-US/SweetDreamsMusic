@@ -1,0 +1,3 @@
+{
+  "/quotes/[token]/page": "app/quotes/[token]/page.js"
+}

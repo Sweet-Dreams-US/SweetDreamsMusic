@@ -1,0 +1,3 @@
+{
+  "/api/cron/rewards-recompute/route": "app/api/cron/rewards-recompute/route.js"
+}

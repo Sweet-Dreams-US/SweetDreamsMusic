@@ -1,0 +1,3 @@
+{
+  "/api/admin/bookings/adjust-balance/route": "app/api/admin/bookings/adjust-balance/route.js"
+}

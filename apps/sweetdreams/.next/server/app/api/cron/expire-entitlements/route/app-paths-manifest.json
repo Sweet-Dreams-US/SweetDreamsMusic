@@ -1,0 +1,3 @@
+{
+  "/api/cron/expire-entitlements/route": "app/api/cron/expire-entitlements/route.js"
+}

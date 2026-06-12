@@ -1,0 +1,3 @@
+{
+  "/api/cron/recurring-expenses/route": "app/api/cron/recurring-expenses/route.js"
+}

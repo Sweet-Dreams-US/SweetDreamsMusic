@@ -1,0 +1,3 @@
+{
+  "/api/quotes/[token]/decline/route": "app/api/quotes/[token]/decline/route.js"
+}

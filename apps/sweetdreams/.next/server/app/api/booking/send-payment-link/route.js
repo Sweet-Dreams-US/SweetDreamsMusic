@@ -1,0 +1,11 @@
+var R=require("../../../../chunks/[turbopack]_runtime.js")("server/app/api/booking/send-payment-link/route.js")
+R.c("server/chunks/[root-of-the-server]__a9829aab._.js")
+R.c("server/chunks/[root-of-the-server]__f5e5809c._.js")
+R.c("server/chunks/[root-of-the-server]__fcc8c9e7._.js")
+R.c("server/chunks/[root-of-the-server]__99a8b21a._.js")
+R.c("server/chunks/_11a27292._.js")
+R.c("server/chunks/[root-of-the-server]__d7355d04._.js")
+R.c("server/chunks/node_modules_next_dist_79f1aee4._.js")
+R.c("server/chunks/afa24__next-internal_server_app_api_booking_send-payment-link_route_actions_6f2ed7ca.js")
+R.m(65457)
+module.exports=R.m(65457).exports

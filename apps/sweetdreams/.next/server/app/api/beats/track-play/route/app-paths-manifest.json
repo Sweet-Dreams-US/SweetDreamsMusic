@@ -1,0 +1,3 @@
+{
+  "/api/beats/track-play/route": "app/api/beats/track-play/route.js"
+}

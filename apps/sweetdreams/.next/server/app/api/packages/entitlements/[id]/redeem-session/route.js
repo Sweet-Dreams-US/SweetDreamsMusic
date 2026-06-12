@@ -1,0 +1,10 @@
+var R=require("../../../../../../chunks/[turbopack]_runtime.js")("server/app/api/packages/entitlements/[id]/redeem-session/route.js")
+R.c("server/chunks/packages_core_lib_dc478368._.js")
+R.c("server/chunks/[root-of-the-server]__a9829aab._.js")
+R.c("server/chunks/node_modules_next_dist_esm_build_templates_app-route_15904b7c.js")
+R.c("server/chunks/_11a27292._.js")
+R.c("server/chunks/node_modules_next_dist_79f1aee4._.js")
+R.c("server/chunks/[root-of-the-server]__d7355d04._.js")
+R.c("server/chunks/c76d0_server_app_api_packages_entitlements_[id]_redeem-session_route_actions_5384a75f.js")
+R.m(26478)
+module.exports=R.m(26478).exports

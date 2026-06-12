@@ -1,0 +1,3 @@
+{
+  "/api/cron/priority-expiry/route": "app/api/cron/priority-expiry/route.js"
+}

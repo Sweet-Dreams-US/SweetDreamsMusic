@@ -1,0 +1,10 @@
+var R=require("../../../../chunks/[turbopack]_runtime.js")("server/app/api/cron/priority-expiry/route.js")
+R.c("server/chunks/[root-of-the-server]__a9829aab._.js")
+R.c("server/chunks/node_modules_next_dist_79f1aee4._.js")
+R.c("server/chunks/_8e1c2f94._.js")
+R.c("server/chunks/_11a27292._.js")
+R.c("server/chunks/[root-of-the-server]__d7355d04._.js")
+R.c("server/chunks/[root-of-the-server]__99a8b21a._.js")
+R.c("server/chunks/afa24__next-internal_server_app_api_cron_priority-expiry_route_actions_add4255b.js")
+R.m(39390)
+module.exports=R.m(39390).exports

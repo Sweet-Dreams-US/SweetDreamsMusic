@@ -1,0 +1,3 @@
+{
+  "/api/packages/entitlements/[id]/billing-portal/route": "app/api/packages/entitlements/[id]/billing-portal/route.js"
+}

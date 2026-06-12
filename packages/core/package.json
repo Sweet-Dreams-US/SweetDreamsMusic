@@ -1,0 +1,6 @@
+{
+  "name": "@dreamsuite/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DreamSuite shared core: libs, components, migrations, golden tests. Every studio app composes this."
+}

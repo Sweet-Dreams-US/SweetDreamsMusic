@@ -1,0 +1,3 @@
+{
+  "/api/booking/reschedule-request/route": "app/api/booking/reschedule-request/route.js"
+}
