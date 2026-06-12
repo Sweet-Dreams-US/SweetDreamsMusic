@@ -1,3 +1,0 @@
-{
-  "/api/media/bookings/[id]/package/line-items/[lineId]/approve/route": "app/api/media/bookings/[id]/package/line-items/[lineId]/approve/route.js"
-}

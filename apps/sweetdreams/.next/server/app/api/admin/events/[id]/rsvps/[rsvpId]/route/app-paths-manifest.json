@@ -1,3 +1,0 @@
-{
-  "/api/admin/events/[id]/rsvps/[rsvpId]/route": "app/api/admin/events/[id]/rsvps/[rsvpId]/route.js"
-}

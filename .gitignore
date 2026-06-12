@@ -13,9 +13,11 @@
 # testing
 /coverage
 
-# next.js
-/.next/
-/out/
+# next.js — UNANCHORED: the monorepo builds into apps/*/.next (the root-anchored
+# /.next/ silently stopped matching after the W1 move and 4081 build artifacts
+# got committed; removed + generalized 2026-06-12)
+.next/
+out/
 
 # production
 /build
