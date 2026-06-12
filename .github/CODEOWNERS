@@ -1,0 +1,4 @@
+# packages/core is the engine every studio runs — changes are platform
+# releases, reviewed by the owner, never part of a studio design session.
+/packages/core/  @colemarcuccilli
+/.github/        @colemarcuccilli

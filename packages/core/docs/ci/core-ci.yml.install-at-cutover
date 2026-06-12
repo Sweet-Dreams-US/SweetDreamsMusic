@@ -1,0 +1,27 @@
+name: core-ci
+# Runs the proof battery whenever the shared engine changes.
+# Deploys stay MANUAL until the white-label cutover (Cole's rule:
+# nothing ships until the whole build is proven).
+on:
+  pull_request:
+    paths: ['packages/core/**', 'apps/**']
+  push:
+    branches: [whitelabel]
+    paths: ['packages/core/**']
+
+jobs:
+  build-and-pure-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Build every app
+        run: npm run build
+      - name: Pure golden suites (no DB needed)
+        run: |
+          npx tsx packages/core/scripts/studio-pricing-golden.ts
+          npx tsx packages/core/scripts/rewards-scenarios.ts
+      # Live-DB suites (payroll/tax/career/etc.) run locally pre-release —
+      # they need per-studio service keys that don't belong in CI yet.
