@@ -1,14 +1,18 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth';
+import { getBrand } from '@/lib/brand-server';
 import DashboardNav from '@/components/layout/DashboardNav';
 import InboxClient from './InboxClient';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Inbox — Sweet Dreams Music',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: `Inbox — ${brand.name}`,
+  };
+}
 
 export default async function InboxPage() {
   const user = await getSessionUser();

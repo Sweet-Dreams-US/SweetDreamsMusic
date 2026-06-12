@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
 import { createServiceClient } from '@/lib/supabase/server';
 import { SITE_URL } from '@/lib/constants';
+import { getBrand } from '@/lib/brand-server';
 import BlogPostCard from '@/components/blog/BlogPostCard';
 
 interface CategoryPageProps {
@@ -23,13 +24,14 @@ export async function generateMetadata({ params }: CategoryPageProps): Promise<M
 
   if (!category) return { title: 'Category Not Found' };
 
+  const brand = await getBrand();
   return {
     title: `${category.name} — Blog`,
-    description: category.description || `${category.name} articles from Sweet Dreams Music.`,
+    description: category.description || `${category.name} articles from ${brand.name}.`,
     alternates: { canonical: `${SITE_URL}/blog/category/${slug}` },
     openGraph: {
-      title: `${category.name} — Blog | Sweet Dreams Music`,
-      description: category.description || `${category.name} articles from Sweet Dreams Music.`,
+      title: `${category.name} — Blog | ${brand.name}`,
+      description: category.description || `${category.name} articles from ${brand.name}.`,
       url: `${SITE_URL}/blog/category/${slug}`,
       type: 'website',
     },

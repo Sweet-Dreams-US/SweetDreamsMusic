@@ -18,6 +18,7 @@ import { verifyMediaManagerAccess } from '@/lib/admin-auth';
 import { checkMediaManagerConflict } from '@/lib/media-scheduling-server';
 import { fmtStampDateTime } from '@/lib/studio-time';
 import { SITE_URL } from '@/lib/constants';
+import { emailIdentity } from '@/lib/email';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
     if (email) {
       try {
         await resend.emails.send({
-          from: 'Sweet Dreams Music <studio@sweetdreamsmusic.com>',
+          from: await emailIdentity(),
           to: [email],
           subject: `Your media shoot is confirmed — ${whenLabel}`,
           html: `
@@ -164,7 +165,7 @@ export async function POST(request: NextRequest) {
   if (email) {
     try {
       await resend.emails.send({
-        from: 'Sweet Dreams Music <studio@sweetdreamsmusic.com>',
+        from: await emailIdentity(),
         to: [email],
         subject: `Update on your media request — ${whenLabel}`,
         html: `

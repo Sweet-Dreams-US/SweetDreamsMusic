@@ -9,35 +9,40 @@ import { getStudioConfigs } from '@/lib/studio-config-server';
 import { getSiteSettings } from '@/lib/site-settings-server';
 import { getSiteContent } from '@/lib/site-content-server';
 import { content } from '@/lib/site-content';
+import { getBrand } from '@/lib/brand-server';
+import { cityState } from '@/lib/brand';
 import { STUDIO_IMAGES } from '@/lib/images';
 import HeroTitle from '@/components/home/HeroTitle';
 import BuiltForBands from '@/components/marketing/BuiltForBands';
 
-export const metadata: Metadata = {
-  title: 'Sweet Dreams Music — Fort Wayne Recording Studio & Beat Store | Book Sessions Online',
-  description: 'Professional recording studio and beat store in Fort Wayne, Indiana. Two studios, four engineers, open 24 hours. Recording, mixing, mastering, music production, and beat marketplace. Sessions starting at $50/hour. Book online with 50% deposit.',
-  alternates: { canonical: '/' },
-  openGraph: {
-    title: 'Sweet Dreams Music — Fort Wayne Recording Studio & Beat Store',
-    description: 'Professional recording studio and beat marketplace in Fort Wayne, IN. Two studios, four engineers, open 24/7. Recording, mixing, mastering, production, and artist development. Sessions starting at $50/hour.',
-    url: SITE_URL,
-    type: 'website',
-    images: [
-      {
-        url: `${SITE_URL}/og-image.png`,
-        width: 1200,
-        height: 630,
-        alt: 'Sweet Dreams Music — Fort Wayne Recording Studio & Beat Store',
-      },
-    ],
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'Sweet Dreams Music — Fort Wayne Recording Studio & Beat Store',
-    description: 'Professional recording studio in Fort Wayne, IN. Two studios, four engineers, open 24/7. Beat store, recording, mixing, mastering & production.',
-    images: [`${SITE_URL}/og-image.png`],
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: `${brand.name} — ${brand.tagline} & Beat Store | Book Sessions Online`,
+    description: `Professional recording studio and beat store in ${brand.address.city}, Indiana. Two studios, four engineers, open 24 hours. Recording, mixing, mastering, music production, and beat marketplace. Sessions starting at $50/hour. Book online with 50% deposit.`,
+    alternates: { canonical: '/' },
+    openGraph: {
+      title: `${brand.name} — ${brand.tagline} & Beat Store`,
+      description: `Professional recording studio and beat marketplace in ${cityState(brand)}. Two studios, four engineers, open 24/7. Recording, mixing, mastering, production, and artist development. Sessions starting at $50/hour.`,
+      url: SITE_URL,
+      type: 'website',
+      images: [
+        {
+          url: `${SITE_URL}/og-image.png`,
+          width: 1200,
+          height: 630,
+          alt: `${brand.name} — ${brand.tagline} & Beat Store`,
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${brand.name} — ${brand.tagline} & Beat Store`,
+      description: `Professional recording studio in ${cityState(brand)}. Two studios, four engineers, open 24/7. Beat store, recording, mixing, mastering & production.`,
+      images: [`${SITE_URL}/og-image.png`],
+    },
+  };
+}
 
 const services = [
   {

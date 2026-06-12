@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Music, ExternalLink, Settings } from 'lucide-react';
 import { createServiceClient, createClient } from '@/lib/supabase/server';
+import { getBrand } from '@/lib/brand-server';
 import ProfileBeatGrid from '@/components/beats/ProfileBeatGrid';
 import TierBadge from '@/components/career/TierBadge';
 import { fmtStampDate } from '@/lib/studio-time';
@@ -35,9 +36,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   if (!profile) return { title: 'Profile Not Found' };
 
+  const brand = await getBrand();
   return {
     title: `${profile.display_name}`,
-    description: profile.bio || `${profile.display_name} on Sweet Dreams Music`,
+    description: profile.bio || `${profile.display_name} on ${brand.name}`,
   };
 }
 

@@ -3,15 +3,19 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowLeft, Clock, Phone, Mail } from 'lucide-react';
 import { SITE_URL } from '@/lib/constants';
+import { getBrand } from '@/lib/brand-server';
 import SweetSpotInquiryForm from '@/components/bands/SweetSpotInquiryForm';
 
-export const metadata: Metadata = {
-  title: 'Inquire About the Sweet Spot — Sweet Dreams Music',
-  description:
-    'Set up a 30-minute call to learn how the Sweet Spot works. Send your name, band, phone, and a good time — Jay and Cole will reach out.',
-  alternates: { canonical: `${SITE_URL}/bands/sweet-spot/inquire` },
-  robots: { index: true, follow: true },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: `Inquire About the Sweet Spot — ${brand.name}`,
+    description:
+      'Set up a 30-minute call to learn how the Sweet Spot works. Send your name, band, phone, and a good time — Jay and Cole will reach out.',
+    alternates: { canonical: `${SITE_URL}/bands/sweet-spot/inquire` },
+    robots: { index: true, follow: true },
+  };
+}
 
 const SWEET_SPOT_LOGO =
   'https://fweeyjnqwxywmpmnqpts.supabase.co/storage/v1/object/public/SweetSpot/sweetspotLogo.png';

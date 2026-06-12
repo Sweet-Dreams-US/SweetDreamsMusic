@@ -18,28 +18,31 @@ import { formatCents } from '@/lib/utils';
 import { createServiceClient } from '@/lib/supabase/server';
 import { getStudioConfigs } from '@/lib/studio-config-server';
 import { requireHref } from '@/lib/site-settings-server';
+import { getBrand } from '@/lib/brand-server';
 
-export const metadata: Metadata = {
-  title: 'The Sweet Spot & Band Recording — Sweet Dreams Music',
-  description:
-    'The Sweet Spot is our premium live-band video showcase — full video, two songs in a professional mix, 3-6 short-form clips, featured on the Sweet Dreams YouTube. We also offer standard band recording sessions. Recorded in Fort Wayne, Indiana.',
-  alternates: { canonical: `${SITE_URL}/bands` },
-  openGraph: {
-    title: 'The Sweet Spot & Band Recording — Sweet Dreams Music',
-    description:
-      'Premium live-band video showcase and standard band recording in Fort Wayne. Full tracking room, multicam video, release-ready audio.',
-    url: `${SITE_URL}/bands`,
-    type: 'website',
-    images: [
-      {
-        url: `${SITE_URL}/og-image.png`,
-        width: 1200,
-        height: 630,
-        alt: 'The Sweet Spot — Sweet Dreams Music Band Showcase',
-      },
-    ],
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: `The Sweet Spot & Band Recording — ${brand.name}`,
+    description: `The Sweet Spot is our premium live-band video showcase — full video, two songs in a professional mix, 3-6 short-form clips, featured on the Sweet Dreams YouTube. We also offer standard band recording sessions. Recorded in ${brand.address.city}, Indiana.`,
+    alternates: { canonical: `${SITE_URL}/bands` },
+    openGraph: {
+      title: `The Sweet Spot & Band Recording — ${brand.name}`,
+      description:
+        `Premium live-band video showcase and standard band recording in ${brand.address.city}. Full tracking room, multicam video, release-ready audio.`,
+      url: `${SITE_URL}/bands`,
+      type: 'website',
+      images: [
+        {
+          url: `${SITE_URL}/og-image.png`,
+          width: 1200,
+          height: 630,
+          alt: `The Sweet Spot — ${brand.name} Band Showcase`,
+        },
+      ],
+    },
+  };
+}
 
 // Sweet Spot assets hosted in Supabase Storage. Domain is allowlisted in
 // next.config.ts so <Image> works without extra setup.

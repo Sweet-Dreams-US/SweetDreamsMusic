@@ -9,19 +9,24 @@ import { memberHasFlag } from '@/lib/bands';
 import { getMembership } from '@/lib/bands-server';
 import { getStudioConfigs } from '@/lib/studio-config-server';
 import { getEngineers } from '@/lib/engineers-server';
+import { getBrand } from '@/lib/brand-server';
+import { cityState } from '@/lib/brand';
 import BookingFlow from '@/components/booking/BookingFlow';
 
-export const metadata: Metadata = {
-  title: 'Book a Recording Session — Schedule Online',
-  description: 'Book your recording session at Sweet Dreams Music in Fort Wayne, IN. Choose your date, time, studio, and engineer. Sessions starting at $50/hour with 50% deposit. Open 24/7.',
-  alternates: { canonical: `${SITE_URL}/book` },
-  openGraph: {
-    title: 'Book a Recording Session | Sweet Dreams Music — Fort Wayne, IN',
-    description: 'Schedule your recording session online. Choose your studio, engineer, date, and time. Starting at $50/hour with 50% deposit booking.',
-    url: `${SITE_URL}/book`,
-    type: 'website',
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: 'Book a Recording Session — Schedule Online',
+    description: `Book your recording session at ${brand.name} in ${cityState(brand)}. Choose your date, time, studio, and engineer. Sessions starting at $50/hour with 50% deposit. Open 24/7.`,
+    alternates: { canonical: `${SITE_URL}/book` },
+    openGraph: {
+      title: `Book a Recording Session | ${brand.name} — ${cityState(brand)}`,
+      description: 'Schedule your recording session online. Choose your studio, engineer, date, and time. Starting at $50/hour with 50% deposit booking.',
+      url: `${SITE_URL}/book`,
+      type: 'website',
+    },
+  };
+}
 
 /**
  * /book — the unified booking page. Two modes:

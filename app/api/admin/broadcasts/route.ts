@@ -3,11 +3,10 @@ import { Resend } from 'resend';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifyAdminAccess } from '@/lib/admin-auth';
 import { SITE_URL } from '@/lib/constants';
-
-const FROM = 'Sweet Dreams Music <studio@sweetdreamsmusic.com>';
+import { emailIdentity, footerLine } from '@/lib/email';
 
 function wrapEmail(content: string): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#000;font-family:'IBM Plex Mono',monospace;color:#fff"><div style="max-width:600px;margin:0 auto;padding:40px 24px">${content}<div style="margin-top:40px;padding-top:24px;border-top:1px solid #333;text-align:center"><p style="color:#666;font-size:11px;margin:0">Sweet Dreams Music LLC &mdash; Fort Wayne, IN</p><p style="color:#666;font-size:11px;margin:4px 0 0"><a href="${SITE_URL}" style="color:#F4C430;text-decoration:none">sweetdreamsmusic.com</a></p></div></div></body></html>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#000;font-family:'IBM Plex Mono',monospace;color:#fff"><div style="max-width:600px;margin:0 auto;padding:40px 24px">${content}<div style="margin-top:40px;padding-top:24px;border-top:1px solid #333;text-align:center"><p style="color:#666;font-size:11px;margin:0">${footerLine()}</p><p style="color:#666;font-size:11px;margin:4px 0 0"><a href="${SITE_URL}" style="color:#F4C430;text-decoration:none">${SITE_URL.replace(/^https?:\/\//, '')}</a></p></div></div></body></html>`;
 }
 
 // GET — list broadcast history
@@ -42,6 +41,9 @@ export async function POST(request: NextRequest) {
   }
 
   const resend = new Resend(process.env.RESEND_API_KEY);
+  // Resolve the FROM identity first — this also warms the brand cache that
+  // footerLine() (inside wrapEmail) reads synchronously.
+  const from = await emailIdentity();
   const fullHtml = wrapEmail(bodyHtml);
 
   let sentCount = 0;
@@ -59,7 +61,7 @@ export async function POST(request: NextRequest) {
 
   for (let i = 0; i < recipientEmails.length; i += BATCH_SIZE) {
     const chunk = recipientEmails.slice(i, i + BATCH_SIZE) as string[];
-    const payload = chunk.map((email) => ({ from: FROM, to: email, subject, html: fullHtml }));
+    const payload = chunk.map((email) => ({ from, to: email, subject, html: fullHtml }));
 
     try {
       const result = await resend.batch.send(payload);

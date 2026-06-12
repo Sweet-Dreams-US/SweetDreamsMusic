@@ -15,6 +15,7 @@ import { headers } from 'next/headers';
 import { Crown, Users, Clock, Film, Music, Package, Calendar, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import QuoteActions from '@/components/packages/QuoteActions';
 import { fmtStampDate } from '@/lib/studio-time';
+import { getBrand } from '@/lib/brand-server';
 
 interface QuoteLine {
   id: string;
@@ -50,10 +51,13 @@ interface Template {
   price_cents: number;
 }
 
-export const metadata: Metadata = {
-  title: 'Quote — Sweet Dreams Music',
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: `Quote — ${brand.name}`,
+    robots: { index: false, follow: false },
+  };
+}
 
 function formatMoney(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;

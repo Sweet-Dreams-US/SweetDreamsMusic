@@ -23,6 +23,7 @@ import { getOfferingBySlug } from '@/lib/media-server';
 import { getUserBands } from '@/lib/bands-server';
 import { isOfferingVisibleTo, viewerEligibilityFromBands } from '@/lib/media';
 import { isOfferingConfigurable } from '@/lib/media-config';
+import { getBrand } from '@/lib/brand-server';
 import DashboardNav from '@/components/layout/DashboardNav';
 import MediaConfigurator from '@/components/media/MediaConfigurator';
 
@@ -35,8 +36,9 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const offering = await getOfferingBySlug(slug);
+  const brand = await getBrand();
   return {
-    title: offering ? `Configure ${offering.title} — Sweet Dreams Music` : 'Configure',
+    title: offering ? `Configure ${offering.title} — ${brand.name}` : 'Configure',
   };
 }
 

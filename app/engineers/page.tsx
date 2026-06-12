@@ -5,21 +5,26 @@ import { SITE_URL } from '@/lib/constants';
 import { STUDIO_IMAGES } from '@/lib/images';
 import { requireHref } from '@/lib/site-settings-server';
 import { getEngineers } from '@/lib/engineers-server';
+import { getBrand } from '@/lib/brand-server';
+import { cityState } from '@/lib/brand';
 
 // Reads the site's nav flags at request time so the page can 404 when disabled.
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Our Engineers — Recording, Mixing & Production',
-  description: 'Meet the Sweet Dreams Music engineering team in Fort Wayne, IN. Four professional sound engineers specializing in recording, mixing, mastering, and music production. 30+ years of combined experience.',
-  alternates: { canonical: `${SITE_URL}/engineers` },
-  openGraph: {
-    title: 'Our Engineers — Recording, Mixing & Production | Sweet Dreams Music',
-    description: 'Four professional sound engineers in Fort Wayne, Indiana. Specializing in recording, mixing, mastering, and full music production.',
-    url: `${SITE_URL}/engineers`,
-    type: 'website',
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: 'Our Engineers — Recording, Mixing & Production',
+    description: `Meet the ${brand.name} engineering team in ${cityState(brand)}. Four professional sound engineers specializing in recording, mixing, mastering, and music production. 30+ years of combined experience.`,
+    alternates: { canonical: `${SITE_URL}/engineers` },
+    openGraph: {
+      title: `Our Engineers — Recording, Mixing & Production | ${brand.name}`,
+      description: `Four professional sound engineers in ${brand.address.city}, Indiana. Specializing in recording, mixing, mastering, and full music production.`,
+      url: `${SITE_URL}/engineers`,
+      type: 'website',
+    },
+  };
+}
 
 const ENGINEER_PHOTOS: Record<string, string> = {
   'PRVRB': STUDIO_IMAGES.prvrbBoothGlowVert,

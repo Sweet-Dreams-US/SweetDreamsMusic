@@ -1,18 +1,22 @@
 import type { Metadata } from 'next';
 import { SITE_URL } from '@/lib/constants';
+import { getBrand } from '@/lib/brand-server';
 import ProducerApplicationForm from '@/components/beats/ProducerApplicationForm';
 
-export const metadata: Metadata = {
-  title: 'Sell Your Beats — Producer Applications',
-  description: 'Sell your beats on Sweet Dreams Music. We partner with producers to reach more artists. 60/40 revenue split, storefront management, marketing, and payment processing included.',
-  alternates: { canonical: `${SITE_URL}/sell-beats` },
-  openGraph: {
-    title: 'Sell Your Beats on Sweet Dreams Music',
-    description: 'Apply to sell beats on Sweet Dreams Music. 60/40 revenue split, full storefront, marketing, and payment processing. Reach more artists in Fort Wayne and beyond.',
-    url: `${SITE_URL}/sell-beats`,
-    type: 'website',
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: 'Sell Your Beats — Producer Applications',
+    description: `Sell your beats on ${brand.name}. We partner with producers to reach more artists. 60/40 revenue split, storefront management, marketing, and payment processing included.`,
+    alternates: { canonical: `${SITE_URL}/sell-beats` },
+    openGraph: {
+      title: `Sell Your Beats on ${brand.name}`,
+      description: `Apply to sell beats on ${brand.name}. 60/40 revenue split, full storefront, marketing, and payment processing. Reach more artists in ${brand.address.city} and beyond.`,
+      url: `${SITE_URL}/sell-beats`,
+      type: 'website',
+    },
+  };
+}
 
 export default function SellBeatsPage() {
   return (

@@ -6,18 +6,22 @@ import { SITE_URL } from '@/lib/constants';
 import { requireHref } from '@/lib/site-settings-server';
 import BlogPostCard from '@/components/blog/BlogPostCard';
 import { fmtStampDate } from '@/lib/studio-time';
+import { getBrand } from '@/lib/brand-server';
 
-export const metadata: Metadata = {
-  title: 'Blog — Music Education & Industry Knowledge',
-  description: 'Music education, production tips, and industry knowledge from Sweet Dreams Music. Learn about recording, mixing, beat-making, and the music business.',
-  alternates: { canonical: `${SITE_URL}/blog` },
-  openGraph: {
-    title: 'Blog — Music Education & Industry Knowledge | Sweet Dreams Music',
-    description: 'Music education, production tips, and industry knowledge from Sweet Dreams Music.',
-    url: `${SITE_URL}/blog`,
-    type: 'website',
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: 'Blog — Music Education & Industry Knowledge',
+    description: `Music education, production tips, and industry knowledge from ${brand.name}. Learn about recording, mixing, beat-making, and the music business.`,
+    alternates: { canonical: `${SITE_URL}/blog` },
+    openGraph: {
+      title: `Blog — Music Education & Industry Knowledge | ${brand.name}`,
+      description: `Music education, production tips, and industry knowledge from ${brand.name}.`,
+      url: `${SITE_URL}/blog`,
+      type: 'website',
+    },
+  };
+}
 
 interface BlogPageProps {
   searchParams: Promise<{ category?: string; search?: string; page?: string }>;

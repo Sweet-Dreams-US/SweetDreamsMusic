@@ -1,14 +1,18 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth';
+import { getBrand } from '@/lib/brand-server';
 import DashboardNav from '@/components/layout/DashboardNav';
 import AdminMessagesClient from './AdminMessagesClient';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Support Queue — Admin — Sweet Dreams Music',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: `Support Queue — Admin — ${brand.name}`,
+  };
+}
 
 export default async function AdminMessagesPage() {
   const user = await getSessionUser();

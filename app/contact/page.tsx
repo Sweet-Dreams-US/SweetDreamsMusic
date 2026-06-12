@@ -4,21 +4,26 @@ import ContactForm from '@/components/shared/ContactForm';
 import { requireHref } from '@/lib/site-settings-server';
 import { getSiteContent } from '@/lib/site-content-server';
 import { content } from '@/lib/site-content';
+import { getBrand } from '@/lib/brand-server';
+import { cityState } from '@/lib/brand';
 
 // Reads the site's nav flags at request time so the page can 404 when disabled.
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Contact Us — Get in Touch',
-  description: 'Contact Sweet Dreams Music recording studio in Fort Wayne, IN. Questions about booking, pricing, beat licensing, or studio services? Send us a message and we\'ll get back to you.',
-  alternates: { canonical: `${SITE_URL}/contact` },
-  openGraph: {
-    title: 'Contact Sweet Dreams Music — Fort Wayne Recording Studio',
-    description: 'Get in touch with Sweet Dreams Music. Questions about booking, pricing, or studio services in Fort Wayne, Indiana.',
-    url: `${SITE_URL}/contact`,
-    type: 'website',
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: 'Contact Us — Get in Touch',
+    description: `Contact ${brand.name} recording studio in ${cityState(brand)}. Questions about booking, pricing, beat licensing, or studio services? Send us a message and we'll get back to you.`,
+    alternates: { canonical: `${SITE_URL}/contact` },
+    openGraph: {
+      title: `Contact ${brand.name} — ${brand.tagline}`,
+      description: `Get in touch with ${brand.name}. Questions about booking, pricing, or studio services in ${brand.address.city}, Indiana.`,
+      url: `${SITE_URL}/contact`,
+      type: 'website',
+    },
+  };
+}
 
 export default async function ContactPage() {
   await requireHref('/contact'); // 404 when the Contact page is disabled

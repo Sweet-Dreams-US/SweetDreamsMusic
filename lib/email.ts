@@ -3,9 +3,57 @@ import { SUPER_ADMINS, ROOM_LABELS, SITE_URL, type Room } from './constants';
 import { formatDuration } from './utils';
 import { mirrorToThread } from './messaging-mirror';
 import { fmtStampDateTime, fmtStampDate, fmtStampTime } from './studio-time';
+import { createServiceClient } from './supabase/server';
+import { brandFromRow, cityState, type Brand } from './brand';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM = 'Sweet Dreams Music <studio@sweetdreamsmusic.com>';
+
+// Whitelabel W0: outbound email identity + footer line come from brand_settings.
+// Email sends happen in webhooks/crons where React cache() isn't available, so
+// we keep a tiny module-level cache with a 5-minute TTL. FAIL-OPEN: if the row
+// never loads, the exact historical literals below are used, so Sweet Dreams
+// output stays byte-identical.
+const FROM_FALLBACK = 'Sweet Dreams Music <studio@sweetdreamsmusic.com>';
+const FOOTER_LINE_FALLBACK = 'Sweet Dreams Music LLC &mdash; Fort Wayne, IN';
+
+const BRAND_TTL_MS = 5 * 60 * 1000;
+let cachedBrand: Brand | null = null;
+let cachedAt = 0; // 0 = never loaded → first call always queries
+
+async function loadEmailBrand(): Promise<Brand | null> {
+  const now = Date.now();
+  if (now - cachedAt < BRAND_TTL_MS) return cachedBrand;
+  try {
+    const db = createServiceClient();
+    const { data } = await db.from('brand_settings').select('*').is('studio_id', null).maybeSingle();
+    cachedBrand = data ? brandFromRow(data) : null;
+    cachedAt = now;
+  } catch {
+    // Transient failure: keep the previous value and retry on the next send
+    // (cachedAt deliberately not bumped).
+  }
+  return cachedBrand;
+}
+
+/**
+ * Resend FROM identity — `Name <email>` built from brand_settings
+ * (from_name/from_email), fail-open to the historical Sweet Dreams literal.
+ * Every send in this file (and the routes that used to carry their own FROM
+ * constant) awaits this.
+ */
+export async function emailIdentity(): Promise<string> {
+  const b = await loadEmailBrand();
+  return b ? `${b.fromName} <${b.fromEmail}>` : FROM_FALLBACK;
+}
+
+// Footer line under every email. Reads the cache synchronously — wrap() must
+// stay sync (broadcastHtml + 60 helpers build html before awaiting the send).
+// The cache is warmed by the `await emailIdentity()` in each send; on a cold
+// start the verbatim fallback renders instead (same bytes for Sweet Dreams).
+// Exported for routes that carry their own wrap() copy (admin broadcasts).
+export function footerLine(): string {
+  return cachedBrand ? `${cachedBrand.legalName} &mdash; ${cityState(cachedBrand)}` : FOOTER_LINE_FALLBACK;
+}
 
 function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -31,7 +79,7 @@ export function escapeHtml(input: string): string {
 }
 
 function wrap(content: string): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#000;font-family:'IBM Plex Mono',monospace;color:#fff"><div style="max-width:600px;margin:0 auto;padding:40px 24px">${content}<div style="margin-top:40px;padding-top:24px;border-top:1px solid #333;text-align:center"><p style="color:#666;font-size:11px;margin:0">Sweet Dreams Music LLC &mdash; Fort Wayne, IN</p><p style="color:#666;font-size:11px;margin:4px 0 0"><a href="${SITE_URL}" style="color:#F4C430;text-decoration:none">sweetdreamsmusic.com</a></p></div></div></body></html>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#000;font-family:'IBM Plex Mono',monospace;color:#fff"><div style="max-width:600px;margin:0 auto;padding:40px 24px">${content}<div style="margin-top:40px;padding-top:24px;border-top:1px solid #333;text-align:center"><p style="color:#666;font-size:11px;margin:0">${footerLine()}</p><p style="color:#666;font-size:11px;margin:4px 0 0"><a href="${SITE_URL}" style="color:#F4C430;text-decoration:none">${SITE_URL.replace(/^https?:\/\//, '')}</a></p></div></div></body></html>`;
 }
 
 function btn(text: string, href: string): string {
@@ -71,7 +119,7 @@ export async function sendBookingConfirmation(to: string, details: {
     const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
     const prepUrl = details.bookingId ? `${SITE_URL}/dashboard/prep/${details.bookingId}` : `${SITE_URL}/dashboard`;
     await resend.emails.send({
-      from: FROM, to, subject: 'Booking Confirmed — Sweet Dreams Music',
+      from: await emailIdentity(), to, subject: 'Booking Confirmed — Sweet Dreams Music',
       html: wrap(`
         ${h1('Booking Confirmed')}
         ${p(`Hey ${details.customerName}, your session is booked!`)}
@@ -120,7 +168,7 @@ export async function sendEngineerNewBookingAlert(engineerEmails: string[], book
     try {
       console.log('[EMAIL] Sending engineer alert to:', email);
       await resend.emails.send({
-        from: FROM, to: email, subject: 'New Session Available — Claim It', html,
+        from: await emailIdentity(), to: email, subject: 'New Session Available — Claim It', html,
       });
       console.log('[EMAIL] Sent successfully to:', email);
     } catch (e) {
@@ -139,7 +187,7 @@ export async function sendEngineerPriorityAlert(to: string, details: {
       ? `${details.priorityHours} hours`
       : details.priorityHours;
     await resend.emails.send({
-      from: FROM, to,
+      from: await emailIdentity(), to,
       subject: 'You\'ve Been Requested — Accept or Pass',
       html: wrap(`
         ${h1('You\'ve Been Requested')}
@@ -167,7 +215,7 @@ export async function sendPriorityReminderToEngineer(to: string, details: {
   try {
     const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
     await resend.emails.send({
-      from: FROM, to,
+      from: await emailIdentity(), to,
       subject: `Priority Expiring Soon — ${details.customerName}'s Session`,
       html: wrap(`
         ${h1('Priority Expiring Soon')}
@@ -197,7 +245,7 @@ export async function sendEngineerAssignedNonRequested(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM, to,
+      from: await emailIdentity(), to,
       subject: 'Engineer Update — Sweet Dreams Music',
       html: wrap(`
         ${h1('Your Session Engineer')}
@@ -241,7 +289,7 @@ export async function sendEngineerPassNotification(engineerEmails: string[], det
   for (const email of engineerEmails) {
     try {
       await resend.emails.send({
-        from: FROM, to: email, subject: `Session Available — ${details.customerName}`, html,
+        from: await emailIdentity(), to: email, subject: `Session Available — ${details.customerName}`, html,
       });
     } catch (e) {
       console.error(`Email error (pass notification to ${email}):`, e);
@@ -265,7 +313,7 @@ export async function sendBandSessionNeedsRescheduleAdmin(details: {
 }) {
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to: [...SUPER_ADMINS],
       subject: `Iszac passed band session — coordinate reschedule (${details.customerName})`,
       html: wrap(`
@@ -297,7 +345,7 @@ export async function sendPriorityExpiredToClient(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM, to,
+      from: await emailIdentity(), to,
       subject: 'Engineer Update — Sweet Dreams Music',
       html: wrap(`
         ${h1('Engineer Update')}
@@ -324,7 +372,7 @@ export async function sendRescheduleRequestAlert(details: {
   try {
     const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
     await resend.emails.send({
-      from: FROM, to: [...SUPER_ADMINS],
+      from: await emailIdentity(), to: [...SUPER_ADMINS],
       subject: `Reschedule Request — ${details.customerName}`,
       html: wrap(`
         ${h1('Reschedule Request')}
@@ -355,7 +403,7 @@ export async function sendCashChosenAlert(to: string, details: {
     const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
     const depositStr = `$${(details.depositAmount / 100).toFixed(2)}`;
     await resend.emails.send({
-      from: FROM, to: [to],
+      from: await emailIdentity(), to: [to],
       subject: `Cash Deposit Chosen — ${details.customerName}`,
       html: wrap(`
         ${h1('Client Chose to Pay Cash')}
@@ -387,7 +435,7 @@ export async function sendEngineerAssigned(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM, to, subject: 'Engineer Assigned — Sweet Dreams Music',
+      from: await emailIdentity(), to, subject: 'Engineer Assigned — Sweet Dreams Music',
       html: wrap(`
         ${h1('Engineer Assigned')}
         ${p(`Hey ${details.customerName}, your engineer has been confirmed!`)}
@@ -410,7 +458,7 @@ export async function sendEngineerClaimConfirmation(to: string, details: {
   try {
     const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
     await resend.emails.send({
-      from: FROM, to, subject: 'Session Claimed — Sweet Dreams Music',
+      from: await emailIdentity(), to, subject: 'Session Claimed — Sweet Dreams Music',
       html: wrap(`
         ${h1('Session Claimed')}
         ${p(`Hey ${details.engineerName}, you've claimed this session.`)}
@@ -437,7 +485,7 @@ export async function sendAdminBookingAlert(booking: {
   try {
     const roomLabel = ROOM_LABELS[booking.room as Room] || booking.room;
     await resend.emails.send({
-      from: FROM, to: [...SUPER_ADMINS], subject: `New Booking — ${booking.customerName}`,
+      from: await emailIdentity(), to: [...SUPER_ADMINS], subject: `New Booking — ${booking.customerName}`,
       html: wrap(`
         ${h1('New Booking')}
         ${detailTable(`
@@ -469,7 +517,7 @@ export async function sendSessionReminder(to: string, details: {
     const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
     const prepUrl = details.bookingId ? `${SITE_URL}/dashboard/prep/${details.bookingId}` : null;
     await resend.emails.send({
-      from: FROM, to, subject: 'Session in 1 Hour — Sweet Dreams Music',
+      from: await emailIdentity(), to, subject: 'Session in 1 Hour — Sweet Dreams Music',
       html: wrap(`
         ${h1('Session Reminder')}
         ${p(`Hey ${details.customerName}, your session starts in 1 hour!`)}
@@ -534,7 +582,7 @@ export async function sendSessionReminderToStaff(emails: string[], details: {
     for (const email of emails) {
       try {
         await resend.emails.send({
-          from: FROM, to: email,
+          from: await emailIdentity(), to: email,
           subject: `Session in 1 Hour — ${details.customerName}${details.artistName ? ` (${details.artistName})` : ''}`,
           html,
         });
@@ -563,7 +611,7 @@ export async function sendSessionReminderToStaff(emails: string[], details: {
 export async function sendPasswordReset(to: string, resetLink: string, name?: string) {
   try {
     await resend.emails.send({
-      from: FROM, to, subject: 'Reset Your Password — Sweet Dreams Music',
+      from: await emailIdentity(), to, subject: 'Reset Your Password — Sweet Dreams Music',
       html: wrap(`
         ${h1('Reset Password')}
         ${p(name ? `Hey ${name}, we received a request to reset your password.` : 'We received a request to reset your password.')}
@@ -586,7 +634,7 @@ export async function sendWelcomeEmail(to: string, name: string) {
   });
   try {
     await resend.emails.send({
-      from: FROM, to, subject: 'Welcome to Sweet Dreams Music',
+      from: await emailIdentity(), to, subject: 'Welcome to Sweet Dreams Music',
       html: wrap(`
         ${h1('Welcome')}
         ${p(`Hey ${name}, welcome to Sweet Dreams Music!`)}
@@ -612,7 +660,7 @@ export async function sendSessionFilesDelivered(to: string, details: {
     const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
     const reviewUrl = 'https://g.page/r/CcWAY0XlIQNpEBM/review';
     await resend.emails.send({
-      from: FROM, to, subject: 'Your Session Files Are Ready — Sweet Dreams Music',
+      from: await emailIdentity(), to, subject: 'Your Session Files Are Ready — Sweet Dreams Music',
       html: wrap(`
         ${h1('Your Files Are Ready')}
         ${p(`Hey ${details.customerName},`)}
@@ -640,7 +688,7 @@ export async function sendPaymentLink(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM, to, subject: 'Complete Your Remaining Balance — Sweet Dreams Music',
+      from: await emailIdentity(), to, subject: 'Complete Your Remaining Balance — Sweet Dreams Music',
       html: wrap(`
         ${h1('Remaining Balance')}
         ${p(`Hey ${details.customerName}, your session is complete! Please pay the remaining balance below.`)}
@@ -674,7 +722,7 @@ export async function sendSessionInvite(to: string, details: {
       : 'You\'re Invited to a Session — Sweet Dreams Music';
 
     await resend.emails.send({
-      from: FROM, to, subject,
+      from: await emailIdentity(), to, subject,
       html: wrap(`
         ${h1(details.isCash ? 'Cash Deposit Due' : 'Session Invite')}
         ${p(`Hey ${details.customerName}, ${details.engineerName} has ${details.isCash ? 'set up a session for you' : 'invited you to a session'} at Sweet Dreams Music!`)}
@@ -712,7 +760,7 @@ export async function sendBeatReviewNotification(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM, to,
+      from: await emailIdentity(), to,
       subject: 'New Beat Uploaded — Review Required',
       html: wrap(`
         ${h1('New Beat for Review')}
@@ -735,7 +783,7 @@ export async function sendContactForm(details: {
 }) {
   try {
     await resend.emails.send({
-      from: FROM, to: [...SUPER_ADMINS], replyTo: details.email,
+      from: await emailIdentity(), to: [...SUPER_ADMINS], replyTo: details.email,
       subject: `Contact Form: ${details.subject}`,
       html: wrap(`
         ${h1('Contact Form')}
@@ -761,7 +809,7 @@ export async function sendTaxEstimateReminder(to: string[], details: {
 }) {
   try {
     await resend.emails.send({
-      from: FROM, to,
+      from: await emailIdentity(), to,
       subject: `Q${details.quarter} estimated tax due ${details.dueDate} — ${details.daysOut} days`,
       html: wrap(`
         ${h1(`Q${details.quarter} Estimated Tax`)}
@@ -782,7 +830,7 @@ export async function sendTaxEstimateReminder(to: string[], details: {
 export async function sendTrackingPausedEmail(to: string, details: { name: string }) {
   try {
     await resend.emails.send({
-      from: FROM, to,
+      from: await emailIdentity(), to,
       subject: 'Your weekly stat tracking is paused',
       html: wrap(`
         ${h1('Stat Tracking Paused')}
@@ -803,7 +851,7 @@ export async function sendUnreadMessageNudge(to: string, details: {
 }) {
   try {
     await resend.emails.send({
-      from: FROM, to,
+      from: await emailIdentity(), to,
       subject: 'You have an unread message — Sweet Dreams Music',
       html: wrap(`
         ${h1('Unread Message')}
@@ -826,10 +874,11 @@ export async function sendBroadcastEmailBatch(recipients: string[], subject: str
   Promise<{ sent: number; failed: number }> {
   let sent = 0, failed = 0;
   const BATCH = 100;
+  const from = await emailIdentity();
   for (let i = 0; i < recipients.length; i += BATCH) {
     const chunk = recipients.slice(i, i + BATCH);
     try {
-      await resend.batch.send(chunk.map((to) => ({ from: FROM, to, subject, html })));
+      await resend.batch.send(chunk.map((to) => ({ from, to, subject, html })));
       sent += chunk.length;
     } catch (e) {
       console.error('Email error (broadcast batch):', e);
@@ -866,7 +915,7 @@ export async function sendPrivateBeatSaleInvite(to: string, details: {
   try {
     const actionText = details.requiresPayment ? 'Review & Purchase' : 'Review & Sign';
     await resend.emails.send({
-      from: FROM, to,
+      from: await emailIdentity(), to,
       subject: `Private Beat Sale — ${details.beatTitle}`,
       html: wrap(`
         ${h1('PRIVATE BEAT SALE')}
@@ -901,7 +950,7 @@ export async function sendPrivateBeatSaleComplete(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM, to,
+      from: await emailIdentity(), to,
       subject: `Beat Purchase Complete — ${details.beatTitle}`,
       html: wrap(`
         ${h1('PURCHASE COMPLETE')}
@@ -925,7 +974,7 @@ export async function sendPrivateBeatSaleNotification(to: string, details: {
 }) {
   try {
     await resend.emails.send({
-      from: FROM, to,
+      from: await emailIdentity(), to,
       subject: `Beat Sale Completed — ${details.beatTitle}`,
       html: wrap(`
         ${h1('SALE COMPLETED')}
@@ -961,7 +1010,7 @@ export async function sendBeatPurchaseConfirmation(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: `Purchase Confirmed — ${details.beatTitle}`,
       html: wrap(
@@ -999,7 +1048,7 @@ export async function sendBeatSaleProducerNotification(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: `Beat Sold — ${details.beatTitle}`,
       html: wrap(
@@ -1039,7 +1088,7 @@ export async function sendAdminBeatApprovalNotification(adminEmails: string[], d
   for (const email of adminEmails) {
     try {
       await resend.emails.send({
-        from: FROM, to: email,
+        from: await emailIdentity(), to: email,
         subject: `Beat Approval Needed — ${details.beatTitle}`,
         html,
       });
@@ -1060,7 +1109,7 @@ export async function sendBeatApprovedNotification(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM, to,
+      from: await emailIdentity(), to,
       subject: `Beat Approved — ${details.beatTitle}`,
       html: wrap(
         h1('BEAT APPROVED') +
@@ -1087,7 +1136,7 @@ export async function sendBeatRejectedNotification(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM, to,
+      from: await emailIdentity(), to,
       subject: `Beat Not Approved — ${details.beatTitle}`,
       html: wrap(
         h1('BEAT NOT APPROVED') +
@@ -1120,7 +1169,7 @@ export async function sendLeaseRevokedNotification(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: `Lease Revoked — "${details.beatTitle}" Exclusive Purchased`,
       html: wrap(
@@ -1167,7 +1216,7 @@ export async function sendPaymentReminder(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: `Friendly Reminder — Session Balance Due`,
       html: wrap(
@@ -1228,7 +1277,7 @@ export async function sendPaystubEmail(to: string, details: {
     if ((d.packageCommission ?? 0) > 0) earningsRows += detail('Package Commission', formatMoney(d.packageCommission ?? 0));
 
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: `Paystub — ${formatMoney(d.payoutAmount)} Payment${d.periodLabel ? ` (${d.periodLabel})` : ''}`,
       html: wrap(
@@ -1276,7 +1325,7 @@ export async function sendLeaseExpiryWarning(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: `Your Lease Expires Soon — "${details.beatTitle}"`,
       html: wrap(
@@ -1317,7 +1366,7 @@ export async function sendLeaseExpiredNotice(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: `Lease Expired — "${details.beatTitle}"`,
       html: wrap(
@@ -1361,7 +1410,7 @@ export async function sendBandInviteEmail(details: {
   try {
     const acceptUrl = `${SITE_URL}/bands/accept/${details.token}`;
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to: details.toEmail,
       subject: `You're invited to join ${details.bandName} on Sweet Dreams Music`,
       html: wrap(`
@@ -1415,7 +1464,7 @@ export async function sendBandMemberJoinedNotification(
   try {
     const bandUrl = `${SITE_URL}/dashboard/bands/${details.bandId}`;
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to: recipientEmails,
       subject: `${details.joinerName} joined ${details.bandName}`,
       html: wrap(`
@@ -1473,7 +1522,7 @@ export async function sendEventInvitation(details: {
   });
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to: details.toEmail,
       subject: `You're invited: ${details.eventTitle}`,
       html: wrap(`
@@ -1516,7 +1565,7 @@ export async function sendEventRsvpRequestAlert(details: {
   try {
     const adminUrl = `${SITE_URL}/admin#events`;
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to: [...SUPER_ADMINS],
       replyTo: details.requesterEmail,
       subject: `Request to attend: ${details.eventTitle}`,
@@ -1581,7 +1630,7 @@ export async function sendEventRsvpDecision(details: {
   });
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to: details.toEmail,
       subject: details.approved
         ? `You're in: ${details.eventTitle}`
@@ -1650,9 +1699,10 @@ export async function sendEventCancellation(details: {
     });
   }
   try {
+    const identity = await emailIdentity();
     await resend.emails.send({
-      from: FROM,
-      to: FROM, // send-only address — real recipients go via bcc
+      from: identity,
+      to: identity, // send-only address — real recipients go via bcc
       bcc: details.toEmails,
       subject: `Cancelled: ${details.eventTitle}`,
       html: wrap(`
@@ -1729,7 +1779,7 @@ export async function sendMediaPurchaseConfirmation(to: string, details: {
       : '';
 
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: `Order Confirmed — ${details.offeringTitle}`,
       html: wrap(
@@ -1823,7 +1873,7 @@ export async function sendMediaPurchaseAdminAlert(details: {
     } — Deposit ${formatMoney(details.amountPaid)}`;
 
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to: ['jayvalleo@sweetdreams.us', 'cole@sweetdreams.us'],
       replyTo: details.buyerEmail,
       subject,
@@ -1890,7 +1940,7 @@ export async function sendMediaSessionScheduled(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: `Session Scheduled — ${details.sessionKindLabel} for ${details.offeringTitle}`,
       html: wrap(
@@ -1949,7 +1999,7 @@ export async function sendMediaSessionEngineerAlert(to: string, details: {
       `
       : '';
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: `Media Session Booked — ${details.sessionKindLabel} for ${details.buyerName}`,
       html: wrap(
@@ -2004,7 +2054,7 @@ export async function sendMediaSessionReminder(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: `Session in 1 Hour — ${details.sessionKindLabel}`,
       html: wrap(
@@ -2045,7 +2095,7 @@ export async function sendMediaSessionReminderToEngineer(to: string, details: {
       ? 'Sweet Dreams Studio'
       : details.externalLocationText || 'External (see scheduling notes)';
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: `Heads up — ${details.sessionKindLabel} for ${details.buyerName} in 1 hour`,
       html: wrap(
@@ -2089,7 +2139,7 @@ export async function sendMediaDeliverablesReady(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: `Your Files Are Ready — ${details.offeringTitle}`,
       html: wrap(
@@ -2129,7 +2179,7 @@ export async function sendMediaPaymentLink(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: 'Complete Your Media Order Balance — Sweet Dreams Music',
       html: wrap(
@@ -2175,7 +2225,7 @@ export async function sendMediaComponentReady(to: string, details: {
   });
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: `${details.componentLabel} is ready — ${details.offeringTitle}`,
       html: wrap(
@@ -2218,7 +2268,7 @@ export async function sendMediaInquiry(details: {
       `
       : '';
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to: ['jayvalleo@sweetdreams.us', 'cole@sweetdreams.us'],
       replyTo: details.inquirerEmail,
       subject: `Media Inquiry — ${details.offeringTitle}${details.bandName ? ` (${details.bandName})` : ''}`,
@@ -2267,7 +2317,7 @@ export async function sendSweetSpotInquiry(details: {
 }) {
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to: ['jayvalleo@sweetdreams.us', 'cole@sweetdreams.us'],
       replyTo: details.email,
       subject: `Sweet Spot Inquiry — ${details.bandName}`,
@@ -2350,7 +2400,7 @@ export async function sendNewMediaMessageNotification(args: {
       // Notify the buyer.
       if (buyerEmail) {
         await resend.emails.send({
-          from: FROM,
+          from: await emailIdentity(),
           to: buyerEmail,
           subject: `New message about your order from ${safeAuthorName}`,
           html: wrap(
@@ -2365,7 +2415,7 @@ export async function sendNewMediaMessageNotification(args: {
     } else {
       // Buyer or engineer wrote — notify admins.
       await resend.emails.send({
-        from: FROM,
+        from: await emailIdentity(),
         to: [...SUPER_ADMINS],
         subject: `New ${args.authorRole} message — order ${args.bookingId.slice(0, 8)}`,
         html: wrap(
@@ -2478,7 +2528,7 @@ export async function sendPackageQuote(to: string, details: {
       : '';
 
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to,
       subject: `Quote: ${details.templateName}`,
       html: wrap(
@@ -2510,7 +2560,7 @@ export async function sendPackageQuoteAccepted(details: {
 }) {
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to: [...SUPER_ADMINS],
       replyTo: details.recipientEmail,
       subject: `Quote accepted: ${details.templateName} — ${details.recipientName}`,
@@ -2542,7 +2592,7 @@ export async function sendPackageQuoteDeclined(details: {
 }) {
   try {
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to: [...SUPER_ADMINS],
       replyTo: details.recipientEmail,
       subject: `Quote declined: ${details.templateName} — ${details.recipientName}`,

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { getSessionUser } from '@/lib/auth';
 import { SITE_URL } from '@/lib/constants';
+import { getBrand } from '@/lib/brand-server';
 import WritingPad from '@/components/beats/WritingPad';
 
 interface Props {
@@ -19,9 +20,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .eq('id', id)
     .single();
 
+  const brand = await getBrand();
   return {
     title: beat ? `Write to "${beat.title}"` : 'Writing Pad',
-    description: beat ? `Write lyrics to "${beat.title}" by ${beat.producer} on Sweet Dreams Music.` : 'Write lyrics to beats.',
+    description: beat ? `Write lyrics to "${beat.title}" by ${beat.producer} on ${brand.name}.` : 'Write lyrics to beats.',
     alternates: { canonical: `${SITE_URL}/beats/${id}/write` },
   };
 }

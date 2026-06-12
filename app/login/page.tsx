@@ -1,12 +1,16 @@
 import type { Metadata } from 'next';
 import { SITE_URL } from '@/lib/constants';
+import { getBrand } from '@/lib/brand-server';
 import AuthForm from '@/components/auth/AuthForm';
 
-export const metadata: Metadata = {
-  title: 'Sign In',
-  description: 'Sign in to your Sweet Dreams Music account to book sessions, view your files, and manage your profile.',
-  alternates: { canonical: `${SITE_URL}/login` },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: 'Sign In',
+    description: `Sign in to your ${brand.name} account to book sessions, view your files, and manage your profile.`,
+    alternates: { canonical: `${SITE_URL}/login` },
+  };
+}
 
 export default function LoginPage() {
   return (

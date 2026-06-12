@@ -20,7 +20,14 @@ import {
 
 // Exported: the agent stats console (lib/agent-stats-server.ts) excludes the same
 // internal test accounts from its work queue + pause emails.
-export const TEST_EMAILS = new Set(['cole@sweetdreams.us']);
+// Whitelabel W0: env-first (TEST_ACCOUNT_EMAILS, comma-separated) with the
+// historical literal as fallback — without the env var set, behavior is
+// IDENTICAL. Stays a Set (consumers call .has()).
+const testEmailsFromEnv = process.env.TEST_ACCOUNT_EMAILS
+  ?.split(',')
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+export const TEST_EMAILS = new Set(testEmailsFromEnv?.length ? testEmailsFromEnv : ['cole@sweetdreams.us']);
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
 // Only these windows are evaluable from historical data; per_purchase/per_event/

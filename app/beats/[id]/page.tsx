@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { createClient } from '@/lib/supabase/server';
 import { formatCents } from '@/lib/utils';
 import { BEAT_LICENSES, SITE_URL } from '@/lib/constants';
+import { getBrand } from '@/lib/brand-server';
 import BeatDetailClient from '@/components/beats/BeatDetailClient';
 import BuyButton from '@/components/beats/BuyButton';
 import MessageButton from '@/components/messaging/MessageButton';
@@ -25,9 +26,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   if (!beat) return { title: 'Beat Not Found' };
 
+  const brand = await getBrand();
   return {
     title: `${beat.title} by ${beat.producer}`,
-    description: `Buy "${beat.title}" by ${beat.producer}. ${beat.genre || 'Beat'} available for lease or exclusive purchase on Sweet Dreams Music.`,
+    description: `Buy "${beat.title}" by ${beat.producer}. ${beat.genre || 'Beat'} available for lease or exclusive purchase on ${brand.name}.`,
     alternates: { canonical: `${SITE_URL}/beats/${id}` },
   };
 }

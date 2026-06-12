@@ -8,19 +8,22 @@ import { getUpcomingListedEvents } from '@/lib/events-server';
 import { requireHref } from '@/lib/site-settings-server';
 import { allowsDirectRsvp } from '@/lib/events';
 import { fmtStampDate, fmtStampTime } from '@/lib/studio-time';
+import { getBrand } from '@/lib/brand-server';
 
-export const metadata: Metadata = {
-  title: 'Events — Sweet Dreams Music',
-  description:
-    'Upcoming events at Sweet Dreams Music — band showcases, The Sweet Spot sessions, open-mic nights, and studio happenings in Fort Wayne, Indiana.',
-  alternates: { canonical: `${SITE_URL}/events` },
-  openGraph: {
-    title: 'Events — Sweet Dreams Music',
-    description: 'Upcoming events at Sweet Dreams Music in Fort Wayne, Indiana.',
-    url: `${SITE_URL}/events`,
-    type: 'website',
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: `Events — ${brand.name}`,
+    description: `Upcoming events at ${brand.name} — band showcases, The Sweet Spot sessions, open-mic nights, and studio happenings in ${brand.address.city}, Indiana.`,
+    alternates: { canonical: `${SITE_URL}/events` },
+    openGraph: {
+      title: `Events — ${brand.name}`,
+      description: `Upcoming events at ${brand.name} in ${brand.address.city}, Indiana.`,
+      url: `${SITE_URL}/events`,
+      type: 'website',
+    },
+  };
+}
 
 // Render fresh every hit — events are low-volume and timeliness matters.
 // If traffic ever warrants it, flip to `revalidate = 60` for ISR.

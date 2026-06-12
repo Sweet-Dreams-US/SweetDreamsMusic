@@ -1,11 +1,18 @@
-import { SITE_URL, BRAND, PRICING, GEO, ENGINEERS } from '@/lib/constants';
+import { SITE_URL, PRICING, ENGINEERS } from '@/lib/constants';
 import { formatCents } from '@/lib/utils';
+import { cityState, stateName, type Brand } from '@/lib/brand';
 
 /**
  * Site-wide schema.org JSON-LD payload, injected once in the root layout
  * <head>. Each schema gets its own <script> so individual entries can
  * fail validation without breaking the others (Google's parser short-
  * circuits inside a single JSON object).
+ *
+ * Whitelabel W0: brand identity + the engineer roster now arrive as props
+ * (layout fetches getBrand() + getEngineers()); every brand-bearing string
+ * is a template verified character-exact against the legacy constants for
+ * Sweet Dreams' values. PRICING stays constant-driven — pricing templating
+ * is a later phase.
  *
  * Schemas emitted:
  *   • LocalBusiness / RecordingStudio  (the studio itself)
@@ -20,16 +27,49 @@ import { formatCents } from '@/lib/utils';
  */
 
 const OG_IMAGE = `${SITE_URL}/og-image.png`;
-const PHONE = BRAND.phone || undefined;
 
-// Official social presence — extend as new accounts go live. Empty
-// strings are filtered out so a missing handle doesn't pollute the
+/** Subset of the engineer roster the schemas need (EngineerRec satisfies it). */
+export interface JsonLdEngineer {
+  /** Canonical roster identity (immutable) — feeds the /engineers# anchor slug. */
+  name: string;
+  /** Public-facing name — feeds the Person.name field. */
+  displayName: string;
+  specialties: string[];
+}
+
+// TRANSITION (W0): the live `engineers` table has sort_order=0 on every row,
+// so DB order is arbitrary. Anchor the JSON-LD roster to the legacy constant's
+// order so output stays byte-identical; names not in the constant (future
+// hires) keep their DB order after the known ones (sort() is stable). Remove
+// once sort_order is curated in the admin Engineers tab.
+const LEGACY_ENGINEER_ORDER = new Map<string, number>(ENGINEERS.map((e, i) => [e.name, i]));
+function inLegacyOrder(list: JsonLdEngineer[]): JsonLdEngineer[] {
+  const rank = (e: JsonLdEngineer) => LEGACY_ENGINEER_ORDER.get(e.name) ?? LEGACY_ENGINEER_ORDER.size;
+  return [...list].sort((a, b) => rank(a) - rank(b));
+}
+
+// Official social presence → `sameAs`. Postgres jsonb does NOT preserve key
+// order (sorts by length then bytewise: tiktok, youtube, instagram), so emit
+// in a canonical platform order — matches the legacy hardcoded array exactly.
+// Empty strings are filtered out so a missing handle doesn't pollute the
 // `sameAs` array with empty references.
-const SOCIAL_LINKS = [
-  'https://www.instagram.com/sweetdreamsmusic',
-  'https://www.youtube.com/@sweetdreamsmusic',
-  'https://www.tiktok.com/@sweetdreamsmusic',
-].filter(Boolean);
+const PLATFORM_ORDER = ['instagram', 'youtube', 'tiktok'];
+function sameAsLinks(b: Brand): string[] {
+  const rank = (k: string) => {
+    const i = PLATFORM_ORDER.indexOf(k);
+    return i === -1 ? PLATFORM_ORDER.length : i;
+  };
+  return Object.entries(b.socials)
+    .filter(([, url]) => Boolean(url))
+    .sort(([a], [b2]) => rank(a) - rank(b2) || a.localeCompare(b2))
+    .map(([, url]) => url);
+}
+
+// TRANSITION (W0): the beat store's public name is NOT derivable from the
+// Brand object ("Sweet Dreams" ≠ brand.name "Sweet Dreams Music" — appending
+// "Beat Store" to brand.name would NOT be byte-identical). Needs its own
+// brand field (e.g. brand.storeName) in a later whitelabel phase.
+const BEAT_STORE_NAME = 'Sweet Dreams Beat Store';
 
 function script(data: unknown) {
   return (
@@ -40,25 +80,24 @@ function script(data: unknown) {
   );
 }
 
-function LocalBusinessSchema() {
+function LocalBusinessSchema({ brand, engineers }: { brand: Brand; engineers: JsonLdEngineer[] }) {
   const schema = {
     '@context': 'https://schema.org',
     '@type': ['RecordingStudio', 'LocalBusiness', 'MusicGroup'],
     '@id': `${SITE_URL}/#organization`,
-    name: BRAND.name,
-    alternateName: BRAND.legalName,
-    description:
-      'Professional 24/7 recording studio and beat marketplace in Fort Wayne, Indiana. Two studios, four engineers, music video production, band recording, and artist development. Sessions starting at $50/hour.',
+    name: brand.name,
+    alternateName: brand.legalName,
+    description: `Professional 24/7 recording studio and beat marketplace in ${brand.address.city}, ${stateName(brand)}. Two studios, four engineers, music video production, band recording, and artist development. Sessions starting at $50/hour.`,
     url: SITE_URL,
     image: OG_IMAGE,
     logo: `${SITE_URL}/icon.png`,
-    telephone: PHONE,
-    email: BRAND.email,
+    telephone: brand.phone || undefined,
+    email: brand.email,
     address: {
       '@type': 'PostalAddress',
-      addressLocality: BRAND.address.city,
-      addressRegion: BRAND.address.state,
-      addressCountry: BRAND.address.country,
+      addressLocality: brand.address.city,
+      addressRegion: brand.address.state,
+      addressCountry: brand.address.country,
     },
     geo: {
       '@type': 'GeoCoordinates',
@@ -76,15 +115,15 @@ function LocalBusinessSchema() {
     paymentAccepted: 'Credit Card, Cash App Pay, Bank Transfer',
     areaServed: {
       '@type': 'City',
-      name: GEO.placeName,
+      name: brand.address.city,
       containedIn: {
         '@type': 'State',
-        name: 'Indiana',
+        name: stateName(brand),
       },
     },
     numberOfEmployees: {
       '@type': 'QuantitativeValue',
-      value: ENGINEERS.length,
+      value: engineers.length,
     },
     hasOfferCatalog: {
       '@type': 'OfferCatalog',
@@ -154,7 +193,7 @@ function LocalBusinessSchema() {
         },
       ],
     },
-    sameAs: SOCIAL_LINKS,
+    sameAs: sameAsLinks(brand),
     knowsAbout: [
       'Music Recording',
       'Audio Mixing',
@@ -167,7 +206,7 @@ function LocalBusinessSchema() {
       'Music Video Production',
       'Artist Development',
     ],
-    employee: ENGINEERS.map((e) => ({
+    employee: engineers.map((e) => ({
       '@type': 'Person',
       '@id': `${SITE_URL}/engineers#${e.name.toLowerCase().replace(/\s+/g, '-')}`,
       name: e.displayName,
@@ -180,15 +219,14 @@ function LocalBusinessSchema() {
   return script(schema);
 }
 
-function WebSiteSchema() {
+function WebSiteSchema({ brand }: { brand: Brand }) {
   return script({
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     '@id': `${SITE_URL}/#website`,
-    name: BRAND.name,
+    name: brand.name,
     url: SITE_URL,
-    description:
-      'Professional recording studio in Fort Wayne, IN. Book sessions, browse beats, and connect with experienced engineers.',
+    description: `Professional recording studio in ${cityState(brand)}. Book sessions, browse beats, and connect with experienced engineers.`,
     inLanguage: 'en-US',
     publisher: { '@id': `${SITE_URL}/#organization` },
     potentialAction: {
@@ -202,22 +240,21 @@ function WebSiteSchema() {
   });
 }
 
-function MusicStoreSchema() {
+function MusicStoreSchema({ brand }: { brand: Brand }) {
   return script({
     '@context': 'https://schema.org',
     '@type': 'MusicStore',
     '@id': `${SITE_URL}/#beatstore`,
-    name: 'Sweet Dreams Beat Store',
-    description:
-      'Online beat marketplace by Sweet Dreams Music. Browse and license beats from Fort Wayne producers. MP3 leases, trackout leases, and exclusive rights available.',
+    name: BEAT_STORE_NAME,
+    description: `Online beat marketplace by ${brand.name}. Browse and license beats from ${brand.address.city} producers. MP3 leases, trackout leases, and exclusive rights available.`,
     url: `${SITE_URL}/beats`,
     image: OG_IMAGE,
     parentOrganization: { '@id': `${SITE_URL}/#organization` },
     address: {
       '@type': 'PostalAddress',
-      addressLocality: BRAND.address.city,
-      addressRegion: BRAND.address.state,
-      addressCountry: BRAND.address.country,
+      addressLocality: brand.address.city,
+      addressRegion: brand.address.state,
+      addressCountry: brand.address.country,
     },
     priceRange: '$29.99 - $400+',
     currenciesAccepted: 'USD',
@@ -264,21 +301,21 @@ function MusicStoreSchema() {
   });
 }
 
-function FAQSchema() {
+function FAQSchema({ brand, engineers }: { brand: Brand; engineers: JsonLdEngineer[] }) {
+  // Bare host for prose copy ("sweetdreamsmusic.com/book" — no protocol).
+  const siteHost = SITE_URL.replace(/^https?:\/\//, '');
   const faqs = [
     {
-      question: 'How much does a recording session cost at Sweet Dreams Music?',
+      question: `How much does a recording session cost at ${brand.name}?`,
       answer: `Studio A starts at $${PRICING.studioA / 100} per hour and Studio B starts at $${PRICING.studioB / 100} per hour (2+ hour sessions). Single hour sessions are $${PRICING.studioASingleHour / 100} for Studio A and $${PRICING.studioBSingleHour / 100} for Studio B. We also offer "The Sweet 4" 4-hour flat-rate deals ($260 Studio A / $180 Studio B) and band recording packages starting at $440 for 4 hours.`,
     },
     {
       question: 'What are your studio hours?',
-      answer:
-        'Sweet Dreams Music is open 24 hours a day, 7 days a week. Standard rates apply 9 AM-10 PM. Late-night sessions (10 PM-2 AM) have a $10/hr surcharge, and after-hours sessions (2 AM-9 AM) have a $30/hr surcharge. Studio A is available evenings only on weekdays (6:30 PM+) and all day on weekends; Studio B is available at any hour.',
+      answer: `${brand.name} is open 24 hours a day, 7 days a week. Standard rates apply 9 AM-10 PM. Late-night sessions (10 PM-2 AM) have a $10/hr surcharge, and after-hours sessions (2 AM-9 AM) have a $30/hr surcharge. Studio A is available evenings only on weekdays (6:30 PM+) and all day on weekends; Studio B is available at any hour.`,
     },
     {
       question: 'How do I book a recording session?',
-      answer:
-        'Visit our booking page at sweetdreamsmusic.com/book, select your date, time, studio, and session length. You pay a 50% deposit at booking via Stripe (credit card, Cash App Pay, or bank transfer), and the remainder is charged to your saved payment method after your session.',
+      answer: `Visit our booking page at ${siteHost}/book, select your date, time, studio, and session length. You pay a 50% deposit at booking via Stripe (credit card, Cash App Pay, or bank transfer), and the remainder is charged to your saved payment method after your session.`,
     },
     {
       question: 'Do you offer mixing and mastering services?',
@@ -286,12 +323,12 @@ function FAQSchema() {
         'Yes. All four of our engineers offer recording, mixing, mastering, and full music production services. You can request a specific engineer when booking your session.',
     },
     {
-      question: 'Where is Sweet Dreams Music located?',
-      answer: 'Sweet Dreams Music is a professional recording studio located in Fort Wayne, Indiana.',
+      question: `Where is ${brand.name} located?`,
+      answer: `${brand.name} is a professional recording studio located in ${brand.address.city}, ${stateName(brand)}.`,
     },
     {
       question: 'Can I choose my engineer?',
-      answer: `Yes, you can request a specific engineer when booking. We have ${ENGINEERS.length} engineers on staff, each with their own specialties. Your requested engineer holds a priority window to accept the session before it opens to other engineers in the same studio.`,
+      answer: `Yes, you can request a specific engineer when booking. We have ${engineers.length} engineers on staff, each with their own specialties. Your requested engineer holds a priority window to accept the session before it opens to other engineers in the same studio.`,
     },
     {
       question: 'Do you record bands or just individual artists?',
@@ -299,7 +336,7 @@ function FAQSchema() {
         'Both. Band recording happens in Studio A on flat-rate packages: $440 for 4 hours, $700 for 8 hours, or $1,800 for a 3-day × 8-hour block. Each package includes a free 1-hour setup window before the metered session starts.',
     },
     {
-      question: 'How do beat licenses work on Sweet Dreams Beat Store?',
+      question: `How do beat licenses work on ${BEAT_STORE_NAME}?`,
       answer:
         'Three license tiers: MP3 Lease ($29.99, 1-year, MP3 only), Trackout Lease ($74.99, 2-year, stems + MP3), and Exclusive Rights (starting at $400, permanent ownership with the beat removed from the store on purchase). Producers receive 60% of every sale.',
     },
@@ -316,13 +353,14 @@ function FAQSchema() {
   });
 }
 
-export default function JsonLd() {
+export default function JsonLd({ brand, engineers }: { brand: Brand; engineers: JsonLdEngineer[] }) {
+  const roster = inLegacyOrder(engineers);
   return (
     <>
-      <LocalBusinessSchema />
-      <WebSiteSchema />
-      <MusicStoreSchema />
-      <FAQSchema />
+      <LocalBusinessSchema brand={brand} engineers={roster} />
+      <WebSiteSchema brand={brand} />
+      <MusicStoreSchema brand={brand} />
+      <FAQSchema brand={brand} engineers={roster} />
     </>
   );
 }

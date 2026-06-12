@@ -22,9 +22,9 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { mirrorToThread } from '@/lib/messaging-mirror';
 import { Resend } from 'resend';
 import { SUPER_ADMINS, SITE_URL } from '@/lib/constants';
+import { emailIdentity } from '@/lib/email';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM = 'Sweet Dreams Music <studio@sweetdreamsmusic.com>';
 
 interface AddonRequestBody {
   request_type?: 'studio_hours' | 'media_offering' | 'beat_credit' | 'custom';
@@ -140,7 +140,7 @@ export async function POST(
     // Email admins. Reply-to the requester so admin's reply lands in
     // their inbox.
     await resend.emails.send({
-      from: FROM,
+      from: await emailIdentity(),
       to: [...SUPER_ADMINS],
       replyTo: user.email,
       subject: `Add-on request: ${qtyLabel} on ${tplName}`,

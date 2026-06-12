@@ -30,13 +30,17 @@ import {
   viewerEligibilityFromBands,
 } from '@/lib/media';
 import { formatCents } from '@/lib/utils';
+import { getBrand } from '@/lib/brand-server';
 import DashboardNav from '@/components/layout/DashboardNav';
 import MediaCatalogClient from '@/components/media/MediaCatalogClient';
 
-export const metadata: Metadata = {
-  title: 'Media Hub — Sweet Dreams Music',
-  description: 'Browse, configure, and book Sweet Dreams media services and studio packages.',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: `Media Hub — ${brand.name}`,
+    description: 'Browse, configure, and book Sweet Dreams media services and studio packages.',
+  };
+}
 
 // Catalog rows are admin-edited. Prepaid balance changes after every
 // purchase. Both are cheap reads — dynamic is correct here.

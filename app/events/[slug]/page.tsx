@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Calendar, Clock, MapPin, Users, Lock, Ban, AlertCircle } from 'lucide-react';
 import { SITE_URL } from '@/lib/constants';
 import { getEventBySlug, getConfirmedAttendeeCount, getUserRsvp } from '@/lib/events-server';
+import { getBrand } from '@/lib/brand-server';
 import { getSessionUser } from '@/lib/auth';
 import EventRsvpBlock from '@/components/events/EventRsvpBlock';
 import { fmtStampDate, fmtStampTime } from '@/lib/studio-time';
@@ -13,14 +14,15 @@ type Props = { params: Promise<{ slug: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const event = await getEventBySlug(slug);
+  const brand = await getBrand();
 
   // Don't leak the existence of hidden or cancelled events via meta tags.
   if (!event || event.visibility === 'private_hidden' || event.is_cancelled) {
-    return { title: 'Event — Sweet Dreams Music' };
+    return { title: `Event — ${brand.name}` };
   }
 
   return {
-    title: `${event.title} — Sweet Dreams Music`,
+    title: `${event.title} — ${brand.name}`,
     description: event.tagline || event.description || undefined,
     alternates: { canonical: `${SITE_URL}/events/${event.slug}` },
     openGraph: {

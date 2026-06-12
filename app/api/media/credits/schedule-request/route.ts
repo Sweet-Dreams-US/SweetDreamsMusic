@@ -28,6 +28,7 @@ import { violates48hLead } from '@/lib/media-scheduling';
 import { studioInputToUtcISO } from '@/lib/studio-time';
 import { fmtStampDateTime } from '@/lib/studio-time';
 import { SITE_URL } from '@/lib/constants';
+import { emailIdentity } from '@/lib/email';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -161,7 +162,7 @@ export async function POST(request: NextRequest) {
     const teamEmails = await getMediaManagerEmails(service);
     if (teamEmails.length > 0) {
       await resend.emails.send({
-        from: 'Sweet Dreams Music <studio@sweetdreamsmusic.com>',
+        from: await emailIdentity(),
         to: teamEmails,
         subject: `🎬 New media request — ${CREDIT_KIND_LABELS[c.credit_kind]} (${whenLabel})`,
         html: `
@@ -175,7 +176,7 @@ export async function POST(request: NextRequest) {
       });
     }
     await resend.emails.send({
-      from: 'Sweet Dreams Music <studio@sweetdreamsmusic.com>',
+      from: await emailIdentity(),
       to: [user.email],
       subject: `Request received — ${CREDIT_KIND_LABELS[c.credit_kind]} on ${whenLabel}`,
       html: `

@@ -16,6 +16,7 @@ import {
   sendMediaPurchaseConfirmation,
   sendMediaPurchaseAdminAlert,
   sendPackageQuoteAccepted,
+  emailIdentity,
 } from '@/lib/email';
 import { mintEntitlementFromQuote, extendEntitlement } from '@/lib/packages-mint';
 import { ENGINEERS, SUPER_ADMINS, SITE_URL, type Room } from '@/lib/constants';
@@ -68,7 +69,7 @@ async function alertAdminOfWebhookFailure(args: {
           .join('')
       : '';
     await resend.emails.send({
-      from: 'Sweet Dreams Music <studio@sweetdreamsmusic.com>',
+      from: await emailIdentity(),
       to: [...SUPER_ADMINS],
       subject: `🚨 WEBHOOK FAILURE — ${args.eventType} (${args.eventId.slice(0, 16)})`,
       html: `

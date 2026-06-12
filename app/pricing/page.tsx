@@ -8,18 +8,23 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { getStudioConfigs } from '@/lib/studio-config-server';
 import { priceSessionFromConfig, type StudioConfig } from '@/lib/studio-config';
 import { STUDIO_IMAGES } from '@/lib/images';
+import { getBrand } from '@/lib/brand-server';
+import { cityState } from '@/lib/brand';
 
-export const metadata: Metadata = {
-  title: 'Studio Pricing — Recording Rates & Packages',
-  description: 'Sweet Dreams Music recording studio pricing in Fort Wayne, IN. Studio A from $70/hr, Studio B from $50/hr. The Sweet 4 — 4-hour flat-rate discount, band recording packages, free short-form video on 3+ hour sessions, and 24-hour availability. 50% deposit booking.',
-  alternates: { canonical: `${SITE_URL}/pricing` },
-  openGraph: {
-    title: 'Studio Pricing — Recording Rates & Packages | Sweet Dreams Music',
-    description: 'Recording studio rates starting at $50/hr. Studio A and Studio B pricing, The Sweet 4 discount, band recording packages, free short-form video on 3+ hour bookings. Open 24/7 in Fort Wayne, Indiana.',
-    url: `${SITE_URL}/pricing`,
-    type: 'website',
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: 'Studio Pricing — Recording Rates & Packages',
+    description: `${brand.name} recording studio pricing in ${cityState(brand)}. Studio A from $70/hr, Studio B from $50/hr. The Sweet 4 — 4-hour flat-rate discount, band recording packages, free short-form video on 3+ hour sessions, and 24-hour availability. 50% deposit booking.`,
+    alternates: { canonical: `${SITE_URL}/pricing` },
+    openGraph: {
+      title: `Studio Pricing — Recording Rates & Packages | ${brand.name}`,
+      description: `Recording studio rates starting at $50/hr. Studio A and Studio B pricing, The Sweet 4 discount, band recording packages, free short-form video on 3+ hour bookings. Open 24/7 in ${brand.address.city}, Indiana.`,
+      url: `${SITE_URL}/pricing`,
+      type: 'website',
+    },
+  };
+}
 
 const included = [
   'Professional recording engineer',

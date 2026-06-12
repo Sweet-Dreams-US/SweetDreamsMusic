@@ -12,17 +12,20 @@ import { getBrand } from '@/lib/brand-server';
 // Reads the site's nav flags at request time so the page can 404 when disabled.
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'About Sweet Dreams Music — Fort Wayne Recording Studio',
-  description: 'Learn about Sweet Dreams Music LLC, a professional recording studio in Fort Wayne, Indiana. Two acoustically treated studios, premium equipment, four engineers, and 24/7 availability.',
-  alternates: { canonical: `${SITE_URL}/about` },
-  openGraph: {
-    title: 'About Sweet Dreams Music — Fort Wayne Recording Studio',
-    description: 'Professional recording studio in Fort Wayne, Indiana. Two studios, premium equipment, four engineers, open 24/7.',
-    url: `${SITE_URL}/about`,
-    type: 'website',
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: `About ${brand.name} — ${brand.tagline}`,
+    description: `Learn about ${brand.name} LLC, a professional recording studio in ${brand.address.city}, Indiana. Two acoustically treated studios, premium equipment, four engineers, and 24/7 availability.`,
+    alternates: { canonical: `${SITE_URL}/about` },
+    openGraph: {
+      title: `About ${brand.name} — ${brand.tagline}`,
+      description: `Professional recording studio in ${brand.address.city}, Indiana. Two studios, premium equipment, four engineers, open 24/7.`,
+      url: `${SITE_URL}/about`,
+      type: 'website',
+    },
+  };
+}
 
 export default async function AboutPage() {
   await requireHref('/about'); // 404 when the About page is disabled

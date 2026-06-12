@@ -195,12 +195,22 @@ export function isSameEngineer(
   return !!fallbackName && fallbackName === requestedEngineer;
 }
 
-// Super admins — full access to everything
-export const SUPER_ADMINS = [
-  'cole@sweetdreams.us',
-  'jayvalleo@sweetdreams.us',
-  'jayvalleo@sweetdreamsmusic.com',
-] as const;
+// Super admins — full access to everything.
+// Whitelabel W0: env-first (SUPER_ADMIN_EMAILS, comma-separated) with the
+// historical literals as the fallback — without the env var set, behavior is
+// IDENTICAL to the old hardcoded list.
+const superAdminsFromEnv = process.env.SUPER_ADMIN_EMAILS
+  ?.split(',')
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+export const SUPER_ADMINS: readonly string[] = superAdminsFromEnv?.length
+  ? superAdminsFromEnv
+  : [
+      'cole@sweetdreams.us',
+      'jayvalleo@sweetdreams.us',
+      'jayvalleo@sweetdreamsmusic.com',
+    ];
 
 export const TIMEZONE = 'America/Indiana/Indianapolis';
 

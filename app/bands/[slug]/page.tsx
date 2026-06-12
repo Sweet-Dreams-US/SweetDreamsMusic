@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { Users, MapPin, ExternalLink, Settings } from 'lucide-react';
 import { createServiceClient, createClient } from '@/lib/supabase/server';
 import { SITE_URL } from '@/lib/constants';
+import { getBrand } from '@/lib/brand-server';
 import type { Band, BandMember } from '@/lib/bands';
 
 type Props = { params: Promise<{ slug: string }> };
@@ -32,13 +33,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   if (!band || !band.is_public) return { title: 'Band Not Found' };
 
+  const brand = await getBrand();
   return {
     title: `${band.display_name}`,
-    description: band.bio || `${band.display_name} on Sweet Dreams Music`,
+    description: band.bio || `${band.display_name} on ${brand.name}`,
     alternates: { canonical: `${SITE_URL}/bands/${slug}` },
     openGraph: {
       title: `${band.display_name}`,
-      description: band.bio || `${band.display_name} on Sweet Dreams Music`,
+      description: band.bio || `${band.display_name} on ${brand.name}`,
       url: `${SITE_URL}/bands/${slug}`,
       images: band.profile_picture_url ? [{ url: band.profile_picture_url }] : undefined,
     },

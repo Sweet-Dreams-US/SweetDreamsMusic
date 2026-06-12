@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation';
 import { Clock, Calendar, ChevronRight, ArrowLeft, ArrowRight } from 'lucide-react';
 import { createServiceClient } from '@/lib/supabase/server';
 import { SITE_URL, BRAND } from '@/lib/constants';
+import { getBrand } from '@/lib/brand-server';
 import BlogContent from '@/components/blog/BlogContent';
 import TableOfContents from '@/components/blog/TableOfContents';
 import BlogCTA from '@/components/blog/BlogCTA';
@@ -29,6 +30,7 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
 
   if (!post) return { title: 'Post Not Found' };
 
+  const brand = await getBrand();
   const title = post.meta_title || post.title;
   const description = post.meta_description || post.excerpt || '';
 
@@ -37,7 +39,7 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
     description,
     alternates: { canonical: `${SITE_URL}/blog/${slug}` },
     openGraph: {
-      title: `${title} | Sweet Dreams Music`,
+      title: `${title} | ${brand.name}`,
       description,
       url: `${SITE_URL}/blog/${slug}`,
       type: 'article',
@@ -49,7 +51,7 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
     },
     twitter: {
       card: 'summary_large_image',
-      title: `${title} | Sweet Dreams Music`,
+      title: `${title} | ${brand.name}`,
       description,
       images: post.featured_image_url ? [post.featured_image_url] : undefined,
     },

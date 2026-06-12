@@ -10,20 +10,24 @@ import { groupOfferings, isOfferingVisibleTo } from '@/lib/media';
 import { getSessionUser } from '@/lib/auth';
 import { getUserBands } from '@/lib/bands-server';
 import MediaShowcaseCard from '@/components/media/MediaShowcaseCard';
+import { getBrand } from '@/lib/brand-server';
 
-export const metadata: Metadata = {
-  title: 'Record, Rollout, Grow — Sweet Dreams Music',
-  description:
-    'Studio packages, music videos, shorts, photo sessions, and marketing — bundled or à la carte. Sign in to see pricing and book.',
-  alternates: { canonical: `${SITE_URL}/media` },
-  openGraph: {
-    title: 'Record, Rollout, Grow — Sweet Dreams Music',
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getBrand();
+  return {
+    title: `Record, Rollout, Grow — ${brand.name}`,
     description:
-      'Studio packages, music videos, shorts, photo, marketing — bundled or à la carte.',
-    url: `${SITE_URL}/media`,
-    type: 'website',
-  },
-};
+      'Studio packages, music videos, shorts, photo sessions, and marketing — bundled or à la carte. Sign in to see pricing and book.',
+    alternates: { canonical: `${SITE_URL}/media` },
+    openGraph: {
+      title: `Record, Rollout, Grow — ${brand.name}`,
+      description:
+        'Studio packages, music videos, shorts, photo, marketing — bundled or à la carte.',
+      url: `${SITE_URL}/media`,
+      type: 'website',
+    },
+  };
+}
 
 // Catalog rows can change at any time via admin edits, so we don't want stale
 // "what we offer" tiles after a catalog edit. Cheap query, dynamic is fine.

@@ -20,6 +20,7 @@ import { checkMediaManagerConflict } from '@/lib/media-scheduling-server';
 import { studioInputToUtcISO, fmtStampDateTime } from '@/lib/studio-time';
 import { SESSION_KIND_LABELS, type MediaSessionKind } from '@/lib/media-scheduling';
 import { SITE_URL } from '@/lib/constants';
+import { emailIdentity } from '@/lib/email';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const VALID_KINDS: MediaSessionKind[] = ['video', 'photo', 'storyboard', 'marketing-meeting', 'planning_call', 'other'];
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
   const whenLabel = fmtStampDateTime(startsAt, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   try {
     await resend.emails.send({
-      from: 'Sweet Dreams Music <studio@sweetdreamsmusic.com>',
+      from: await emailIdentity(),
       to: [clientEmail],
       subject: `Your ${SESSION_KIND_LABELS[sessionKind]} is booked — ${whenLabel}`,
       html: `
