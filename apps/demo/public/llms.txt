@@ -1,0 +1,112 @@
+# Sweet Dreams Music
+> Fort Wayne, Indiana's premier 24/7 recording studio, beat marketplace, and artist development platform.
+
+## Summary
+
+Sweet Dreams Music is a full-service recording studio in Fort Wayne, Indiana. We operate two professional recording rooms (Studio A and Studio B) staffed by four engineers and open 24 hours a day, 7 days a week. We also run a beat marketplace, produce music videos, host live band sessions, and offer artist development tools.
+
+Web: https://sweetdreamsmusic.com
+Email: info@sweetdreamsmusic.com
+Location: Fort Wayne, Indiana, United States
+
+## Core Services
+
+- **Recording sessions** — vocal recording, instrument tracking, full-band sessions
+- **Mixing & mastering** — industry-standard, ready-for-streaming
+- **Music production** — beat-making, arrangement, sound design
+- **Band recording** — multi-instrument live tracking in Studio A
+- **Music video production** — Sweet Spot live-band shoots, single-take features
+- **Beat marketplace** — license MP3, trackouts, or buy exclusive rights
+- **Artist development** — goal tracking, release planning, metrics dashboard
+- **Events** — live showcases, open-mic, listening parties
+
+## Studios
+
+| Room | Standard rate (2+ hr) | 1-hour rate | The Sweet 4 (4hr flat) | Notes |
+|------|----------------------|-------------|------------------------|-------|
+| Studio A | $70/hr | $80 | $260 | Premium room. Weekdays 6:30 PM+, weekends all day. |
+| Studio B | $50/hr | $60 | $180 | Available 24/7. |
+
+## Surcharges (apply to hourly rates only)
+
+| Time window | Surcharge |
+|-------------|-----------|
+| 9 AM – 10 PM | Standard rate |
+| 10 PM – 2 AM | +$10/hr (Late Night) |
+| 2 AM – 9 AM | +$30/hr (After Hours) |
+| Same-day booking | +$10/hr |
+| Extra guests beyond 2 | +$10/hr per extra guest |
+
+## Band Recording Packages (Studio A only — flat-rate, no surcharges)
+
+| Package | Price | Notes |
+|---------|-------|-------|
+| 4 hours | $440 flat | Includes free 1-hr setup before |
+| 8 hours | $700 flat | Includes free 1-hr setup before |
+| 3 Days × 8 hours | $1,800 flat | Setup hour on Day 1 only |
+
+Sweet Spot live-band filming add-on: +$2,000 atop 8hr, +$1,000 atop 3-day block.
+
+## Engineers
+
+- **PRVRB** — Recording, Mixing & Mastering, Production (Studio A)
+- **Iszac Griner** — Recording, Mixing & Mastering, Production (Studio A & B); dedicated band-session engineer
+- **Zion** — Recording, Mixing & Mastering, Production (Studio B)
+- **Jay Val Leo** — Recording, Mixing & Mastering, Production (Studio B)
+
+Artists may request a specific engineer at booking. Each engineer holds a 12-hour priority window to accept or pass before the session opens to other engineers in their room.
+
+## Beat Marketplace
+
+License tiers:
+- **MP3 Lease** — $29.99. 1-year license. 320kbps MP3.
+- **Trackout Lease** — $74.99. 2-year license. Stems + MP3.
+- **Exclusive Rights** — starts at $400. Permanent ownership, beat removed from store on purchase.
+
+Genres: Hip-Hop, Trap, R&B, Drill, Pop, Lo-Fi, Afrobeats, Soul, Jazz, Rock, Country, Electronic, Latin, Reggaeton, Boom Bap.
+
+Browse: https://sweetdreamsmusic.com/beats
+Sell beats: https://sweetdreamsmusic.com/sell-beats (60% to producer, 40% to platform)
+
+## Booking & Payment
+
+Online booking: https://sweetdreamsmusic.com/book
+
+- 50% deposit charged at booking (Stripe Checkout)
+- Remainder charged to the saved card after the session
+- Accepts credit/debit cards, Cash App Pay, and bank transfers
+- Same-day bookings require a 3-hour buffer from current time
+- Cancellations and reschedules supported up to 8 hours before session start
+
+## Key URLs
+
+| Page | URL | Purpose |
+|------|-----|---------|
+| Home | / | Studio overview |
+| Book | /book | Reserve a session |
+| Pricing | /pricing | Full rate card |
+| Beats | /beats | Browse the beat store |
+| Engineers | /engineers | Engineer profiles |
+| Media | /media | Music video portfolio + services |
+| Bands | /bands | Band program + Sweet Spot info |
+| Events | /events | Upcoming studio events |
+| Blog | /blog | Articles and updates |
+| About | /about | Studio history and team |
+| Contact | /contact | Get in touch |
+
+## Hours
+
+Open 24 hours a day, 7 days a week.
+
+Standard pricing applies 9 AM – 10 PM. Late-night and after-hours sessions are available with the surcharges listed above. Studio A is available evenings only on weekdays (6:30 PM and later) and all day on weekends; Studio B is available at any hour.
+
+## Contact
+
+- Email: info@sweetdreamsmusic.com
+- Booking: https://sweetdreamsmusic.com/book
+- Contact form: https://sweetdreamsmusic.com/contact
+- Address: Fort Wayne, Indiana, United States
+
+## Legal
+
+Operated by Sweet Dreams Music LLC, Indiana, United States. All beat-store transactions governed by a Beat Licensing & Distribution Agreement provided at purchase. Studio sessions governed by the booking terms presented at checkout.
