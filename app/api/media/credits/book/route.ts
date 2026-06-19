@@ -1,44 +1,68 @@
 // app/api/media/credits/book/route.ts
 //
-// Phase E credit-redemption booking flow. Creates a `bookings` row with
-// $0 total/deposit/remainder, plus a `studio_credit_redemptions` row that
-// links the booking to the credit being drawn down. The user's credit
-// balance is decremented atomically (best-effort — see note below).
+// Free-studio-hour credit-redemption booking flow.
 //
-// Critical design rule from the spec: this endpoint MUST NOT modify the
-// existing `/book` flow. We write to `bookings` directly using its
-// existing schema; the new behavior is signalled by:
-//   - total_amount = 0 (no money changes hands)
-//   - admin_notes contains "credit_redemption:<credit_id>"
-//   - a row exists in studio_credit_redemptions linking the two
+// MONEY MODEL (reworked 2026-06 — was hard-coded $0):
+//   A free studio hour discounts ONE hour of BASE studio time (room-aware,
+//   capped at the booked hours). The customer still pays the FULL surcharge
+//   (late-night / deep-night / same-day / guests) up front by card, plus —
+//   for 2+ hour bookings — the discounted half of the deposit. The exact
+//   cents math lives in lib/credit-redemption-pricing.ts (pure, self-checked
+//   against four worked examples).
 //
-// Engineer payout flow downstream: an engineer who claims/works a
-// credit-redemption booking gets paid from the cost basis already
-// recognized in the credit row, not from the booking's total_amount
-// (which is $0). The Engineer-Accounting view's existing 60% split rule
-// would treat this as $0 work — so admin pays out separately or we
-// extend the accounting logic in Phase E.2. Documented as a known gap.
+//   Two payment paths fall out of that math:
+//     • amountDueNow > 0  → create the booking PENDING + send the customer to
+//       Stripe Checkout for exactly amountDueNow, reusing the SAME machinery
+//       the paid /book flow uses (stripe.checkout.sessions.create + the
+//       booking webhook). The webhook confirms the booking AND decrements the
+//       credit — so an abandoned checkout NEVER consumes the free hour.
+//     • amountDueNow == 0 → nothing to charge, so confirm instantly + decrement
+//       the credit right here (the legacy no-Stripe path).
 //
-// Atomicity: Postgres doesn't have multi-statement transactions across
-// these three operations from the JS client. We sequence them carefully:
-//   1. Insert booking (own ID)
-//   2. Insert redemption (links to booking ID + credit ID)
-//   3. UPDATE studio_credits SET hours_used = hours_used + N WHERE id = credit_id AND hours_used + N <= hours_granted
-//      (CHECK constraint blocks overdraw at the DB layer)
-// If step 3 fails (overdraw or concurrent drain), we attempt to delete the
-// booking + redemption to avoid orphaned rows. Worst case: a stuck booking
-// row that admin can clean up — better than a credit going negative.
+// What we record on the booking row:
+//   - total_amount   = netTotal (total − discount), the customer's net cost
+//   - deposit_amount = amountDueNow (what's collected up front)
+//   - remainder_amount = remainder (owed after the session)
+//   - discount_amount = the free-hour discount, with admin_notes carrying
+//     "free_hour_credit:<creditId>" so admin can spot credit-funded sessions
+//   - service_value_cents = FULL base session value (engineer payout basis),
+//     unchanged from before so the engineer is still paid on the real value.
+//
+// CRITICAL BUG FIX: the surcharge time-tier now uses the studio-LOCAL (Eastern)
+// hour. The old code did `new Date(startISO).getUTCHours()` which, because
+// startISO is a zone-naive "YYYY-MM-DDTHH:MM:00" parsed as the server's local
+// time and then read back as UTC, shifted the hour by the server's offset
+// (11pm ET read as deep-night). startTime is ALREADY the Eastern wall clock the
+// user picked, so parseTimeSlot(startTime) is the correct local decimal hour —
+// the same derivation /api/booking/create uses.
+//
+// Atomicity (instant-confirm path): same careful sequencing as before —
+//   1. Insert booking
+//   2. Insert redemption (links booking + credit)
+//   3. UPDATE studio_credits hours_used += creditHoursApplied with an
+//      optimistic-concurrency guard (CHECK constraint blocks overdraw)
+// On a later-step failure we roll back the earlier rows.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { stripe } from '@/lib/stripe';
 import { paidBookingStatus } from '@/lib/booking-status';
 import { getUserBands } from '@/lib/bands-server';
-import { ENGINEERS, type Room } from '@/lib/constants';
+import { ENGINEERS, PRICING, SITE_URL, ROOM_LABELS, type Room } from '@/lib/constants';
 import { getStudioConfig } from '@/lib/studio-config-server';
-import { priceSessionFromConfig } from '@/lib/studio-config';
+import { parseTimeSlot, formatDuration } from '@/lib/utils';
+import { computeCreditRedemptionPricing } from '@/lib/credit-redemption-pricing';
 import { sendEngineerNewBookingAlert } from '@/lib/email';
 
 const VALID_ROOMS: Room[] = ['studio_a', 'studio_b'];
+
+/** Pad a wall-clock time so the hour is two digits ("9:00" → "09:00") — keeps
+ *  `${date}T${time}:00` a valid ISO-8601 string for the webhook's date math.
+ *  Mirrors the helper in /api/booking/create. Idempotent. */
+const padClockHm = (t: string) => {
+  const [h = '0', m = '00'] = String(t ?? '').split(':');
+  return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+};
 
 export async function POST(request: NextRequest) {
   // ── Auth ────────────────────────────────────────────────────────────
@@ -137,10 +161,15 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Credit hours remaining. NOTE: we no longer reject when the requested
+  // duration exceeds the remaining credit — the credit only discounts
+  // creditHoursApplied = min(remaining, bookedHours), and any extra hours are
+  // simply paid for. So a 1-hour credit on a 3-hour booking discounts 1 hour
+  // and charges the other two.
   const remaining = Number(creditRow.hours_granted) - Number(creditRow.hours_used);
-  if (durationHours > remaining) {
+  if (remaining <= 0) {
     return NextResponse.json(
-      { error: `Only ${remaining.toFixed(1)} hours available — pick a shorter session` },
+      { error: 'This wallet has no hours left.' },
       { status: 400 },
     );
   }
@@ -239,16 +268,35 @@ export async function POST(request: NextRequest) {
     user.email.split('@')[0] ||
     'Customer';
 
-  // Value the work so the engineer is PAID for a $0 (prepaid/credit) session.
-  // service_value_cents = what these hours are normally worth; computeEarnings
-  // pays the engineer 60% of this even though total_amount is $0. (Fixes the
-  // long-standing $0-payout gap on credit sessions.) Surcharges included in value.
-  const startHour = new Date(startISO).getUTCHours();
-  let serviceValueCents = 0;
-  try {
-    const cfg = await getStudioConfig(service, room);
-    serviceValueCents = priceSessionFromConfig(cfg, { hours: durationHours, startHour, sameDay: false, guests: 1 }).total;
-  } catch { serviceValueCents = 0; }
+  // ── Surcharge-aware pricing (Eastern hour — see header bug-fix note) ──
+  // startTime is the Eastern wall clock the user picked, so parseTimeSlot gives
+  // the correct studio-LOCAL decimal hour. (Old code used getUTCHours() on a
+  // zone-naive Date, shifting the surcharge tier by the server's offset.)
+  const startHourLocal = parseTimeSlot(startTime);
+  // Same-day is computed in Fort Wayne time (Vercel runs UTC), mirroring
+  // /api/booking/create so a 9pm-ET booking made the same calendar day is
+  // correctly flagged regardless of the server's clock.
+  const todayLocal = new Date().toLocaleDateString('en-CA', {
+    timeZone: 'America/Indiana/Indianapolis',
+  });
+  const sameDay = date === todayLocal;
+
+  const cfg = await getStudioConfig(service, room);
+  const pricing = computeCreditRedemptionPricing({
+    room,
+    hours: durationHours,
+    startHourLocal,
+    sameDay,
+    guestCount: 0, // credit redemptions don't take a guest count today; default solo
+    creditHoursRemaining: remaining,
+    pricing: cfg,
+  });
+
+  // service_value_cents = what these hours are normally worth (FULL session
+  // value, surcharges incl.) so the engineer is still paid 60% of the real
+  // value even though the customer's net cost is lower. computeEarnings reads
+  // this, NOT total_amount.
+  const serviceValueCents = pricing.total;
 
   // If this credit was ISSUED by a reward, tag the booking with that grant so the
   // per-booking accounting + Business view tie out (and a cancel can restore it).
@@ -258,7 +306,148 @@ export async function POST(request: NextRequest) {
     rewardGrantId = (srcGrant as { id: string } | null)?.id ?? null;
   } catch { rewardGrantId = null; }
 
-  // ── Insert booking row ──────────────────────────────────────────────
+  // admin_notes carries BOTH the legacy redemption tag (so existing tooling
+  // that greps "credit_redemption:" keeps working) AND the spec-requested
+  // "free_hour_credit:<creditId>" marker for the surcharge-aware flow.
+  const adminNotes =
+    `credit_redemption:${creditRow.id} · free_hour_credit:${creditRow.id}` +
+    `${customerNote ? ` · ${customerNote}` : ''}`;
+
+  const hoursToDecrement = pricing.creditHoursApplied;
+
+  // ════════════════════════════════════════════════════════════════════
+  // PATH A — money is due now (amountDueNow > 0). Create the booking PENDING,
+  // hand the customer to Stripe Checkout for exactly amountDueNow, and let the
+  // webhook confirm + decrement the credit on successful payment. An abandoned
+  // checkout therefore NEVER consumes the free hour. Reuses the EXACT Stripe
+  // machinery + webhook the paid /book flow uses (stripe.checkout.sessions
+  // .create → booking webhook).
+  // ════════════════════════════════════════════════════════════════════
+  if (pricing.amountDueNow > 0) {
+    // Insert the booking as PENDING (no engineer assigned to the row yet — it's
+    // unconfirmed until payment lands, same as the paid deposit flow). The
+    // chosen engineer is preserved in requested_engineer so the webhook can
+    // confirm + alert them. We do NOT insert the redemption or decrement the
+    // credit here — that's the webhook's job, payment-gated.
+    const { data: pendingBooking, error: pendErr } = await service
+      .from('bookings')
+      .insert({
+        customer_name: buyerName,
+        customer_email: user.email,
+        start_time: startISO,
+        end_time: endISO,
+        duration: durationHours,
+        room,
+        engineer_name: null,
+        requested_engineer: engineerName,
+        total_amount: pricing.netTotal,
+        service_value_cents: serviceValueCents,
+        deposit_amount: pricing.amountDueNow,
+        remainder_amount: pricing.remainder,
+        // The free-hour discount is recorded as the gap between service_value_cents
+        // (full value) and total_amount (netTotal) — same convention as the paid
+        // reward-discount flow (migration 067). The "free_hour_credit:<id>" tag in
+        // admin_notes makes it explicit + auditable. There is no discount_amount
+        // column on bookings.
+        actual_deposit_paid: 0,
+        status: 'pending', // confirmed by the webhook on payment
+        admin_notes: adminNotes,
+        band_id: creditRow.band_id ?? null,
+        reward_grant_id: rewardGrantId,
+      })
+      .select('id')
+      .single();
+
+    if (pendErr || !pendingBooking) {
+      console.error('[media/credits/book] pending booking insert error:', pendErr);
+      return NextResponse.json({ error: 'Could not start booking' }, { status: 500 });
+    }
+    const bookingId = (pendingBooking as { id: string }).id;
+
+    // Find or create the Stripe customer (same as /api/booking/create).
+    let customerId: string;
+    try {
+      const customers = await stripe.customers.list({ email: user.email, limit: 1 });
+      if (customers.data.length > 0) {
+        customerId = customers.data[0].id;
+      } else {
+        const customer = await stripe.customers.create({ email: user.email, name: buyerName });
+        customerId = customer.id;
+      }
+
+      const roomLabel = ROOM_LABELS[room] || room;
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        mode: 'payment',
+        line_items: [
+          {
+            price_data: {
+              currency: PRICING.currency,
+              product_data: {
+                name: `Studio Session — ${roomLabel} (free-hour credit)`,
+                description:
+                  `${formatDuration(durationHours)} on ${date} at ${startTime} · ` +
+                  `1 free hour applied (−$${(pricing.discount / 100).toFixed(2)})`,
+              },
+              unit_amount: pricing.amountDueNow,
+            },
+            quantity: 1,
+          },
+        ],
+        payment_method_options: {
+          card: { setup_future_usage: 'off_session' },
+        },
+        success_url: `${SITE_URL}/book/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${SITE_URL}/dashboard/media/credits`,
+        metadata: {
+          // The webhook branches on this discriminator. It confirms the booking
+          // AND decrements the credit (payment-gated, idempotent).
+          type: 'credit_redemption_deposit',
+          booking_id: bookingId,
+          credit_id: creditRow.id,
+          credit_hours_applied: String(hoursToDecrement),
+          redeemed_by: user.id,
+          engineer: engineerName,
+          customer_name: buyerName,
+          customer_email: user.email,
+          session_date: date,
+          start_time: padClockHm(startTime),
+          duration_hours: String(durationHours),
+          room,
+        },
+      });
+
+      // Stash the checkout session id so the webhook + admin can correlate.
+      await service
+        .from('bookings')
+        .update({ stripe_customer_id: customerId, stripe_checkout_session_id: session.id })
+        .eq('id', bookingId);
+
+      return NextResponse.json({
+        ok: true,
+        booking_id: bookingId,
+        requires_payment: true,
+        amount_due_now: pricing.amountDueNow,
+        discount: pricing.discount,
+        net_total: pricing.netTotal,
+        remainder: pricing.remainder,
+        credit_hours_applied: hoursToDecrement,
+        checkout_url: session.url,
+      });
+    } catch (e) {
+      // Stripe failed — roll back the pending booking so we don't leave an
+      // orphaned unpaid row. The credit was never touched.
+      console.error('[media/credits/book] stripe checkout error — rolling back:', e);
+      await service.from('bookings').delete().eq('id', bookingId);
+      return NextResponse.json({ error: 'Could not start payment. Try again.' }, { status: 500 });
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // PATH B — nothing due now (amountDueNow == 0). Confirm instantly + decrement
+  // the credit right here, no Stripe. This is the original no-money path, kept
+  // intact (insert booking → insert redemption → optimistic-concurrency drain).
+  // ════════════════════════════════════════════════════════════════════
   const { data: newBooking, error: bookErr } = await service
     .from('bookings')
     .insert({
@@ -270,16 +459,15 @@ export async function POST(request: NextRequest) {
       room,
       engineer_name: engineerName,
       requested_engineer: engineerName,
-      total_amount: 0,
+      total_amount: pricing.netTotal, // 0 when fully credit-covered
       service_value_cents: serviceValueCents,
-      deposit_amount: 0,
-      remainder_amount: 0,
+      deposit_amount: pricing.amountDueNow, // 0
+      remainder_amount: pricing.remainder, // 0
+      // Discount recorded as service_value_cents − total_amount (see PATH A note).
       actual_deposit_paid: 0,
       // Customer picked the engineer at redemption (required) → born 'confirmed'.
       status: paidBookingStatus(engineerName),
-      // Tag the booking so admin can spot credit-funded sessions at a glance.
-      // Format mirrors the convention used elsewhere for system-generated tags.
-      admin_notes: `credit_redemption:${creditRow.id}${customerNote ? ` · ${customerNote}` : ''}`,
+      admin_notes: adminNotes,
       band_id: creditRow.band_id ?? null,
       reward_grant_id: rewardGrantId,
     })
@@ -300,7 +488,7 @@ export async function POST(request: NextRequest) {
     .insert({
       credit_id: creditRow.id,
       studio_booking_id: bookingId,
-      hours_redeemed: durationHours,
+      hours_redeemed: hoursToDecrement,
       redeemed_by: user.id,
     });
   if (redemptionErr) {
@@ -315,7 +503,7 @@ export async function POST(request: NextRequest) {
   // blocks the update and we roll back the redemption + booking.
   const { error: drainErr } = await service
     .from('studio_credits')
-    .update({ hours_used: Number(creditRow.hours_used) + durationHours })
+    .update({ hours_used: Number(creditRow.hours_used) + hoursToDecrement })
     .eq('id', creditRow.id)
     .eq('hours_used', creditRow.hours_used); // Optimistic concurrency
   if (drainErr) {
@@ -350,7 +538,13 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     booking_id: bookingId,
-    hours_redeemed: durationHours,
-    hours_remaining: remaining - durationHours,
+    requires_payment: false,
+    amount_due_now: 0,
+    discount: pricing.discount,
+    net_total: pricing.netTotal,
+    remainder: pricing.remainder,
+    credit_hours_applied: hoursToDecrement,
+    hours_redeemed: hoursToDecrement,
+    hours_remaining: remaining - hoursToDecrement,
   });
 }

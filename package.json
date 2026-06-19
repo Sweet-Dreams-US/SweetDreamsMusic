@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "check:signup-chain": "tsx scripts/check-signup-chain.ts"
+    "check:signup-chain": "tsx scripts/check-signup-chain.ts",
+    "check:credit-pricing": "tsx scripts/credit-redemption-pricing-selfcheck.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",

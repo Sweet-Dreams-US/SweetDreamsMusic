@@ -16,7 +16,9 @@ import { ArrowLeft, Wallet } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth';
 import { getUserBands } from '@/lib/bands-server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { ENGINEERS } from '@/lib/constants';
+import { ENGINEERS, ROOMS, type Room } from '@/lib/constants';
+import { getStudioConfig } from '@/lib/studio-config-server';
+import type { StudioConfig } from '@/lib/studio-config';
 import { formatCents } from '@/lib/utils';
 import DashboardNav from '@/components/layout/DashboardNav';
 import MediaCreditBookingForm from '@/components/media/MediaCreditBookingForm';
@@ -115,6 +117,20 @@ export default async function CreditsBookingPage() {
     studios: [...e.studios],
   }));
 
+  // Live pricing configs per room — so the form can render an accurate price
+  // breakdown (free-hour discount, surcharges, amount due now, remainder)
+  // BEFORE the user confirms. computeCreditRedemptionPricing is pure + client-
+  // safe, so the form runs the exact same math the API uses on submit. (The API
+  // re-prices server-side as the source of truth; this is just a preview.)
+  const pricingByRoom = {} as Record<Room, StudioConfig>;
+  for (const r of ROOMS as readonly Room[]) {
+    pricingByRoom[r] = await getStudioConfig(service, r);
+  }
+  // Today in studio-local (Eastern) time, so the form can flag same-day.
+  const todayLocal = new Date().toLocaleDateString('en-CA', {
+    timeZone: 'America/Indiana/Indianapolis',
+  });
+
   return (
     <>
       <DashboardNav
@@ -168,7 +184,12 @@ export default async function CreditsBookingPage() {
             ))}
           </div>
 
-          <MediaCreditBookingForm pools={pools} engineers={engineerOptions} />
+          <MediaCreditBookingForm
+            pools={pools}
+            engineers={engineerOptions}
+            pricingByRoom={pricingByRoom}
+            todayLocal={todayLocal}
+          />
         </div>
       </section>
     </>

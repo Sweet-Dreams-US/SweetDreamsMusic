@@ -91,6 +91,164 @@ async function alertAdminOfWebhookFailure(args: {
   }
 }
 
+/**
+ * Complete a free-studio-hour credit redemption once its surcharge/deposit
+ * payment has landed (fires from BOTH checkout.session.completed for cards and
+ * checkout.session.async_payment_succeeded for Cash App / bank transfers, which
+ * is why it's factored out).
+ *
+ * The credit-redemption API (app/api/media/credits/book) already inserted a
+ * PENDING booking and charged amountDueNow. Here we, idempotently:
+ *   1. Confirm the booking (engineer was chosen at redemption → 'confirmed').
+ *   2. Insert the studio_credit_redemptions linkage — exactly once.
+ *   3. Decrement the credit by credit_hours_applied (PAYMENT-GATED, so an
+ *      abandoned checkout never consumes the free hour; optimistic-concurrency
+ *      guard + DB CHECK constraint block overdraw).
+ *   4. Alert the engineer.
+ *
+ * Returns { retry: true } when the caller should roll back the idempotency claim
+ * so Stripe re-delivers (transient: booking row not yet visible). Returns
+ * { retry: false } on success OR permanently-bad metadata (ACK + admin-alert).
+ */
+async function completeCreditRedemption(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  session: Stripe.Checkout.Session,
+  meta: Record<string, string>,
+  eventId: string,
+  eventType: string,
+): Promise<{ retry: boolean }> {
+  const bookingId = meta.booking_id;
+  const creditId = meta.credit_id;
+  const creditHoursApplied = parseInt(meta.credit_hours_applied || '0', 10);
+  const redeemedBy = meta.redeemed_by || null;
+
+  if (!bookingId || !creditId) {
+    console.error('[webhook][credit_redemption] missing booking_id/credit_id', meta);
+    await alertAdminOfWebhookFailure({
+      eventId,
+      eventType,
+      reason: 'credit_redemption_deposit missing booking_id or credit_id',
+      metadata: meta,
+      paymentIntent: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+      amount: session.amount_total,
+    });
+    return { retry: false }; // permanently bad — ACK, don't retry forever
+  }
+
+  const { data: pendingRow } = await supabase
+    .from('bookings')
+    .select('id, requested_engineer, engineer_name, room, customer_name, customer_email, start_time, duration, status, actual_deposit_paid')
+    .eq('id', bookingId)
+    .maybeSingle();
+  type CRBooking = {
+    id: string;
+    requested_engineer: string | null;
+    engineer_name: string | null;
+    room: string | null;
+    customer_name: string | null;
+    customer_email: string | null;
+    start_time: string;
+    duration: number;
+    status: string;
+    actual_deposit_paid: number | null;
+  };
+  const crBooking = pendingRow as CRBooking | null;
+
+  if (!crBooking) {
+    // The pending booking should exist (the API inserted it before checkout).
+    // If it's missing, the row may still be replicating — ask Stripe to retry.
+    console.error('[webhook][credit_redemption] booking not found — retry', bookingId);
+    return { retry: true };
+  }
+
+  const engineerName = crBooking.requested_engineer || meta.engineer || null;
+
+  // 1. Confirm + stamp payment (idempotent: re-running writes the same values).
+  await supabase
+    .from('bookings')
+    .update({
+      engineer_name: engineerName,
+      status: paidBookingStatus(engineerName),
+      actual_deposit_paid: session.amount_total,
+      stripe_customer_id: session.customer as string,
+      stripe_checkout_session_id: session.id,
+      stripe_payment_intent_id: session.payment_intent as string,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', bookingId);
+
+  // 2 + 3. Insert redemption + decrement credit ONCE. If a redemption row
+  // already exists (replay / both sync+async fired), skip both so the free
+  // hour is never double-consumed.
+  const { data: existingRedemption } = await supabase
+    .from('studio_credit_redemptions')
+    .select('id')
+    .eq('studio_booking_id', bookingId)
+    .maybeSingle();
+
+  if (!existingRedemption && creditHoursApplied > 0) {
+    const { error: redErr } = await supabase
+      .from('studio_credit_redemptions')
+      .insert({
+        credit_id: creditId,
+        studio_booking_id: bookingId,
+        hours_redeemed: creditHoursApplied,
+        redeemed_by: redeemedBy,
+      });
+    if (redErr) {
+      console.error('[webhook][credit_redemption] redemption insert failed:', redErr);
+    } else {
+      const { data: creditRow } = await supabase
+        .from('studio_credits')
+        .select('hours_used, hours_granted')
+        .eq('id', creditId)
+        .maybeSingle();
+      const cr = creditRow as { hours_used: number; hours_granted: number } | null;
+      if (cr) {
+        const { error: drainErr } = await supabase
+          .from('studio_credits')
+          .update({ hours_used: Number(cr.hours_used) + creditHoursApplied })
+          .eq('id', creditId)
+          .eq('hours_used', cr.hours_used); // optimistic concurrency
+        if (drainErr) {
+          console.error('[webhook][credit_redemption] credit drain failed:', drainErr);
+          await alertAdminOfWebhookFailure({
+            eventId,
+            eventType,
+            reason: `credit drain failed for credit ${creditId} (booking ${bookingId}); payment succeeded — reconcile hours manually`,
+            metadata: meta,
+            paymentIntent: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+            amount: session.amount_total,
+          });
+        }
+      }
+    }
+  }
+
+  // 4. Engineer alert (fire-and-forget).
+  try {
+    const eng = ENGINEERS.find((e) => e.name === engineerName || e.displayName === engineerName);
+    if (eng) {
+      await sendEngineerNewBookingAlert([eng.email], {
+        id: bookingId,
+        customerName: crBooking.customer_name || 'Customer',
+        date: fmtSessionDate(crBooking.start_time, { weekday: 'long', month: 'long', day: 'numeric' }),
+        startTime: fmtSessionTime(crBooking.start_time),
+        duration: crBooking.duration,
+        room: crBooking.room || meta.room || '',
+      });
+    }
+  } catch (e) {
+    console.error('[webhook][credit_redemption] engineer alert error:', e);
+  }
+
+  console.log(
+    `[webhook] credit_redemption_deposit processed: booking=${bookingId} credit=${creditId} hours=${creditHoursApplied} amount=${session.amount_total}`,
+  );
+  return { retry: false };
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.text();
   const sig = request.headers.get('stripe-signature');
@@ -1743,6 +1901,14 @@ export async function POST(request: NextRequest) {
           await supabase.from('stripe_webhook_events').delete().eq('event_id', event.id);
           return NextResponse.json({ error: 'Mint failed' }, { status: 500 });
         }
+      } else if (meta.type === 'credit_redemption_deposit') {
+        // ── Free-studio-hour redemption: surcharge/deposit paid (card) ───
+        // Shared with the async (Cash App / bank) path via completeCreditRedemption.
+        const { retry } = await completeCreditRedemption(supabase, session, meta, event.id, event.type);
+        if (retry) {
+          await supabase.from('stripe_webhook_events').delete().eq('event_id', event.id);
+          return NextResponse.json({ error: 'Credit-redemption booking not ready — retry' }, { status: 500 });
+        }
       }
       break;
     }
@@ -2068,6 +2234,17 @@ export async function POST(request: NextRequest) {
               },
             });
           }
+        }
+      } else if (asyncMeta.type === 'credit_redemption_deposit') {
+        // ── Free-studio-hour redemption paid via Cash App / bank transfer ──
+        // Same completion as the card path; the helper is idempotent so if
+        // both the sync + async events somehow fire, the credit drains once.
+        const { retry } = await completeCreditRedemption(
+          supabase, asyncSession, asyncMeta, event.id, event.type,
+        );
+        if (retry) {
+          await supabase.from('stripe_webhook_events').delete().eq('event_id', event.id);
+          return NextResponse.json({ error: 'Credit-redemption booking not ready — retry' }, { status: 500 });
         }
       }
       break;
