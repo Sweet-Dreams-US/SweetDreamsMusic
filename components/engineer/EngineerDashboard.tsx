@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Users, Calendar, CalendarOff, Link as LinkIcon, DollarSign, FileAudio, Contact, Film } from 'lucide-react';
+import { Users, Calendar, CalendarOff, Link as LinkIcon, DollarSign, FileAudio, Contact, Film, UserCircle } from 'lucide-react';
 import type { SessionUser } from '@/lib/auth';
 import ClientLibrary from './ClientLibrary';
 import EngineerSessions from './EngineerSessions';
@@ -12,6 +12,7 @@ import EngineerFiles from './EngineerFiles';
 import EngineerMediaSessions from './EngineerMediaSessions';
 import EngineerBonusCard from './EngineerBonusCard';
 import EngineerAvailability from './EngineerAvailability';
+import EngineerProfile from './EngineerProfile';
 import type { StudioConfig } from '@/lib/studio-config';
 
 type Tab =
@@ -22,7 +23,8 @@ type Tab =
   | 'files'
   | 'invite'
   | 'availability'
-  | 'accounting';
+  | 'accounting'
+  | 'profile';
 
 export default function EngineerDashboard({ user, studios, engineers }: { user: SessionUser; studios: StudioConfig[]; engineers: readonly { name: string; displayName: string }[] }) {
   const [tab, setTab] = useState<Tab>('sessions');
@@ -36,6 +38,7 @@ export default function EngineerDashboard({ user, studios, engineers }: { user: 
     { key: 'invite', label: 'Invite to Session', icon: LinkIcon },
     { key: 'availability', label: 'Availability', icon: CalendarOff },
     { key: 'accounting', label: 'Accounting', icon: DollarSign },
+    { key: 'profile', label: 'My Profile', icon: UserCircle },
   ];
 
   return (
@@ -89,6 +92,7 @@ export default function EngineerDashboard({ user, studios, engineers }: { user: 
               {tab === 'invite' && <CreateInvite studios={studios} engineers={engineers} />}
               {tab === 'availability' && <EngineerAvailability />}
               {tab === 'accounting' && <EngineerAccounting />}
+              {tab === 'profile' && <EngineerProfile />}
             </div>
           </div>
         </div>
