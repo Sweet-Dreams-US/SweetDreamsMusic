@@ -2148,6 +2148,125 @@ export async function sendMediaPaymentLink(to: string, details: {
 }
 
 /**
+ * Media contract READY FOR SIGNATURE — sent to the artist the moment the
+ * manager signs + sends the contract. The manager has already agreed
+ * (manager_agreed_at); this asks the artist to review the terms and sign on
+ * their order page. Once they sign, the booking finalizes (both signatures)
+ * and any planned shoots drop onto the calendar.
+ */
+export async function sendMediaContractForSignature(to: string, details: {
+  buyerName: string;
+  offeringTitle: string;
+  bookingId: string;
+}) {
+  const orderUrl = `${SITE_URL}/dashboard/media/orders/${details.bookingId}`;
+  await mirrorToThread({
+    userEmail: to,
+    mediaBookingId: details.bookingId,
+    kind: 'booking_notification',
+    subject: 'Your contract is ready to sign',
+    body: `Your contract for ${details.offeringTitle} is ready. Review the terms and sign on your order page to lock it in.`,
+    attachments: [{ label: 'Review & sign', url: orderUrl, kind: 'link' as const }],
+  });
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to,
+      subject: `Your Contract Is Ready to Sign — ${details.offeringTitle}`,
+      html: wrap(
+        h1('CONTRACT READY TO SIGN') +
+        p(`Hey ${details.buyerName}, your contract for <strong>${details.offeringTitle}</strong> is ready.`) +
+        p('We\'ve reviewed and signed our side. Open your order page to read the terms and add your signature — once you sign, your booking is final and any planned sessions go straight onto the calendar.') +
+        detailTable(
+          detail('Project', details.offeringTitle) +
+          detail('Order', `#${details.bookingId.slice(0, 8)}`)
+        ) +
+        btn('REVIEW & SIGN', orderUrl) +
+        p('<span style="color:#666;font-size:11px">Questions about the terms? Just reply to this email and we\'ll sort it out before you sign.</span>')
+      ),
+    });
+  } catch (e) { console.error('Email error (media contract for signature):', e); }
+}
+
+/** One materialized session, for the finalize confirmation email. */
+export interface FinalizedSessionSummary {
+  sessionKind: string;
+  startsAt: string; // ISO (true-UTC instant)
+  endsAt: string;   // ISO
+  location: 'studio' | 'external';
+  externalLocationText: string | null;
+  engineerName: string;
+}
+
+/**
+ * Media contract FINALIZED — sent to BOTH parties once the contract is signed
+ * by everyone. Confirms the booking is final and lists the sessions that just
+ * landed on the calendar. If any planned shoot was skipped (conflict / bad
+ * data) we surface a short heads-up so it can be rescheduled.
+ */
+export async function sendMediaContractFinalized(to: string, details: {
+  recipientName: string;
+  recipientRole: 'artist' | 'manager';
+  offeringTitle: string;
+  bookingId: string;
+  sessions: FinalizedSessionSummary[];
+  warnings: string[];
+}) {
+  const orderUrl = `${SITE_URL}/dashboard/media/orders/${details.bookingId}`;
+  // media_session_bookings.starts_at/ends_at are true-UTC instants → fmtStamp*
+  const sessionRows = details.sessions
+    .map((s) => {
+      const when = fmtStampDateTime(s.startsAt, {
+        weekday: 'short', month: 'short', day: 'numeric',
+      });
+      const endTime = fmtStampTime(s.endsAt);
+      const where = s.location === 'studio'
+        ? 'Sweet Dreams Studio'
+        : s.externalLocationText || 'External';
+      return detail(
+        `${s.sessionKind} — ${s.engineerName}`,
+        `${when} – ${endTime} · ${where}`,
+      );
+    })
+    .join('');
+  const sessionsSection = details.sessions.length
+    ? p('Here\'s what\'s on the calendar:') + detailTable(sessionRows)
+    : p('No sessions were scheduled in the contract — you can add them from the order page any time.');
+  const warningsSection = details.warnings.length
+    ? `
+      <p style="font-size:12px;color:#888;text-transform:uppercase;letter-spacing:0.05em;margin:20px 0 8px">Needs attention</p>
+      <div style="background:#111;padding:16px;margin:0 0 16px;border-left:3px solid #F4C430">
+        ${details.warnings.map((w) => `<p style="font-size:13px;color:#ccc;margin:0 0 6px">• ${w}</p>`).join('')}
+      </div>`
+    : '';
+  const intro = details.recipientRole === 'manager'
+    ? `The contract for <strong>${details.offeringTitle}</strong> is signed by both parties. The booking is final and on the calendar.`
+    : `Your contract for <strong>${details.offeringTitle}</strong> is signed by both parties — your booking is final and on the calendar.`;
+  await mirrorToThread({
+    userEmail: details.recipientRole === 'artist' ? to : undefined,
+    mediaBookingId: details.bookingId,
+    kind: 'booking_notification',
+    subject: 'Contract finalized',
+    body: `Signed by both parties — the booking for ${details.offeringTitle} is final${details.sessions.length ? ' and on the calendar' : ''}.`,
+    attachments: [{ label: 'View order', url: orderUrl, kind: 'link' as const }],
+  });
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to,
+      subject: `Contract Finalized — ${details.offeringTitle}`,
+      html: wrap(
+        h1('CONTRACT FINALIZED') +
+        p(`Hey ${details.recipientName}, ${intro}`) +
+        sessionsSection +
+        warningsSection +
+        btn('VIEW ORDER', orderUrl)
+      ),
+    });
+  } catch (e) { console.error('Email error (media contract finalized):', e); }
+}
+
+/**
  * Media component ready — sent when admin marks a single piece of a
  * media order as completed AND attaches a Google Drive link. Sent ONCE
  * per piece (the API tracks notified_at to prevent re-sends).

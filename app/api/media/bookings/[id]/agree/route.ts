@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { loadBookingForArtist } from '@/lib/media-installments-server';
+import { finalizeIfBothSigned } from '@/lib/media-contract-finalize';
 
 export async function POST(
   _request: NextRequest,
@@ -49,13 +50,24 @@ export async function POST(
     );
   }
 
-  // Idempotent — already agreed.
+  // Idempotent — already agreed. Still attempt finalize: the manager may
+  // have signed AFTER the artist, and the finalize is itself idempotent
+  // (guarded by project_details.contract_finalized_at).
   if (booking.contract_agreed_at) {
+    let finalize;
+    try {
+      finalize = await finalizeIfBothSigned(service, id);
+    } catch (e) {
+      console.error('[media/agree] finalize error (already agreed):', e);
+    }
     return NextResponse.json({
       success: true,
       alreadyAgreed: true,
       contract_agreed_at: booking.contract_agreed_at,
       contract_agreed_by: booking.contract_agreed_by,
+      finalized: finalize?.finalized ?? false,
+      sessionsCreated: finalize?.sessionsCreated ?? 0,
+      warnings: finalize?.warnings ?? [],
     });
   }
 
@@ -89,10 +101,23 @@ export async function POST(
     },
   });
 
+  // After the artist signs, finalize if the manager has also signed. This is
+  // the normal ordering (manager signs on send → artist signs second). Any
+  // planned shoots drop onto the calendar and both parties get a confirmation.
+  let finalize;
+  try {
+    finalize = await finalizeIfBothSigned(service, id);
+  } catch (e) {
+    console.error('[media/agree] finalize error:', e);
+  }
+
   return NextResponse.json({
     success: true,
     alreadyAgreed: false,
     contract_agreed_at: nowIso,
     contract_agreed_by: user.id,
+    finalized: finalize?.finalized ?? false,
+    sessionsCreated: finalize?.sessionsCreated ?? 0,
+    warnings: finalize?.warnings ?? [],
   });
 }
