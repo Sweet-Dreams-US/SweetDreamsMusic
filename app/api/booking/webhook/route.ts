@@ -1437,6 +1437,91 @@ export async function POST(request: NextRequest) {
             );
           }
         }
+      } else if (meta.type === 'media_installment') {
+        // ── Media Projects: one installment paid via its Stripe link ──────
+        // The per-installment Payment Link finished → checkout.session.completed
+        // fires with metadata { booking_id, installment_id, type:'media_installment' }.
+        // Mark THAT installment paid (paid_at, paid_method, payment intent).
+        // We do NOT recompute the booking's deposit/remainder columns — for a
+        // plan project, "paid so far" is derived from SUM(paid installments)
+        // by the readers, leaving the legacy deposit/remainder math untouched.
+        //
+        // Idempotent: skip if the installment is already 'paid'. The top-level
+        // event-id dedup already prevents reprocessing of the same delivery;
+        // this is the second guard against an installment being double-marked
+        // by distinct events (e.g. a resent link that races the first).
+        //
+        // Gating note: we DO mark paid even if the contract wasn't agreed —
+        // the agree-before-pay gate is enforced where payment is INITIATED
+        // (send-link + the artist pay UI), not at money-arrival. By the time
+        // a webhook fires the buyer has already paid; refusing it here would
+        // just orphan a real payment.
+        const bookingId = meta.booking_id;
+        const installmentId = meta.installment_id;
+        const amountPaid = session.amount_total || 0;
+        // Payment source: a hosted Payment Link reads as 'link'; if the buyer
+        // paid by card through it, the source method is still the link.
+        const paidMethod = 'link';
+
+        if (!bookingId || !installmentId) {
+          console.error('[webhook] media_installment missing booking_id/installment_id', meta);
+        } else {
+          const { data: instBefore } = await supabase
+            .from('media_payment_installments')
+            .select('id, status, amount_cents, label')
+            .eq('id', installmentId)
+            .eq('booking_id', bookingId)
+            .maybeSingle();
+          const inst = instBefore as
+            | { id: string; status: string; amount_cents: number; label: string }
+            | null;
+
+          if (!inst) {
+            console.error(
+              '[webhook] media_installment: installment not found',
+              { bookingId, installmentId },
+            );
+          } else if (inst.status === 'paid') {
+            // Already settled — idempotent no-op.
+            console.log(
+              `[webhook] media_installment already paid — skipping: installment=${installmentId}`,
+            );
+          } else {
+            const nowIso = new Date().toISOString();
+            await supabase
+              .from('media_payment_installments')
+              .update({
+                status: 'paid',
+                paid_at: nowIso,
+                paid_method: paidMethod,
+                stripe_payment_intent_id:
+                  typeof session.payment_intent === 'string'
+                    ? session.payment_intent
+                    : null,
+              })
+              .eq('id', installmentId)
+              .eq('booking_id', bookingId)
+              // Guard: only flip if still unpaid (race-safe).
+              .neq('status', 'paid');
+
+            await supabase.from('media_booking_audit_log').insert({
+              booking_id: bookingId,
+              action: 'installment_paid',
+              performed_by: 'stripe_webhook',
+              details: {
+                installment_id: installmentId,
+                label: inst.label,
+                amount_cents: amountPaid || inst.amount_cents,
+                paid_method: paidMethod,
+                stripe_session_id: session.id,
+              },
+            });
+
+            console.log(
+              `[webhook] media_installment paid: booking=${bookingId} installment=${installmentId} amount=${amountPaid}`,
+            );
+          }
+        }
       } else if (meta.type === 'package_quote') {
         // ── Package quote accepted + paid ─────────────────────────
         // Round D: customer paid for either:

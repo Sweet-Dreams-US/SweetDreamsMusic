@@ -86,6 +86,23 @@ export async function PATCH(
     }
   }
 
+  // contract_terms — per-project free-text contract the manager writes/edits.
+  // Empty string normalizes to null. Editing terms does NOT reset the
+  // artist's prior agreement (contract_agreed_at) — the manager owns that
+  // call; the agree route is what stamps/clears agreement.
+  if ('contract_terms' in body) {
+    if (body.contract_terms === null) {
+      update.contract_terms = null;
+    } else if (typeof body.contract_terms === 'string') {
+      update.contract_terms = body.contract_terms.trim() || null;
+    } else {
+      return NextResponse.json(
+        { error: 'contract_terms must be a string or null' },
+        { status: 400 },
+      );
+    }
+  }
+
   // notes_to_us — short admin notes (free text). Empty string normalizes
   // to null so accounting reports don't show empty stub rows.
   if ('notes_to_us' in body) {
@@ -130,7 +147,7 @@ export async function PATCH(
   // entries for every state change. Single row read; cheap.
   const { data: prevRow } = await service
     .from('media_bookings')
-    .select('status, deliverables, project_details, notes_to_us, user_id, offering_id, final_price_cents, deposit_cents, actual_deposit_paid, final_paid_at')
+    .select('status, deliverables, project_details, notes_to_us, contract_terms, user_id, offering_id, final_price_cents, deposit_cents, actual_deposit_paid, final_paid_at')
     .eq('id', id)
     .maybeSingle();
 
@@ -195,6 +212,7 @@ export async function PATCH(
       deliverables: unknown;
       project_details: unknown;
       notes_to_us: string | null;
+      contract_terms: string | null;
     };
 
     if (priceAdjustment && prev.final_price_cents !== priceAdjustment.newCents) {
@@ -246,6 +264,18 @@ export async function PATCH(
         action: 'deliverables_edited',
         performed_by: user.email,
         details: {},
+      });
+    }
+
+    if ('contract_terms' in update && update.contract_terms !== prev.contract_terms) {
+      auditRows.push({
+        booking_id: id,
+        action: 'contract_terms_edited',
+        performed_by: user.email,
+        details: {
+          had_terms: !!prev.contract_terms,
+          has_terms: !!update.contract_terms,
+        },
       });
     }
   }
