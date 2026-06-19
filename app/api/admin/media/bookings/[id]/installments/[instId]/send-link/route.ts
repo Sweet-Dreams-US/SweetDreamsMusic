@@ -24,7 +24,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import { getSessionUser } from '@/lib/auth';
-import { createServiceClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { verifyMediaManagerAccess } from '@/lib/admin-auth';
 import { sendMediaPaymentLink } from '@/lib/email';
 import { SITE_URL } from '@/lib/constants';
 
@@ -32,11 +33,12 @@ export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string; instId: string }> },
 ) {
+  const supabase = await createClient();
+  if (!(await verifyMediaManagerAccess(supabase))) {
+    return NextResponse.json({ error: 'Media team only' }, { status: 403 });
+  }
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Login required' }, { status: 401 });
-  if (user.role !== 'admin') {
-    return NextResponse.json({ error: 'Admin only' }, { status: 403 });
-  }
 
   const { id, instId } = await params;
   const service = createServiceClient();

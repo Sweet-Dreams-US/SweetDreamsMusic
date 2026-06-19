@@ -19,7 +19,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
-import { createServiceClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { verifyMediaManagerAccess } from '@/lib/admin-auth';
 import { sendMediaDeliverablesReady } from '@/lib/email';
 
 const ALLOWED_STATUSES = new Set([
@@ -35,9 +36,12 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const supabase = await createClient();
+  if (!(await verifyMediaManagerAccess(supabase))) {
+    return NextResponse.json({ error: 'Media team only' }, { status: 403 });
+  }
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Login required' }, { status: 401 });
-  if (user.role !== 'admin' && user.role !== 'media_manager') return NextResponse.json({ error: 'Admin only' }, { status: 403 });
 
   const { id } = await params;
 

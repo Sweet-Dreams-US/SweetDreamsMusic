@@ -9,9 +9,7 @@ import BeatManager from './BeatManager';
 import UserManager from './UserManager';
 import Accounting from './Accounting';
 import StudioBlocks from './StudioBlocks';
-import MediaSales from './MediaSales';
 import MediaCatalog from './MediaCatalog';
-import MediaOrders from './MediaOrders';
 import ProducerApplications from './ProducerApplications';
 import ContractsViewer from './ContractsViewer';
 import ClientCRM from './ClientCRM';
@@ -23,7 +21,7 @@ import RewardsManager from './RewardsManager';
 import StudioControlPanel from './StudioControlPanel';
 import TaxCenter from './TaxCenter';
 
-type Tab = 'overview' | 'control' | 'clients' | 'accounting' | 'tax' | 'bookings' | 'events' | 'media' | 'media-catalog' | 'media-orders' | 'packages' | 'blocks' | 'beats' | 'producers' | 'contracts' | 'users' | 'rewards' | 'analytics' | 'notifications';
+type Tab = 'overview' | 'control' | 'clients' | 'accounting' | 'tax' | 'bookings' | 'events' | 'media-catalog' | 'packages' | 'blocks' | 'beats' | 'producers' | 'contracts' | 'users' | 'rewards' | 'analytics' | 'notifications';
 
 export default function AdminDashboard({ user }: { user: SessionUser }) {
   const [tab, setTab] = useState<Tab>('overview');
@@ -36,9 +34,7 @@ export default function AdminDashboard({ user }: { user: SessionUser }) {
     { key: 'tax', label: 'Tax Center', icon: Calculator },
     { key: 'bookings', label: 'Bookings', icon: Calendar },
     { key: 'events', label: 'Events', icon: PartyPopper },
-    { key: 'media', label: 'Media Sales', icon: Video },
     { key: 'media-catalog', label: 'Media Catalog', icon: Film },
-    { key: 'media-orders', label: 'Media Orders', icon: ClipboardList },
     // Packages & memberships sit alongside media catalog/orders since
     // they're a sibling concept (bundling offerings + studio time + beats).
     // Round A is read-only foundation.
@@ -107,9 +103,7 @@ export default function AdminDashboard({ user }: { user: SessionUser }) {
           {tab === 'tax' && <TaxCenter />}
           {tab === 'bookings' && <BookingManager />}
           {tab === 'events' && <AdminEvents />}
-          {tab === 'media' && <MediaSales />}
           {tab === 'media-catalog' && <MediaCatalog />}
-          {tab === 'media-orders' && <MediaOrders />}
           {tab === 'packages' && <PackageTemplates />}
           {tab === 'blocks' && <StudioBlocks />}
           {tab === 'beats' && <BeatManager />}

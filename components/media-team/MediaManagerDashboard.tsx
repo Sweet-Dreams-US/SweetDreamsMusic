@@ -6,23 +6,23 @@
 // on each card. All times render studio-local (fmtStamp*).
 
 import { useState, useEffect, useCallback } from 'react';
-import { Inbox, CalendarCheck, ListChecks, History, Plus } from 'lucide-react';
+import { Inbox, CalendarCheck, ListChecks, History, ClipboardList } from 'lucide-react';
 import MediaJobCard from './MediaJobCard';
-import CreateMediaInvite from './CreateMediaInvite';
+import MediaOrders from '@/components/admin/MediaOrders';
 import type { MediaTeamJob } from '@/lib/media-team-server';
 
-type Tab = 'requests' | 'scheduled' | 'all' | 'create' | 'history';
+type Tab = 'projects' | 'requests' | 'scheduled' | 'all' | 'history';
 
 const TABS: { key: Tab; label: string; icon: typeof Inbox }[] = [
+  { key: 'projects', label: 'Projects', icon: ClipboardList },
   { key: 'requests', label: 'Incoming Requests', icon: Inbox },
   { key: 'scheduled', label: 'Scheduled', icon: CalendarCheck },
   { key: 'all', label: 'All Jobs', icon: ListChecks },
-  { key: 'create', label: 'New Session', icon: Plus },
   { key: 'history', label: 'History', icon: History },
 ];
 
 export default function MediaManagerDashboard() {
-  const [tab, setTab] = useState<Tab>('requests');
+  const [tab, setTab] = useState<Tab>('projects');
   const [jobs, setJobs] = useState<MediaTeamJob[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -53,10 +53,10 @@ export default function MediaManagerDashboard() {
     tab === 'all' ? active : history;
 
   const counts: Record<Tab, number> = {
+    projects: 0,
     requests: requests.length,
     scheduled: scheduled.length,
     all: active.length,
-    create: 0,
     history: history.length,
   };
 
@@ -82,13 +82,13 @@ export default function MediaManagerDashboard() {
               }`}
             >
               <t.icon className="w-4 h-4" />
-              {t.label}{t.key !== 'create' ? ` (${counts[t.key]})` : ''}
+              {t.label}{t.key !== 'projects' ? ` (${counts[t.key]})` : ''}
             </button>
           ))}
         </div>
 
-        {tab === 'create' ? (
-          <CreateMediaInvite onCreated={load} />
+        {tab === 'projects' ? (
+          <MediaOrders />
         ) : loading ? (
           <p className="font-mono text-sm text-black/60">Loading jobs…</p>
         ) : shown.length === 0 ? (

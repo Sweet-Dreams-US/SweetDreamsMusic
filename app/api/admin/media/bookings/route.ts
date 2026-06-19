@@ -5,16 +5,17 @@
 // newest first. The component pages on the client side; for now we cap at
 // 200 rows which is plenty for the MVP scale.
 //
-// Auth: admin-only.
+// Auth: media managers (and admins) via verifyMediaManagerAccess.
 
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth';
-import { createServiceClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { verifyMediaManagerAccess } from '@/lib/admin-auth';
 
 export async function GET() {
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: 'Login required' }, { status: 401 });
-  if (user.role !== 'admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 });
+  const supabase = await createClient();
+  if (!(await verifyMediaManagerAccess(supabase))) {
+    return NextResponse.json({ error: 'Media team only' }, { status: 403 });
+  }
 
   const service = createServiceClient();
   const { data: bookings, error } = await service

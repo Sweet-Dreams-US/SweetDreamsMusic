@@ -15,7 +15,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
-import { createServiceClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { verifyMediaManagerAccess } from '@/lib/admin-auth';
 
 const VALID_METHODS = ['cash', 'venmo', 'check', 'other'] as const;
 type ManualMethod = (typeof VALID_METHODS)[number];
@@ -24,11 +25,12 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; instId: string }> },
 ) {
+  const supabase = await createClient();
+  if (!(await verifyMediaManagerAccess(supabase))) {
+    return NextResponse.json({ error: 'Media team only' }, { status: 403 });
+  }
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Login required' }, { status: 401 });
-  if (user.role !== 'admin') {
-    return NextResponse.json({ error: 'Admin only' }, { status: 403 });
-  }
 
   const { id, instId } = await params;
 
