@@ -21,6 +21,8 @@ import TierBadge from '@/components/career/TierBadge';
 import { SkeletonList } from './LoadingSkeleton';
 import ActivePackages from './ActivePackages';
 import ProfileCompletion from './ProfileCompletion';
+import AvailableBalances from './AvailableBalances';
+import type { MediaCreditBalance } from '@/lib/media-credits';
 
 interface NextStep {
   id: string;
@@ -71,6 +73,10 @@ interface OverviewData {
 interface HubOverviewProps {
   onXpEarned?: () => void;
   onNavigate?: (tab: string) => void;
+  // Spendable balances (passed down from the server via relocated.media) so the
+  // Overview can surface studio hours + media credits without a client fetch.
+  studioHours?: { hoursRemaining: number; costBasisCents: number };
+  mediaCredits?: MediaCreditBalance[];
 }
 
 const DISMISS_PREFIX = 'career_dismissed_';
@@ -85,7 +91,12 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export default function HubOverview({ onXpEarned: _onXpEarned, onNavigate }: HubOverviewProps) {
+export default function HubOverview({
+  onXpEarned: _onXpEarned,
+  onNavigate,
+  studioHours,
+  mediaCredits,
+}: HubOverviewProps) {
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -177,6 +188,66 @@ export default function HubOverview({ onXpEarned: _onXpEarned, onNavigate }: Hub
       <div className="mb-6">
         <ProfileCompletion onNavigate={onNavigate} />
       </div>
+
+      {/* AVAILABLE BALANCES — surfaces spendable studio hours + media credits at
+          the top of the Hub (previously buried in the Media tab). Renders
+          nothing when both are empty. The free-hour CTA goes to the $0
+          credit-redemption flow; media credits deep-link to the Media tab's
+          scheduler. */}
+      {(studioHours || mediaCredits) && (
+        <div className="mb-6">
+          <AvailableBalances
+            studioHours={studioHours ?? { hoursRemaining: 0, costBasisCents: 0 }}
+            mediaCredits={mediaCredits ?? []}
+            onNavigate={onNavigate}
+          />
+        </div>
+      )}
+
+      {/* BOOK A STUDIO SESSION — always visible. The owner flagged that there
+          was no obvious place to book from the Hub. When the artist has a free
+          hour, that ($0) redemption is the prominent CTA and the general paid
+          booking (/book) is secondary; otherwise /book is the primary CTA. */}
+      {(() => {
+        const hasFreeHour = (studioHours?.hoursRemaining ?? 0) > 0;
+        return (
+          <div className="border-2 border-accent p-5 mb-6">
+            <h3 className="font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center gap-2 mb-2">
+              <Calendar className="w-4 h-4 text-accent" /> Book a Studio Session
+            </h3>
+            <p className="font-mono text-sm text-black/60 mb-4">
+              {hasFreeHour
+                ? 'You have free studio time on your account — redeem it, or book a new paid session anytime.'
+                : 'Reserve studio time with our engineers whenever you’re ready to record.'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {hasFreeHour ? (
+                <>
+                  <Link
+                    href="/dashboard/media/credits"
+                    className="font-mono text-[10px] font-bold uppercase tracking-wider bg-accent text-black px-3 py-1.5 hover:opacity-80 transition-opacity duration-200 inline-flex items-center gap-1 no-underline"
+                  >
+                    Book your free hour <ArrowRight className="w-3 h-3" />
+                  </Link>
+                  <Link
+                    href="/book"
+                    className="font-mono text-[10px] font-bold uppercase tracking-wider border-2 border-black/10 text-black px-3 py-1.5 hover:border-accent/30 transition-colors duration-200 inline-flex items-center gap-1 no-underline"
+                  >
+                    Book a Paid Session <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </>
+              ) : (
+                <Link
+                  href="/book"
+                  className="font-mono text-[10px] font-bold uppercase tracking-wider bg-accent text-black px-3 py-1.5 hover:opacity-80 transition-opacity duration-200 inline-flex items-center gap-1 no-underline"
+                >
+                  Book a Session <ArrowRight className="w-3 h-3" />
+                </Link>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* WELCOME — brand-new users with zero content of any kind. Gives them a
           first move instead of a page of empty space. */}

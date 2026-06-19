@@ -225,7 +225,14 @@ export default function ArtistHub({ userId, relocated, initialTab }: { userId: s
 
             {/* Main Content */}
             <div className="flex-1 min-w-0">
-              {tab === 'overview' && <HubOverview onXpEarned={onXpEarned} onNavigate={(t) => setTab(t as ExtendedTab)} />}
+              {tab === 'overview' && (
+                <HubOverview
+                  onXpEarned={onXpEarned}
+                  onNavigate={(t) => setTab(t as ExtendedTab)}
+                  studioHours={relocated.media.studioHours}
+                  mediaCredits={relocated.media.credits}
+                />
+              )}
               {tab === 'projects' && <ProjectList onXpEarned={onXpEarned} />}
               {tab === 'goals' && <GoalTracker onXpEarned={onXpEarned} />}
               {tab === 'metrics' && <MetricsDashboard onXpEarned={onXpEarned} />}
