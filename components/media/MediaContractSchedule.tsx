@@ -89,6 +89,7 @@ export default function MediaContractSchedule({
   plannedShoots,
   installments,
   totalCents,
+  isTest,
 }: {
   bookingId: string;
   contractTerms: string | null;
@@ -98,6 +99,7 @@ export default function MediaContractSchedule({
   plannedShoots: ArtistPlannedShoot[];
   installments: ArtistInstallment[];
   totalCents: number;
+  isTest?: boolean;
 }) {
   const router = useRouter();
   const [agreeing, setAgreeing] = useState(false);
@@ -135,6 +137,52 @@ export default function MediaContractSchedule({
   const paidCents = installments
     .filter((i) => i.status === 'paid')
     .reduce((sum, i) => sum + i.amount_cents, 0);
+  const remainingCents = Math.max(0, totalCents - paidCents);
+
+  // Self-serve "Make a payment" box. Default amount = the next unpaid stint's
+  // amount (capped at the remaining balance), but the artist may pay any amount
+  // from $1 up to the full balance — including ahead of schedule.
+  const firstUnpaid = installments.find(
+    (i) => i.status === 'pending' || i.status === 'link_sent',
+  );
+  const defaultPayCents = Math.min(
+    firstUnpaid?.amount_cents ?? remainingCents,
+    remainingCents,
+  );
+  // Held as a dollars string so the <input type="number"> stays controlled and
+  // editable; converted to integer cents on submit.
+  const [payDollars, setPayDollars] = useState<string>(
+    (defaultPayCents / 100).toFixed(2),
+  );
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+
+  const amountCents = Math.round((parseFloat(payDollars) || 0) * 100);
+  const amountValid = amountCents >= 100 && amountCents <= remainingCents;
+
+  async function startPayment() {
+    if (!amountValid) return;
+    setPaying(true);
+    setPayError(null);
+    try {
+      const res = await fetch(`/api/media/bookings/${bookingId}/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount_cents: amountCents }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.checkout_url) {
+        setPayError(data.error || 'Could not start the payment. Please try again.');
+        return;
+      }
+      window.location.href = data.checkout_url as string;
+    } catch (e) {
+      console.error('[contract-schedule] pay error:', e);
+      setPayError('Network error — please try again.');
+    } finally {
+      setPaying(false);
+    }
+  }
 
   // Show deliverables only once the package has been proposed (sent/approved).
   const showDeliverables = !!pkg && pkg.status !== 'draft' && lineItems.length > 0;
@@ -178,9 +226,9 @@ export default function MediaContractSchedule({
                 Contract finalized — your booking is on the calendar
               </p>
               <p className="font-mono text-xs text-green-800/80 mt-2">
-                Both you and the Sweet Dreams team have signed. Any planned shoots
-                are now scheduled below — check &ldquo;Scheduled sessions&rdquo; for
-                the locked-in dates.
+                Both you and the Sweet Dreams team have signed. Your shoot dates
+                (shown in Production logistics above) are locked in — the team
+                blocks the studio time for you.
               </p>
             </div>
           ) : (
@@ -414,11 +462,79 @@ export default function MediaContractSchedule({
           {contractTerms && !artistSigned && (
             <div className="border-2 border-amber-300 bg-amber-50 p-4 mb-3">
               <p className="font-mono text-xs text-amber-900">
-                Sign the contract above to unlock payment. Each installment can be
-                paid individually once the studio sends its link.
+                Sign the contract above to unlock payment. Pay any amount toward
+                your balance once the contract is signed.
               </p>
             </div>
           )}
+
+          {/* Make a payment — SELF-SERVE. The artist pays any amount up to the
+              remaining balance themselves (no manager link required), with the
+              next unpaid stint pre-filled. Shown only once the contract is
+              agreed (or there are no terms), there's a balance to pay, and this
+              is a real (non-test) project with a plan. */}
+          {(!contractTerms || artistSigned) &&
+            remainingCents > 0 &&
+            !isTest &&
+            installments.length > 0 && (
+              <div className="border-2 border-accent bg-accent/10 p-5 mb-3">
+                <p className="font-mono text-[11px] uppercase tracking-wider font-bold text-black/70 mb-2 inline-flex items-center gap-1.5">
+                  <CreditCard className="w-3 h-3" />
+                  Make a payment
+                </p>
+                <p className="font-mono text-xs text-black/70 mb-3">
+                  Balance remaining:{' '}
+                  <strong className="tabular-nums">{formatCents(remainingCents)}</strong>
+                </p>
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="block">
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-black/50 block mb-1">
+                      Amount (USD)
+                    </span>
+                    <div className="inline-flex items-center border-2 border-black bg-white">
+                      <span className="font-mono text-sm font-bold px-2 text-black/60">$</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={remainingCents / 100}
+                        step={1}
+                        value={payDollars}
+                        onChange={(e) => setPayDollars(e.target.value)}
+                        disabled={paying}
+                        className="w-28 font-mono text-sm font-bold py-2 pr-2 tabular-nums outline-none disabled:opacity-50"
+                      />
+                    </div>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={startPayment}
+                    disabled={paying || !amountValid}
+                    className="bg-black text-white font-mono text-xs font-bold uppercase tracking-wider px-5 py-2.5 hover:bg-accent hover:text-black transition-colors disabled:opacity-40 disabled:hover:bg-black disabled:hover:text-white inline-flex items-center gap-2"
+                  >
+                    {paying ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Starting…
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="w-3.5 h-3.5" />
+                        Pay {formatCents(amountValid ? amountCents : 0)}
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="font-mono text-[11px] text-black/55 mt-3">
+                  Pay any amount up to your balance — including paying ahead of
+                  the schedule.
+                </p>
+                {payError && (
+                  <p className="font-mono text-xs text-red-700 inline-flex items-center gap-1 mt-2">
+                    <AlertCircle className="w-3 h-3" /> {payError}
+                  </p>
+                )}
+              </div>
+            )}
 
           <ul className="border-2 border-black/10 divide-y divide-black/10">
             {installments.map((inst) => {

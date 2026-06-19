@@ -1784,6 +1784,204 @@ export async function POST(request: NextRequest) {
             );
           }
         }
+      } else if (meta.type === 'media_project_payment') {
+        // ── Media Projects: SELF-SERVE project payment (any amount) ───────
+        // The artist paid an arbitrary amount toward the project balance via a
+        // one-off Checkout Session minted by /api/media/bookings/[id]/pay (metadata
+        // { booking_id, type:'media_project_payment', amount_cents, paid_by }).
+        // We GREEDILY apply that single payment across the pending installments
+        // in sort order: each installment it fully covers flips to paid; the
+        // boundary installment (if the money lands mid-stint) is SPLIT so the
+        // paid portion becomes its own paid row and the remainder stays owed —
+        // keeping SUM(amount_cents) == final_price_cents intact.
+        //
+        // IDEMPOTENCY (CRITICAL): a greedy apply is NOT naturally idempotent —
+        // a re-fired Stripe event would pay installments twice. Every row we
+        // touch is stamped with this Checkout Session id; the first thing we do
+        // is look for any row already carrying it. If found, this delivery was
+        // already applied → skip the whole branch. The top-level event-id dedup
+        // also guards against the same delivery, but the session-id stamp guards
+        // against distinct events for the same session.
+        //
+        // Gating note: like media_installment, we apply even if the contract
+        // wasn't agreed — the agree-before-pay gate is enforced where payment is
+        // INITIATED (the /pay route), not at money-arrival. Refusing a real,
+        // landed payment here would just orphan it.
+        const bookingId = meta.booking_id;
+        const amountPaid =
+          session.amount_total ?? Number(meta.amount_cents) ?? 0;
+        const pi =
+          typeof session.payment_intent === 'string'
+            ? session.payment_intent
+            : session.payment_intent?.id ?? null;
+        const sess = session.id;
+
+        if (!bookingId || amountPaid <= 0) {
+          console.error(
+            '[webhook] media_project_payment missing booking_id or amount',
+            meta,
+          );
+        } else {
+          // Idempotency pre-check: has this session already been applied?
+          const { data: dupRow } = await supabase
+            .from('media_payment_installments')
+            .select('id')
+            .eq('booking_id', bookingId)
+            .eq('stripe_checkout_session_id', sess)
+            .limit(1)
+            .maybeSingle();
+
+          if (dupRow) {
+            console.log(
+              `[webhook] media_project_payment already applied — skipping: booking=${bookingId} session=${sess}`,
+            );
+          } else {
+            const nowIso = new Date().toISOString();
+
+            // Pending stints in pay order — these are the targets for the
+            // greedy apply (already-paid/void rows are left alone).
+            const { data: pendingRows, error: pendErr } = await supabase
+              .from('media_payment_installments')
+              .select('id, sort_order, label, amount_cents, due_date, status')
+              .eq('booking_id', bookingId)
+              .in('status', ['pending', 'link_sent'])
+              .order('sort_order', { ascending: true })
+              .order('created_at', { ascending: true });
+            if (pendErr) {
+              console.error(
+                '[webhook] media_project_payment: pending load error',
+                pendErr,
+              );
+            }
+
+            const pending = (pendingRows ?? []) as Array<{
+              id: string;
+              sort_order: number;
+              label: string;
+              amount_cents: number;
+              due_date: string | null;
+              status: string;
+            }>;
+
+            // GREEDY APPLY. The session-id stamp on every touched row is what
+            // makes a duplicate event a no-op (the pre-check above finds it).
+            let remaining = amountPaid;
+            for (const inst of pending) {
+              if (remaining <= 0) break;
+
+              if (inst.amount_cents <= remaining) {
+                // Fully covered → mark this stint paid.
+                const { error: updErr } = await supabase
+                  .from('media_payment_installments')
+                  .update({
+                    status: 'paid',
+                    paid_at: nowIso,
+                    paid_method: 'card',
+                    stripe_payment_intent_id: pi,
+                    stripe_checkout_session_id: sess,
+                  })
+                  .eq('id', inst.id)
+                  .eq('booking_id', bookingId);
+                if (updErr) {
+                  console.error(
+                    '[webhook] media_project_payment: pay-full update error',
+                    { installment: inst.id, error: updErr },
+                  );
+                }
+                remaining -= inst.amount_cents;
+              } else {
+                // SPLIT the boundary stint: a new paid row for the covered
+                // portion + shrink the original (remainder stays owed). This
+                // preserves SUM(amount_cents) == final_price_cents.
+                const { error: insErr } = await supabase
+                  .from('media_payment_installments')
+                  .insert({
+                    booking_id: bookingId,
+                    sort_order: inst.sort_order,
+                    label: `${inst.label} (paid)`,
+                    amount_cents: remaining,
+                    due_date: inst.due_date,
+                    status: 'paid',
+                    paid_at: nowIso,
+                    paid_method: 'card',
+                    stripe_payment_intent_id: pi,
+                    stripe_checkout_session_id: sess,
+                  });
+                if (insErr) {
+                  console.error(
+                    '[webhook] media_project_payment: split insert error',
+                    { installment: inst.id, error: insErr },
+                  );
+                }
+                const { error: shrinkErr } = await supabase
+                  .from('media_payment_installments')
+                  .update({ amount_cents: inst.amount_cents - remaining })
+                  .eq('id', inst.id)
+                  .eq('booking_id', bookingId);
+                if (shrinkErr) {
+                  console.error(
+                    '[webhook] media_project_payment: split shrink error',
+                    { installment: inst.id, error: shrinkErr },
+                  );
+                }
+                remaining = 0;
+              }
+            }
+
+            // Recompute paid-so-far; if it now covers the contract total and
+            // the booking isn't already stamped fully-paid, stamp it.
+            const { data: afterRows } = await supabase
+              .from('media_payment_installments')
+              .select('amount_cents, status')
+              .eq('booking_id', bookingId);
+            const paidCents = ((afterRows ?? []) as Array<{
+              amount_cents: number;
+              status: string;
+            }>)
+              .filter((r) => r.status === 'paid')
+              .reduce((sum, r) => sum + r.amount_cents, 0);
+
+            const { data: bookingNow } = await supabase
+              .from('media_bookings')
+              .select('final_price_cents, final_paid_at')
+              .eq('id', bookingId)
+              .maybeSingle();
+            const bk = bookingNow as
+              | { final_price_cents: number; final_paid_at: string | null }
+              | null;
+            if (
+              bk &&
+              paidCents >= bk.final_price_cents &&
+              !bk.final_paid_at
+            ) {
+              const { error: stampErr } = await supabase
+                .from('media_bookings')
+                .update({ final_paid_at: nowIso })
+                .eq('id', bookingId);
+              if (stampErr) {
+                console.error(
+                  '[webhook] media_project_payment: final_paid_at stamp error',
+                  stampErr,
+                );
+              }
+            }
+
+            await supabase.from('media_booking_audit_log').insert({
+              booking_id: bookingId,
+              action: 'project_payment',
+              performed_by: 'system',
+              details: {
+                amount_cents: amountPaid,
+                stripe_checkout_session_id: sess,
+                payment_intent: pi,
+              },
+            });
+
+            console.log(
+              `[webhook] media_project_payment applied: booking=${bookingId} amount=${amountPaid} paid_so_far=${paidCents} session=${sess}`,
+            );
+          }
+        }
       } else if (meta.type === 'package_quote') {
         // ── Package quote accepted + paid ─────────────────────────
         // Round D: customer paid for either:
@@ -2481,6 +2679,7 @@ export async function POST(request: NextRequest) {
       'invite_deposit', 'booking_remainder',
       'beat_purchase', 'beat_renewal', 'beat_upgrade', 'private_beat_sale',
       'media_purchase', 'media_remainder', 'media_manual',
+      'media_installment', 'media_project_payment',
       'package_quote',
     ]);
     if (!meta.type) {

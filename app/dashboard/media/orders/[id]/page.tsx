@@ -246,6 +246,7 @@ export default async function OrderDetailPage({
                 paid_method: i.paid_method,
               }))}
               totalCents={booking.final_price_cents}
+              isTest={!!booking.is_test}
             />
           )}
 
@@ -320,7 +321,11 @@ export default async function OrderDetailPage({
             </div>
           )}
 
-          {/* Sessions */}
+          {/* Sessions — recording-style engineer scheduling. HIDDEN for contract
+              projects: a media shoot is pre-planned in the contract (see the
+              contract's Production logistics above) and the media manager blocks
+              the studio time, so the artist never schedules an engineer here. */}
+          {!isProject && (
           <div>
             <div className="flex items-center justify-between mb-3">
               <p className="font-mono text-[11px] uppercase tracking-wider text-black/50">
@@ -428,6 +433,7 @@ export default async function OrderDetailPage({
               </details>
             )}
           </div>
+          )}
 
           {/* Deliverables — admin populates as production wraps */}
           {booking.deliverables?.items && booking.deliverables.items.length > 0 && (
