@@ -33,9 +33,14 @@ export async function POST(
   if (!status || !['going', 'maybe', 'not_going', 'requested'].includes(status)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
   }
-  const guestCount = typeof body.guestCount === 'number' && body.guestCount >= 0
+  // Private events are request-and-approve with NO plus-ones: every attendee
+  // must submit their OWN request, so a 'requested' RSVP never carries guests.
+  // (Public events can still bring guests.) Enforced here server-side in
+  // addition to hiding the field on the request form.
+  const rawGuestCount = typeof body.guestCount === 'number' && body.guestCount >= 0
     ? Math.min(body.guestCount, 20)
     : 0;
+  const guestCount = status === 'requested' ? 0 : rawGuestCount;
   const message = typeof body.message === 'string' ? body.message.trim() : '';
 
   const service = createServiceClient();
