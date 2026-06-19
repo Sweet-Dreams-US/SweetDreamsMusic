@@ -49,6 +49,24 @@ export default async function BookPage({
   const studios = await getStudioConfigs(createServiceClient());
   const engineers = await getEngineers();
 
+  // Free-studio-hour balance for the logged-in user (SOLO only — personal
+  // credits, not band). We sum remaining hours across the user's personal
+  // studio_credits so BookingFlow can offer to apply one at checkout. A
+  // logged-out visitor or a user with no credits → 0 (toggle hidden).
+  let freeHourBalance = 0;
+  if (user) {
+    const svc = createServiceClient();
+    const { data: creditRows } = await svc
+      .from('studio_credits')
+      .select('hours_granted, hours_used')
+      .eq('user_id', user.id)
+      .is('band_id', null);
+    freeHourBalance = (creditRows || []).reduce(
+      (acc, c) => acc + Math.max(0, Number(c.hours_granted) - Number(c.hours_used)),
+      0,
+    );
+  }
+
   // Resolve band mode if ?bandId present. Four outcomes:
   //   - no bandId             → solo mode (band = null)
   //   - bandId but no user    → show "sign in required"
@@ -140,6 +158,7 @@ export default async function BookPage({
               studios={studios}
               engineers={engineers}
               band={band}
+              freeHourBalance={freeHourBalance}
             />
           ) : (
             <div className="text-center py-16">

@@ -249,6 +249,94 @@ async function completeCreditRedemption(
   return { retry: false };
 }
 
+/**
+ * Drain ONE free studio hour for a /book solo session that opted into the
+ * free-hour discount at checkout (meta.free_hour_applied === '1'). Called from
+ * the booking_deposit branch AFTER the booking row is confirmed, so it is
+ * PAYMENT-GATED — an abandoned checkout never reaches here and the hour is
+ * never consumed.
+ *
+ * Idempotent, mirroring completeCreditRedemption:
+ *   1. Skip if a studio_credit_redemptions row already links this booking
+ *      (replay / both sync+async fired).
+ *   2. Insert the redemption linkage (1 hour).
+ *   3. Increment studio_credits.hours_used by 1 with an optimistic-concurrency
+ *      guard (.eq('hours_used', old)); the DB CHECK constraint blocks overdraw.
+ *
+ * All failures are non-fatal here — the booking is already confirmed and the
+ * customer was charged the discounted amount. We log + alert on the rare drain
+ * failure so admin can reconcile, but never roll back the paid booking.
+ */
+async function drainFreeHourForBooking(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  args: {
+    bookingId: string;
+    creditId: string;
+    redeemedBy: string | null;
+    eventId: string;
+    eventType: string;
+    paymentIntent: string | null;
+    amount: number | null;
+    meta: Record<string, string>;
+  },
+): Promise<void> {
+  const { bookingId, creditId, redeemedBy } = args;
+  if (!bookingId || !creditId) return;
+
+  try {
+    const { data: existingRedemption } = await supabase
+      .from('studio_credit_redemptions')
+      .select('id')
+      .eq('studio_booking_id', bookingId)
+      .maybeSingle();
+    if (existingRedemption) return; // already drained — idempotent no-op
+
+    const { error: redErr } = await supabase
+      .from('studio_credit_redemptions')
+      .insert({
+        credit_id: creditId,
+        studio_booking_id: bookingId,
+        hours_redeemed: 1,
+        redeemed_by: redeemedBy,
+      });
+    if (redErr) {
+      console.error('[webhook][free_hour] redemption insert failed:', redErr);
+      return;
+    }
+
+    const { data: creditRow } = await supabase
+      .from('studio_credits')
+      .select('hours_used, hours_granted')
+      .eq('id', creditId)
+      .maybeSingle();
+    const cr = creditRow as { hours_used: number; hours_granted: number } | null;
+    if (!cr) return;
+    const { error: drainErr } = await supabase
+      .from('studio_credits')
+      .update({ hours_used: Number(cr.hours_used) + 1 })
+      .eq('id', creditId)
+      .eq('hours_used', cr.hours_used); // optimistic concurrency
+    if (drainErr) {
+      console.error('[webhook][free_hour] credit drain failed:', drainErr);
+      await alertAdminOfWebhookFailure({
+        eventId: args.eventId,
+        eventType: args.eventType,
+        reason: `free-hour drain failed for credit ${creditId} (booking ${bookingId}); payment succeeded — reconcile hours manually`,
+        metadata: args.meta,
+        paymentIntent: args.paymentIntent,
+        amount: args.amount,
+      });
+      return;
+    }
+    console.log(
+      `[webhook] free_hour drained: booking=${bookingId} credit=${creditId} hours=1`,
+    );
+  } catch (e) {
+    console.error('[webhook][free_hour] unexpected drain error (non-fatal):', e);
+  }
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.text();
   const sig = request.headers.get('stripe-signature');
@@ -542,6 +630,22 @@ export async function POST(request: NextRequest) {
           if (meta.applied_discount_grant_id && row?.id) {
             try { await markGrantRedeemed(supabase, meta.applied_discount_grant_id, row.id); }
             catch (e) { console.error('[webhook] mark grant redeemed failed (non-fatal):', e); }
+          }
+          // Free studio hour: drain 1 hour now this is a confirmed paid booking
+          // (payment-gated + idempotent). Solo /book only — band sessions never
+          // set free_hour_applied. No-op when the metadata is absent, so the
+          // normal booking path is unaffected.
+          if (meta.free_hour_applied === '1' && meta.free_hour_credit_id && row?.id) {
+            await drainFreeHourForBooking(supabase, {
+              bookingId: row.id,
+              creditId: meta.free_hour_credit_id,
+              redeemedBy: meta.redeemed_by || null,
+              eventId: event.id,
+              eventType: event.type,
+              paymentIntent: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+              amount: session.amount_total,
+              meta,
+            });
           }
         }
 

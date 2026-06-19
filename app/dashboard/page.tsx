@@ -14,6 +14,9 @@ import FileShowcaseToggle from '@/components/dashboard/FileShowcaseToggle';
 import PricingCalculator from '@/components/dashboard/PricingCalculator';
 import { getStudioConfigs } from '@/lib/studio-config-server';
 import ProfileBeatGrid from '@/components/beats/ProfileBeatGrid';
+import { getStudioCreditBalanceForUser, getMediaCreditsForOwner } from '@/lib/media-server';
+import { getUserBands } from '@/lib/bands-server';
+import DashboardBalances from '@/components/dashboard/DashboardBalances';
 
 export const metadata: Metadata = {
   title: 'Dashboard',
@@ -31,6 +34,16 @@ export default async function DashboardPage() {
 
   // DB-driven room configs for the price calculator (matches the booking engine).
   const studios = await getStudioConfigs(createServiceClient());
+
+  // Spendable balances — surfaced at the top so a user who has a free studio hour
+  // (or media credits) sees it the moment they land on /dashboard, instead of only
+  // in the Artist Hub. Mirrors the Hub overview's data sources exactly.
+  const bandMemberships = await getUserBands(user.id);
+  const bandIds = bandMemberships.map((m) => m.band_id);
+  const [studioHours, mediaCredits] = await Promise.all([
+    getStudioCreditBalanceForUser(user.id),
+    getMediaCreditsForOwner({ userId: user.id, bandIds }),
+  ]);
 
   // Fetch user's bookings
   const { data: bookings } = await supabase
@@ -133,6 +146,17 @@ export default async function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {/* Available Balances — surfaced at the top so a user with a free studio
+          hour (or media credits) sees it immediately on /dashboard. Renders
+          nothing when both balances are empty. */}
+      {(studioHours.hoursRemaining > 0 || mediaCredits.length > 0) && (
+        <section className="bg-white text-black pt-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <DashboardBalances studioHours={studioHours} mediaCredits={mediaCredits} />
+          </div>
+        </section>
+      )}
 
       {/* Content Grid */}
       <section className="bg-white text-black py-12 sm:py-16">
