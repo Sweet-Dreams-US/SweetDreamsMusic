@@ -339,3 +339,63 @@ export async function getMediaBookingsForOwner(
   }
   return data || [];
 }
+
+/**
+ * Media bookings that are AWAITING THE ARTIST'S SIGNATURE — i.e. the manager
+ * has agreed (`manager_agreed_at` set) but the artist hasn't (`contract_agreed_at`
+ * null), and the order isn't cancelled. These are the contracts an artist needs
+ * to find + sign on the order detail page (MediaContractSchedule handles signing).
+ *
+ * Includes both personal and band-attached bookings, resolved the same way as
+ * `getMediaBookingsForOwner`. Joins the offering title so callers can render a
+ * meaningful "sign your contract for X" prompt without an extra round-trip.
+ */
+export async function getContractsAwaitingSignature(
+  args: { userId: string; bandIds: string[] },
+  client?: SupabaseClient,
+): Promise<Array<{
+  id: string;
+  offering_id: string;
+  offering_title: string;
+  final_price_cents: number;
+}>> {
+  const supabase = client || createServiceClient();
+
+  let q = supabase
+    .from('media_bookings')
+    .select('id, offering_id, final_price_cents, media_offerings(title)')
+    .not('manager_agreed_at', 'is', null)
+    .is('contract_agreed_at', null)
+    .neq('status', 'cancelled')
+    .order('created_at', { ascending: false });
+
+  if (args.bandIds.length > 0) {
+    const bandList = args.bandIds.map((b) => `band_id.eq.${b}`).join(',');
+    q = q.or(`user_id.eq.${args.userId},${bandList}`);
+  } else {
+    q = q.eq('user_id', args.userId);
+  }
+
+  const { data, error } = await q;
+  if (error) {
+    console.error('[media-scheduling] getContractsAwaitingSignature error:', error);
+    return [];
+  }
+
+  return ((data || []) as Array<{
+    id: string;
+    offering_id: string;
+    final_price_cents: number;
+    media_offerings: { title: string } | { title: string }[] | null;
+  }>).map((row) => {
+    const off = Array.isArray(row.media_offerings)
+      ? row.media_offerings[0]
+      : row.media_offerings;
+    return {
+      id: row.id,
+      offering_id: row.offering_id,
+      offering_title: off?.title ?? 'Media order',
+      final_price_cents: row.final_price_cents,
+    };
+  });
+}

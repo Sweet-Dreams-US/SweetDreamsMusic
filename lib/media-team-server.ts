@@ -9,6 +9,8 @@
 // — it's the template for eventually migrating engineers off their hardcoded
 // roster too (Cole's "all employees admin-manageable" goal).
 
+import { SUPER_ADMINS } from './constants';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SupabaseClient = any;
 
@@ -45,6 +47,80 @@ export async function getMediaManagerEmails(client: SupabaseClient): Promise<str
   return managers
     .map((m) => m.email)
     .filter((e): e is string => typeof e === 'string' && e.length > 0);
+}
+
+/**
+ * Everyone who can be put IN CHARGE of a shoot — i.e. everyone who would pass
+ * verifyMediaManagerAccess (lib/admin-auth.ts): profiles with role
+ * 'media_manager' OR role 'admin' OR whose email is a hardcoded SUPER_ADMIN.
+ *
+ * Used by the contract-builder's per-shoot "media manager in charge" picker so
+ * the roster matches the people actually allowed to run media work. De-duped by
+ * user_id and sorted by display name (email fallback).
+ *
+ * Pass a service client when bypassing RLS (SSR page load is fine with either).
+ */
+export async function getMediaManagerRoster(client: SupabaseClient): Promise<MediaManager[]> {
+  const superAdminList = SUPER_ADMINS.map((e) => e.toLowerCase());
+  const { data, error } = await client
+    .from('profiles')
+    .select('user_id, display_name, email, role')
+    .or(`role.eq.media_manager,role.eq.admin`);
+  if (error) {
+    console.error('[media-team] getMediaManagerRoster role query failed:', error.message);
+  }
+  const byId = new Map<string, MediaManager>();
+  for (const p of (data ?? []) as Array<MediaManager & { role: string | null }>) {
+    if (p.user_id) byId.set(p.user_id, { user_id: p.user_id, display_name: p.display_name, email: p.email });
+  }
+
+  // Also pull in any SUPER_ADMIN by email whose profile role isn't media_manager
+  // /admin (the canonical owners are gated by email, not by profiles.role).
+  if (superAdminList.length > 0) {
+    const { data: saRows, error: saErr } = await client
+      .from('profiles')
+      .select('user_id, display_name, email')
+      .in('email', superAdminList);
+    if (saErr) {
+      console.error('[media-team] getMediaManagerRoster super-admin query failed:', saErr.message);
+    }
+    for (const p of (saRows ?? []) as MediaManager[]) {
+      if (p.user_id && !byId.has(p.user_id)) {
+        byId.set(p.user_id, { user_id: p.user_id, display_name: p.display_name, email: p.email });
+      }
+    }
+  }
+
+  return Array.from(byId.values()).sort((a, b) =>
+    (a.display_name || a.email || '').localeCompare(b.display_name || b.email || ''),
+  );
+}
+
+/**
+ * Re-verify (server-side) that `userId` is actually allowed to run media work —
+ * i.e. they're in the media-manager roster (role media_manager/admin or a
+ * SUPER_ADMIN by email). Returns the resolved manager row or null. Finalize
+ * uses this so it never blindly trusts a client-supplied manager id.
+ */
+export async function resolveMediaManager(
+  client: SupabaseClient,
+  userId: string,
+): Promise<MediaManager | null> {
+  if (!userId) return null;
+  const { data, error } = await client
+    .from('profiles')
+    .select('user_id, display_name, email, role')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const p = data as MediaManager & { role: string | null };
+  const email = (p.email || '').toLowerCase();
+  const isSuperAdmin = SUPER_ADMINS.map((e) => e.toLowerCase()).includes(
+    email as (typeof SUPER_ADMINS)[number],
+  );
+  const allowed = p.role === 'media_manager' || p.role === 'admin' || isSuperAdmin;
+  if (!allowed) return null;
+  return { user_id: p.user_id, display_name: p.display_name, email: p.email };
 }
 
 export interface MediaTeamJob {

@@ -27,16 +27,13 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createServiceClient } from './supabase/server';
-import { ENGINEERS } from './constants';
 import { studioInputToUtcISO } from './studio-time';
 import {
   type MediaSessionKind,
   type MediaSessionLocation,
 } from './media-scheduling';
-import {
-  checkMediaSessionConflict,
-  getEngineerUserIdByName,
-} from './media-scheduling-server';
+import { checkMediaManagerConflict } from './media-scheduling-server';
+import { resolveMediaManager } from './media-team-server';
 import {
   sendMediaContractFinalized,
   type FinalizedSessionSummary,
@@ -57,7 +54,13 @@ import {
 // duration_hours — number     (session length; ends_at = start + duration)
 // location     — 'studio' | 'external'
 // external_location_text? — required-ish for external (free text)
-// engineer_name? — display name from ENGINEERS; resolved to engineer_id
+// manager_user_id? — the MEDIA MANAGER in charge of this shoot (profiles.user_id).
+//                    Re-verified server-side at finalize (resolveMediaManager)
+//                    and stored as media_session_bookings.media_manager_id.
+//                    engineer_id is left null (media-team create-session is the
+//                    reference). No manager → skip this shoot's session + warn.
+// manager_name?  — display name carried for the contract/UI (not trusted for id)
+// engineer_name? — legacy display name from older stashed shoots (unused now)
 // session_kind?  — defaults to 'video'
 
 export interface PlannedShoot {
@@ -66,6 +69,8 @@ export interface PlannedShoot {
   duration_hours: number;
   location: MediaSessionLocation;
   external_location_text?: string | null;
+  manager_user_id?: string | null;
+  manager_name?: string | null;
   engineer_name?: string | null;
   session_kind?: MediaSessionKind | null;
 }
@@ -194,38 +199,37 @@ export async function finalizeIfBothSigned(
             : null)
         : null;
 
-    // Resolve engineer by name → user_id (we never trust a client id). The
-    // engineer FK is required on media_session_bookings, so skip if we can't
-    // resolve one.
-    const engineerName = shoot.engineer_name
-      ? String(shoot.engineer_name).trim()
+    // Resolve the MEDIA MANAGER in charge from the stored user_id. We never
+    // trust the client-supplied id blindly — resolveMediaManager re-verifies
+    // they're actually a media manager (role media_manager/admin or a
+    // super-admin by email). media_manager_id is required to run the shoot, so
+    // skip + warn if no valid manager was chosen (do NOT crash the finalize).
+    const managerUserId = shoot.manager_user_id
+      ? String(shoot.manager_user_id).trim()
       : '';
-    if (!engineerName) {
-      out.warnings.push(`${idxLabel}: skipped — no engineer assigned.`);
+    if (!managerUserId) {
+      out.warnings.push(`${idxLabel}: skipped — no media manager assigned.`);
       continue;
     }
-    const engineerEntry = ENGINEERS.find((e) => e.name === engineerName);
-    if (!engineerEntry) {
-      out.warnings.push(`${idxLabel}: skipped — unknown engineer "${engineerName}".`);
-      continue;
-    }
-    const engineerUserId = await getEngineerUserIdByName(engineerName, service);
-    if (!engineerUserId) {
+    const manager = await resolveMediaManager(service, managerUserId);
+    if (!manager) {
       out.warnings.push(
-        `${idxLabel}: skipped — ${engineerName} is not onboarded yet.`,
+        `${idxLabel}: skipped — the assigned person is not a media manager.`,
       );
       continue;
     }
+    const managerDisplayName =
+      manager.display_name || manager.email || shoot.manager_name || 'Media manager';
 
-    // Studio shoots block studio time → conflict check (skip + warn, never
-    // throw). External shoots are non-blocking → create directly.
+    // Studio shoots block studio time → conflict check against THIS manager's
+    // other media sessions (skip + warn, never throw). External shoots are
+    // non-blocking → create directly.
     if (location === 'studio') {
-      const conflict = await checkMediaSessionConflict(
+      const conflict = await checkMediaManagerConflict(
         {
+          managerId: manager.user_id,
           startsAt: window.startsAt,
           endsAt: window.endsAt,
-          engineerId: engineerUserId,
-          location,
         },
         service,
       );
@@ -237,6 +241,8 @@ export async function finalizeIfBothSigned(
       }
     }
 
+    // Mirror the media-team create-session reference: set media_manager_id and
+    // leave engineer_id null (media_session_bookings.engineer_id is nullable).
     const { error: insErr } = await service
       .from('media_session_bookings')
       .insert({
@@ -245,7 +251,8 @@ export async function finalizeIfBothSigned(
         ends_at: window.endsAt,
         location,
         external_location_text: externalLocationText,
-        engineer_id: engineerUserId,
+        media_manager_id: manager.user_id,
+        engineer_id: null,
         session_kind: sessionKind,
         status: 'scheduled',
       });
@@ -262,7 +269,7 @@ export async function finalizeIfBothSigned(
       endsAt: window.endsAt,
       location,
       externalLocationText,
-      engineerName: engineerEntry.name,
+      managerName: managerDisplayName,
     });
   }
 

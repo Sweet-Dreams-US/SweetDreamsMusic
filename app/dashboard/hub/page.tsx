@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getUserBands, getPendingInvitesForEmail } from '@/lib/bands-server';
 import { getEventsForUser, getPendingEventInvitesForEmail } from '@/lib/events-server';
 import { getActiveOfferings, getStudioCreditBalanceForUser, getMediaCreditsForOwner, getSchedulableMediaCredits } from '@/lib/media-server';
-import { getMediaBookingsForOwner } from '@/lib/media-scheduling-server';
+import { getMediaBookingsForOwner, getContractsAwaitingSignature } from '@/lib/media-scheduling-server';
 import { groupOfferings, isOfferingVisibleTo, viewerEligibilityFromBands } from '@/lib/media';
 import DashboardNav from '@/components/layout/DashboardNav';
 import ArtistHub, { type HubRelocatedData } from '@/components/hub/ArtistHub';
@@ -48,6 +48,7 @@ export default async function ArtistHubPage({
     orders,
     { data: profileRow },
     schedulableCredits,
+    awaitingContracts,
   ] = await Promise.all([
     getPendingInvitesForEmail(user.email),
     getEventsForUser(user.id),
@@ -58,6 +59,7 @@ export default async function ArtistHubPage({
     getMediaBookingsForOwner({ userId: user.id, bandIds }),
     supabase.from('profiles').select('phone').eq('user_id', user.id).maybeSingle(),
     getSchedulableMediaCredits({ userId: user.id, bandIds }),
+    getContractsAwaitingSignature({ userId: user.id, bandIds }),
   ]);
 
   const visibleOfferings = allOfferings.filter((o) => isOfferingVisibleTo(o, viewer));
@@ -74,6 +76,7 @@ export default async function ArtistHubPage({
       schedulableCredits,
       studioHours,
       orderCount: orders.length,
+      awaitingContracts,
     },
     events: { myEvents, pendingInvites: eventInvites },
     bands: { memberships, pendingInvites: bandInvites, hasProfile: !!user.profile },

@@ -2195,7 +2195,10 @@ export interface FinalizedSessionSummary {
   endsAt: string;   // ISO
   location: 'studio' | 'external';
   externalLocationText: string | null;
-  engineerName: string;
+  // The person in charge of the shoot. Media contract sessions are run by a
+  // media manager (managerName); the legacy engineer flow used engineerName.
+  managerName?: string | null;
+  engineerName?: string | null;
 }
 
 /**
@@ -2223,8 +2226,9 @@ export async function sendMediaContractFinalized(to: string, details: {
       const where = s.location === 'studio'
         ? 'Sweet Dreams Studio'
         : s.externalLocationText || 'External';
+      const inCharge = s.managerName || s.engineerName;
       return detail(
-        `${s.sessionKind} — ${s.engineerName}`,
+        inCharge ? `${s.sessionKind} — ${inCharge}` : s.sessionKind,
         `${when} – ${endTime} · ${where}`,
       );
     })

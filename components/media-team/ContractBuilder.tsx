@@ -50,6 +50,7 @@ import {
   type MediaSessionKind,
   SESSION_KIND_LABELS,
 } from '@/lib/media-scheduling';
+import { buildDefaultContractTerms } from '@/lib/media-contract-terms';
 
 // ── Offering option (subset of the admin offerings GET payload) ──────────
 interface OfferingComponentSlot {
@@ -73,8 +74,15 @@ interface ShootRow {
   duration_hours: string; // numeric string
   location: 'studio' | 'external';
   external_location_text: string;
-  engineer_name: string;
+  manager_user_id: string; // media manager IN CHARGE of this shoot ('' = none)
   session_kind: MediaSessionKind;
+}
+
+// A media manager option for the per-shoot "in charge" picker. We carry the
+// user_id (resolved + re-verified server-side at finalize) plus a display name.
+export interface MediaManagerOption {
+  user_id: string;
+  name: string;
 }
 
 interface DeliverableRow {
@@ -114,9 +122,9 @@ function slotKindToLineKind(slotKind?: string): LineItemKind {
 }
 
 export default function ContractBuilder({
-  engineerNames,
+  mediaManagers,
 }: {
-  engineerNames: string[];
+  mediaManagers: MediaManagerOption[];
 }) {
   const router = useRouter();
 
@@ -146,6 +154,9 @@ export default function ContractBuilder({
 
   // ── Section 6: authorization ────────────────────────────────────────
   const [contractTerms, setContractTerms] = useState('');
+  // Once the manager edits the terms, we stop auto-filling so we never clobber
+  // their wording. The default is a starting point, not a lock.
+  const [termsTouched, setTermsTouched] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -227,6 +238,45 @@ export default function ContractBuilder({
   const planBalanced = hasPlan && stintSumCents === deliverablesTotalCents;
   const planDiff = stintSumCents - deliverablesTotalCents;
 
+  // ── Auto-fill the (editable) authorization terms ───────────────────
+  // Seed the contract-terms textarea with sensible default boilerplate while
+  // it's still empty and the manager hasn't typed into it. They can edit or
+  // clear it freely — it is NOT locked. We re-run as project context fills in
+  // (offering, artist, total, installments) so the seed stays accurate until
+  // it's touched.
+  const selectedClient = useMemo(
+    () => clients.find((c) => c.user_id === userId) || null,
+    [clients, userId],
+  );
+  const artistNameForTerms =
+    selectedClient?.display_name?.trim() ||
+    inviteName.trim() ||
+    selectedClient?.email?.trim() ||
+    (inviteEmail.trim() || null);
+  useEffect(() => {
+    // While untouched, the textarea only ever holds our own auto-fill, so it's
+    // safe to (re)seed as project context changes. Once touched we never write.
+    if (termsTouched) return;
+    setContractTerms(
+      buildDefaultContractTerms({
+        projectTitle: selectedOffering?.title ?? null,
+        artistName: artistNameForTerms,
+        totalCents: deliverablesTotalCents,
+        hasInstallments: hasPlan,
+      }),
+    );
+    // We intentionally do not depend on contractTerms here — once it's set the
+    // termsTouched/empty guards prevent re-clobbering; we only want to (re)seed
+    // when project context changes and the field is still untouched.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    termsTouched,
+    selectedOffering?.title,
+    artistNameForTerms,
+    deliverablesTotalCents,
+    hasPlan,
+  ]);
+
   // ── Section 2 mutators ─────────────────────────────────────────────
   function addShoot() {
     setShoots((prev) => [
@@ -237,7 +287,7 @@ export default function ContractBuilder({
         duration_hours: '2',
         location: 'studio',
         external_location_text: '',
-        engineer_name: engineerNames[0] || '',
+        manager_user_id: mediaManagers[0]?.user_id || '',
         session_kind: 'video',
       },
     ]);
@@ -399,16 +449,22 @@ export default function ContractBuilder({
         customer_phone: customerPhone.trim() || undefined,
         notes_to_us: notesToUs.trim() || undefined,
         contract_terms: contractTerms.trim(),
-        planned_shoots: shoots.map((s) => ({
-          date: s.date,
-          start_time: s.start_time,
-          duration_hours: Number(s.duration_hours),
-          location: s.location,
-          external_location_text:
-            s.location === 'external' ? s.external_location_text.trim() : undefined,
-          engineer_name: s.engineer_name.trim() || undefined,
-          session_kind: s.session_kind,
-        })),
+        planned_shoots: shoots.map((s) => {
+          const manager = mediaManagers.find((m) => m.user_id === s.manager_user_id);
+          return {
+            date: s.date,
+            start_time: s.start_time,
+            duration_hours: Number(s.duration_hours),
+            location: s.location,
+            external_location_text:
+              s.location === 'external' ? s.external_location_text.trim() : undefined,
+            // Media manager IN CHARGE — id is re-verified server-side at finalize;
+            // name is for display only.
+            manager_user_id: s.manager_user_id || undefined,
+            manager_name: manager?.name || undefined,
+            session_kind: s.session_kind,
+          };
+        }),
         lineItems: deliverables.map((d, i) => ({
           kind: d.kind,
           label: d.label.trim(),
@@ -568,6 +624,7 @@ export default function ContractBuilder({
                     value={userId}
                     onChange={setUserId}
                     allowInvite
+                    requireInviteConfirm
                     inviteEmail={inviteEmail}
                     onInviteEmailChange={setInviteEmail}
                     placeholder="Search artists by name or email…"
@@ -706,16 +763,18 @@ export default function ContractBuilder({
                             <option value="external">External (on location)</option>
                           </select>
                         </Field>
-                        <Field label="Engineer" tight>
+                        <Field label="Media manager in charge" tight>
                           <select
-                            value={s.engineer_name}
-                            onChange={(e) => updateShoot(i, { engineer_name: e.target.value })}
+                            value={s.manager_user_id}
+                            onChange={(e) =>
+                              updateShoot(i, { manager_user_id: e.target.value })
+                            }
                             className={inputCls}
                           >
                             <option value="">— None —</option>
-                            {engineerNames.map((n) => (
-                              <option key={n} value={n}>
-                                {n}
+                            {mediaManagers.map((m) => (
+                              <option key={m.user_id} value={m.user_id}>
+                                {m.name}
                               </option>
                             ))}
                           </select>
@@ -1119,10 +1178,38 @@ export default function ContractBuilder({
                 icon={<FileSignature className="w-5 h-5" />}
               >
                 <Field label="Contract terms">
+                  <div className="flex items-center justify-between gap-3 -mb-1">
+                    <p className="font-mono text-[10px] text-black/50 leading-relaxed">
+                      Prefilled with Sweet Dreams default terms — edit freely
+                      before sending.
+                    </p>
+                    {termsTouched && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTermsTouched(false);
+                          setContractTerms(
+                            buildDefaultContractTerms({
+                              projectTitle: selectedOffering?.title ?? null,
+                              artistName: artistNameForTerms,
+                              totalCents: deliverablesTotalCents,
+                              hasInstallments: hasPlan,
+                            }),
+                          );
+                        }}
+                        className="font-mono text-[10px] uppercase tracking-wider text-black/50 hover:text-black shrink-0"
+                      >
+                        Reset to default
+                      </button>
+                    )}
+                  </div>
                   <textarea
                     value={contractTerms}
-                    onChange={(e) => setContractTerms(e.target.value)}
-                    rows={8}
+                    onChange={(e) => {
+                      setTermsTouched(true);
+                      setContractTerms(e.target.value);
+                    }}
+                    rows={14}
                     placeholder="Spell out the agreement — scope, ownership, usage rights, revisions, cancellation, anything the artist is agreeing to."
                     className={`${inputCls} resize-y leading-relaxed`}
                   />

@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth';
-import { getEngineers } from '@/lib/engineers-server';
+import { getMediaManagerRoster } from '@/lib/media-team-server';
+import { createServiceClient } from '@/lib/supabase/server';
 import DashboardNav from '@/components/layout/DashboardNav';
 import ContractBuilder from '@/components/media-team/ContractBuilder';
 
@@ -25,11 +26,16 @@ export default async function NewContractPage() {
   if (!user) redirect('/login');
   if (user.role !== 'media_manager' && user.role !== 'admin') redirect('/dashboard');
 
-  // Engineer roster for the production-logistics picker. We pass display names
-  // because planned_shoots carries engineer_name (a display string), matching
-  // the create API contract.
-  const engineers = await getEngineers();
-  const engineerNames = engineers.map((e) => e.displayName);
+  // The media-manager roster (role media_manager/admin + super-admins) drives
+  // the per-shoot "media manager in charge" picker — the people actually allowed
+  // to run media work. We resolve each chosen manager server-side at finalize, so
+  // we feed the picker user_id + display name (not a free-text string).
+  const service = createServiceClient();
+  const managers = await getMediaManagerRoster(service);
+  const mediaManagers = managers.map((m) => ({
+    user_id: m.user_id,
+    name: m.display_name || m.email || 'Unnamed manager',
+  }));
 
   return (
     <>
@@ -40,7 +46,7 @@ export default async function NewContractPage() {
         email={user.email}
         profileSlug={user.profile?.public_profile_slug}
       />
-      <ContractBuilder engineerNames={engineerNames} />
+      <ContractBuilder mediaManagers={mediaManagers} />
     </>
   );
 }

@@ -25,7 +25,18 @@ export interface UserSearchProps {
   inviteEmail?: string;
   /** Called when the invite email changes (only used when allowInvite). */
   onInviteEmailChange?: (email: string) => void;
+  /**
+   * Typo-safety: when true, inviting a brand-new email is a DELIBERATE,
+   * two-step action. The operator types an address into a draft field and must
+   * click an explicit "Invite new artist <email>" button before the email is
+   * committed via onInviteEmailChange. This prevents a fat-fingered address
+   * from silently becoming the invite target. Gated behind this prop so
+   * existing callers (which pass nothing) keep the old single-step behavior.
+   */
+  requireInviteConfirm?: boolean;
 }
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * Reusable filterable user picker styled to match the MAIN SITE form look
@@ -33,6 +44,11 @@ export interface UserSearchProps {
  * <select>. Type to filter by name/email, click a row to select. When
  * allowInvite is set, the operator can toggle to "invite by email" and type a
  * new address instead of picking an existing user.
+ *
+ * Existing users are the clear primary path: the search field + results are
+ * listed prominently and selected first. Inviting a new email is the secondary,
+ * deliberate path — and when requireInviteConfirm is set it requires an
+ * explicit confirm click so a typo can't quietly create a junk account.
  *
  * Fully controlled: `value` is the selected user_id, `onChange` reports picks.
  */
@@ -44,10 +60,14 @@ export default function UserSearch({
   allowInvite = false,
   inviteEmail = '',
   onInviteEmailChange,
+  requireInviteConfirm = false,
 }: UserSearchProps) {
   const [query, setQuery] = useState('');
   // 'existing' = pick from the pool; 'invite' = type a new email.
   const [mode, setMode] = useState<'existing' | 'invite'>('existing');
+  // Draft email the operator is typing in confirm mode, before it's committed
+  // up to the parent via onInviteEmailChange.
+  const [draftEmail, setDraftEmail] = useState('');
 
   const selected = useMemo(
     () => users.find((u) => u.user_id === value) || null,
@@ -65,6 +85,19 @@ export default function UserSearch({
     );
   }, [users, query]);
 
+  const draftValid = EMAIL_RE.test(draftEmail.trim());
+
+  function confirmInvite() {
+    const email = draftEmail.trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) return;
+    onInviteEmailChange?.(email);
+  }
+
+  function clearInvite() {
+    onInviteEmailChange?.('');
+    setDraftEmail('');
+  }
+
   return (
     <div className="space-y-3">
       {allowInvite && (
@@ -81,7 +114,7 @@ export default function UserSearch({
                   : 'border-black/15 hover:border-black/40',
               )}
             >
-              {m === 'existing' ? 'Existing' : 'Invite by email'}
+              {m === 'existing' ? 'Existing artist' : 'Invite new'}
             </button>
           ))}
         </div>
@@ -155,18 +188,83 @@ export default function UserSearch({
 
       {allowInvite && mode === 'invite' && (
         <div className="space-y-2">
-          <input
-            type="email"
-            value={inviteEmail}
-            onChange={(e) => onInviteEmailChange?.(e.target.value)}
-            placeholder="artist@email.com"
-            className="w-full border-2 border-black/15 px-4 py-3 font-mono text-sm bg-transparent focus:border-accent focus:outline-none"
-          />
-          <p className="font-mono text-[10px] text-black/50 leading-relaxed">
-            New email → we create the artist account + email a welcome /
-            set-password link so they can log in and see this project. An
-            existing email just attaches.
-          </p>
+          {requireInviteConfirm ? (
+            // Two-step, typo-safe invite. The committed email (inviteEmail from
+            // the parent) is shown as a confirmed banner; until then the operator
+            // types a draft and must explicitly click to invite it.
+            inviteEmail.trim() ? (
+              <div className="flex items-center justify-between gap-3 border-2 border-accent bg-accent/10 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-black/50">
+                    Inviting new artist
+                  </p>
+                  <p className="font-mono text-sm font-semibold truncate">
+                    {inviteEmail.trim()}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearInvite}
+                  className="font-mono text-[10px] uppercase tracking-wider text-black/50 hover:text-black shrink-0"
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="email"
+                  value={draftEmail}
+                  onChange={(e) => setDraftEmail(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && draftValid) {
+                      e.preventDefault();
+                      confirmInvite();
+                    }
+                  }}
+                  placeholder="artist@email.com"
+                  className="w-full border-2 border-black/15 px-4 py-3 font-mono text-sm bg-transparent focus:border-accent focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={confirmInvite}
+                  disabled={!draftValid}
+                  className={cn(
+                    'w-full font-mono text-xs uppercase tracking-wider px-4 py-3 border-2 transition-colors text-left',
+                    draftValid
+                      ? 'border-black bg-black text-white hover:bg-black/90'
+                      : 'border-black/15 text-black/30 cursor-not-allowed',
+                  )}
+                >
+                  {draftEmail.trim()
+                    ? `Invite new artist ${draftEmail.trim()}`
+                    : 'Type an email to invite a new artist'}
+                </button>
+                <p className="font-mono text-[10px] text-black/50 leading-relaxed">
+                  Double-check the address — confirming creates a brand-new
+                  artist account and emails a welcome / set-password link. To add
+                  someone who already has an account, use the{' '}
+                  <strong>Existing artist</strong> tab instead.
+                </p>
+              </>
+            )
+          ) : (
+            // Legacy single-step behavior — unchanged for existing callers.
+            <>
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => onInviteEmailChange?.(e.target.value)}
+                placeholder="artist@email.com"
+                className="w-full border-2 border-black/15 px-4 py-3 font-mono text-sm bg-transparent focus:border-accent focus:outline-none"
+              />
+              <p className="font-mono text-[10px] text-black/50 leading-relaxed">
+                New email → we create the artist account + email a welcome /
+                set-password link so they can log in and see this project. An
+                existing email just attaches.
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>

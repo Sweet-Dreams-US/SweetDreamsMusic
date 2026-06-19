@@ -12,11 +12,11 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { Calendar, Clock, ArrowRight, Inbox } from 'lucide-react';
+import { Calendar, Clock, ArrowRight, Inbox, FileSignature } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth';
 import { getUserBands } from '@/lib/bands-server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { getMediaBookingsForOwner } from '@/lib/media-scheduling-server';
+import { getMediaBookingsForOwner, getContractsAwaitingSignature } from '@/lib/media-scheduling-server';
 import { formatCents } from '@/lib/utils';
 import { fmtStampDate } from '@/lib/studio-time';
 import DashboardNav from '@/components/layout/DashboardNav';
@@ -49,10 +49,14 @@ export default async function MediaOrdersPage() {
 
   const bandMemberships = await getUserBands(user.id);
   const bandIds = bandMemberships.map((m) => m.band_id);
-  const bookings = await getMediaBookingsForOwner({
-    userId: user.id,
-    bandIds,
-  });
+  const [bookings, awaitingContracts] = await Promise.all([
+    getMediaBookingsForOwner({ userId: user.id, bandIds }),
+    getContractsAwaitingSignature({ userId: user.id, bandIds }),
+  ]);
+
+  // Set of booking ids awaiting THIS artist's signature — used to flag rows
+  // in the list with a prominent "Sign contract" CTA so they stand out.
+  const awaitingIds = new Set(awaitingContracts.map((c) => c.id));
 
   // Pre-fetch offering titles in one query — denormalizing here is
   // cheaper than N+1 reads and keeps the list page snappy.
@@ -125,19 +129,30 @@ export default async function MediaOrdersPage() {
                 const statusKey = b.status as keyof typeof STATUS_LABELS;
                 const statusLabel = STATUS_LABELS[statusKey] || b.status;
                 const badgeCls = STATUS_BADGE[statusKey] || 'bg-black/10 text-black/70';
+                const needsSignature = awaitingIds.has(b.id);
                 return (
                   <li key={b.id}>
                     <Link
                       href={`/dashboard/media/orders/${b.id}`}
-                      className="block border-2 border-black/10 hover:border-accent transition-colors p-5 no-underline text-black"
+                      className={`block border-2 transition-colors p-5 no-underline text-black ${
+                        needsSignature
+                          ? 'border-accent bg-accent/5 hover:bg-accent/10'
+                          : 'border-black/10 hover:border-accent'
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <h2 className="text-lg font-bold truncate">{title}</h2>
                             {bandLabel && (
                               <span className="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 bg-black text-white">
                                 {bandLabel}
+                              </span>
+                            )}
+                            {needsSignature && (
+                              <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-accent text-black inline-flex items-center gap-1">
+                                <FileSignature className="w-3 h-3" />
+                                Sign contract
                               </span>
                             )}
                           </div>
@@ -149,6 +164,12 @@ export default async function MediaOrdersPage() {
                               ? formatCents(b.final_price_cents)
                               : 'Inquiry — no commitment yet'}
                           </p>
+                          {needsSignature && (
+                            <p className="font-mono text-xs text-black font-semibold mt-1.5 inline-flex items-center gap-1">
+                              Awaiting your signature
+                              <ArrowRight className="w-3 h-3" />
+                            </p>
+                          )}
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
                           <span

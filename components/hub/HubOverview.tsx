@@ -11,9 +11,10 @@ import Link from 'next/link';
 import {
   Folder, Target, Calendar, Award, ChevronRight, ArrowRight, Music,
   TrendingUp, Zap, X, Milestone, Headphones, CheckCircle2, Circle,
+  FileSignature,
 } from 'lucide-react';
 import { PROJECT_PHASES } from '@/lib/hub-constants';
-import { formatDuration } from '@/lib/utils';
+import { formatDuration, formatCents } from '@/lib/utils';
 import { fmtSessionDate } from '@/lib/studio-time';
 import { ACHIEVEMENTS } from '@/lib/achievements';
 import { tierLabel } from '@/lib/career';
@@ -77,6 +78,9 @@ interface HubOverviewProps {
   // Overview can surface studio hours + media credits without a client fetch.
   studioHours?: { hoursRemaining: number; costBasisCents: number };
   mediaCredits?: MediaCreditBalance[];
+  // Media contracts the manager has agreed to but the artist hasn't signed —
+  // surfaced as a top-of-page banner so artists can FIND + open them to sign.
+  awaitingContracts?: { id: string; offering_id: string; offering_title: string; final_price_cents: number }[];
 }
 
 const DISMISS_PREFIX = 'career_dismissed_';
@@ -96,6 +100,7 @@ export default function HubOverview({
   onNavigate,
   studioHours,
   mediaCredits,
+  awaitingContracts,
 }: HubOverviewProps) {
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -126,10 +131,46 @@ export default function HubOverview({
     setDismissed((prev) => new Set(prev).add(id));
   }
 
+  // Contracts awaiting THIS artist's signature. Server-provided, so it renders
+  // even while the overview API is still loading — this is the highest-priority
+  // action on the page, and the whole point is that an artist can FIND it.
+  const contractBanner = (awaitingContracts && awaitingContracts.length > 0) ? (
+    <div className="border-2 border-accent bg-accent/10 p-5 mb-6">
+      <h3 className="font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center gap-2 mb-3">
+        <FileSignature className="w-4 h-4 text-accent" />
+        {awaitingContracts.length === 1
+          ? 'You have a contract to sign'
+          : `You have ${awaitingContracts.length} contracts to sign`}
+      </h3>
+      <div className="space-y-2">
+        {awaitingContracts.map((c) => (
+          <Link
+            key={c.id}
+            href={`/dashboard/media/orders/${c.id}`}
+            className="flex items-center justify-between gap-3 border-2 border-black/10 bg-white p-3 hover:border-accent transition-colors no-underline text-black group"
+          >
+            <div className="min-w-0">
+              <p className="font-mono text-sm font-bold truncate">{c.offering_title}</p>
+              <p className="font-mono text-[11px] text-black/50">
+                {c.final_price_cents > 0 ? formatCents(c.final_price_cents) : 'No payment yet'}
+                {' · Awaiting your signature'}
+              </p>
+            </div>
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-accent text-black px-3 py-1.5 inline-flex items-center gap-1 shrink-0">
+              Review &amp; sign
+              <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform duration-200" />
+            </span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  ) : null;
+
   if (loading) {
     return (
       <div>
         <h2 className="text-heading-md mb-6">OVERVIEW</h2>
+        {contractBanner}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <SkeletonList count={4} />
         </div>
@@ -137,7 +178,16 @@ export default function HubOverview({
     );
   }
 
-  if (!data) return null;
+  if (!data) {
+    // Even if the overview API failed, still surface a contract the artist
+    // needs to sign — it's too important to hide behind an API error.
+    return contractBanner ? (
+      <div>
+        <h2 className="text-heading-md mb-6">OVERVIEW</h2>
+        {contractBanner}
+      </div>
+    ) : null;
+  }
 
   function daysUntil(date: string) {
     return Math.ceil((new Date(date).getTime() - Date.now()) / 86400000);
@@ -171,6 +221,11 @@ export default function HubOverview({
   return (
     <div>
       <h2 className="text-heading-md mb-6">OVERVIEW</h2>
+
+      {/* CONTRACT TO SIGN — highest-priority action. Server-provided so it's
+          reliable; links straight to the order page where MediaContractSchedule
+          handles the actual signing. */}
+      {contractBanner}
 
       {/* Active packages & memberships — only renders when the customer
           has at least one entitlement, so users without packages see

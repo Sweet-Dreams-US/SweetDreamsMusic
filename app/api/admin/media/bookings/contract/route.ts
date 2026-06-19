@@ -124,6 +124,12 @@ interface PlannedShoot {
   duration_hours: number;
   location: ShootLocation;
   external_location_text: string | null;
+  // Media manager IN CHARGE of this shoot. We store the chosen manager's
+  // user_id (re-verified + resolved to media_manager_id at finalize) plus a
+  // display name for the contract/UI. engineer_name is retained for backward
+  // compatibility with any older stashed shoots.
+  manager_user_id: string | null;
+  manager_name: string | null;
   engineer_name: string | null;
   session_kind: string | null;
 }
@@ -241,6 +247,14 @@ export async function POST(request: NextRequest) {
       duration_hours: dur,
       location,
       external_location_text: externalText,
+      manager_user_id:
+        typeof raw?.manager_user_id === 'string' && raw.manager_user_id.trim()
+          ? raw.manager_user_id.trim()
+          : null,
+      manager_name:
+        typeof raw?.manager_name === 'string' && raw.manager_name.trim()
+          ? raw.manager_name.trim()
+          : null,
       engineer_name:
         typeof raw?.engineer_name === 'string' && raw.engineer_name.trim()
           ? raw.engineer_name.trim()
