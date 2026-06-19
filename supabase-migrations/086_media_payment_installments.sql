@@ -1,4 +1,4 @@
--- 064_media_payment_installments.sql
+-- 086_media_payment_installments.sql
 --
 -- Media Projects — installment payment plans + contract layer.
 --
