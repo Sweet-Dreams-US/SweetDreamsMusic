@@ -2216,7 +2216,15 @@ export async function sendMediaContractForSignature(to: string, details: {
   buyerName: string;
   offeringTitle: string;
   bookingId: string;
+  // NO-LOGIN contract credential. The EMAILED button MUST point at the public
+  // tokenized page (/contract/<publicToken>) — a brand-new customer has no
+  // account, so the account-bound order page would 404 / wall them at login.
+  publicToken: string;
 }) {
+  // PUBLIC, no-login link for the emailed button (the credential is the token).
+  const publicUrl = `${SITE_URL}/contract/${details.publicToken}`;
+  // Account-bound order page — kept ONLY for the in-app thread mirror, which is
+  // read by logged-in staff. The customer's emailed CTA never uses this.
   const orderUrl = `${SITE_URL}/dashboard/media/orders/${details.bookingId}`;
   await mirrorToThread({
     userEmail: to,
@@ -2234,12 +2242,12 @@ export async function sendMediaContractForSignature(to: string, details: {
       html: wrap(
         h1('CONTRACT READY TO SIGN') +
         p(`Hey ${details.buyerName}, your contract for <strong>${details.offeringTitle}</strong> is ready.`) +
-        p('We\'ve reviewed and signed our side. Open your order page to read the terms and add your signature — once you sign, your booking is final and any planned sessions go straight onto the calendar.') +
+        p('We\'ve reviewed and signed our side. Open the link below to read the full contract and add your signature — no login required. Once you sign, your booking is final and any planned sessions go straight onto the calendar.') +
         detailTable(
           detail('Project', details.offeringTitle) +
           detail('Order', `#${details.bookingId.slice(0, 8)}`)
         ) +
-        btn('REVIEW & SIGN', orderUrl) +
+        btn('REVIEW & SIGN', publicUrl) +
         p('<span style="color:#666;font-size:11px">Questions about the terms? Just reply to this email and we\'ll sort it out before you sign.</span>')
       ),
     });

@@ -91,6 +91,8 @@ export default function MediaContractSchedule({
   totalCents,
   isTest,
   hasScheduledSessions,
+  publicToken,
+  lineItemsOverride,
 }: {
   bookingId: string;
   contractTerms: string | null;
@@ -105,16 +107,30 @@ export default function MediaContractSchedule({
   // for this booking. We only claim "on the calendar" when this is true — a
   // finalized contract with no scheduled sessions means a shoot was dropped.
   hasScheduledSessions: boolean;
+  // ── NO-LOGIN (token) mode ──────────────────────────────────────────
+  // When set, this contract is being viewed on the PUBLIC /contract/[token]
+  // page with no session. In token mode we:
+  //   (a) route agree() + pay POSTs to the token endpoints
+  //       (/api/media/contract/[token]/{agree,pay}) instead of the
+  //       session-auth /bookings/[id]/* endpoints, and
+  //   (b) use the server-passed lineItemsOverride instead of fetching the
+  //       session-auth /package endpoint (which would 401 with no session).
+  publicToken?: string;
+  lineItemsOverride?: LineItem[];
 }) {
   const router = useRouter();
+  const tokenMode = !!publicToken;
   const [agreeing, setAgreeing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Deliverables (package line items) — loaded client-side, same endpoint the
-  // PackageReview surface uses. Read-only here; the artist approves individual
-  // items in PackageReview. We only summarize the contracted scope.
+  // Deliverables (package line items). In session mode they're loaded
+  // client-side from the same endpoint PackageReview uses. In token mode there
+  // is no session, so the server passes them in via lineItemsOverride and we
+  // never call the session-auth endpoint.
   const [pkg, setPkg] = useState<Package | null>(null);
-  const [lineItems, setLineItems] = useState<LineItem[]>([]);
+  const [lineItems, setLineItems] = useState<LineItem[]>(
+    lineItemsOverride ?? [],
+  );
 
   const loadPackage = useCallback(async () => {
     try {
@@ -131,8 +147,10 @@ export default function MediaContractSchedule({
   }, [bookingId]);
 
   useEffect(() => {
+    // Token mode uses server-passed line items — skip the session-auth fetch.
+    if (tokenMode) return;
     loadPackage();
-  }, [loadPackage]);
+  }, [loadPackage, tokenMode]);
 
   const artistSigned = !!contractAgreedAt;
   const managerSigned = !!managerAgreedAt;
@@ -170,7 +188,10 @@ export default function MediaContractSchedule({
     setPaying(true);
     setPayError(null);
     try {
-      const res = await fetch(`/api/media/bookings/${bookingId}/pay`, {
+      const payUrl = tokenMode
+        ? `/api/media/contract/${publicToken}/pay`
+        : `/api/media/bookings/${bookingId}/pay`;
+      const res = await fetch(payUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount_cents: amountCents }),
@@ -201,7 +222,10 @@ export default function MediaContractSchedule({
     setAgreeing(true);
     setError(null);
     try {
-      const res = await fetch(`/api/media/bookings/${bookingId}/agree`, {
+      const agreeUrl = tokenMode
+        ? `/api/media/contract/${publicToken}/agree`
+        : `/api/media/bookings/${bookingId}/agree`;
+      const res = await fetch(agreeUrl, {
         method: 'POST',
       });
       const data = await res.json().catch(() => ({}));
@@ -209,7 +233,14 @@ export default function MediaContractSchedule({
         setError(data.error || 'Could not record your agreement.');
         return;
       }
-      router.refresh();
+      // Token mode has no session, so router.refresh() can't re-read the
+      // server component the same way — do a full reload to re-fetch the
+      // updated contract (new signature + any unlocked pay box).
+      if (tokenMode) {
+        window.location.reload();
+      } else {
+        router.refresh();
+      }
     } catch (e) {
       console.error('[contract-schedule] agree error:', e);
       setError('Network error — please try again.');
