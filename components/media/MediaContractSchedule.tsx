@@ -189,8 +189,12 @@ export default function MediaContractSchedule({
     }
   }
 
-  // Show deliverables only once the package has been proposed (sent/approved).
-  const showDeliverables = !!pkg && pkg.status !== 'draft' && lineItems.length > 0;
+  // Deliverables ARE the contract — show them whenever line items exist,
+  // regardless of the package's draft/sent status. (That status drives the
+  // separate PackageReview approval flow; the contract builder leaves the
+  // package 'draft' since the artist agrees to the deliverables by signing the
+  // contract itself, so gating on status hid the whole deliverables list.)
+  const showDeliverables = lineItems.length > 0;
   const deliverablesTotal = lineItems.reduce((sum, i) => sum + i.total_cents, 0);
 
   async function agree() {
@@ -380,8 +384,7 @@ export default function MediaContractSchedule({
             </li>
           </ul>
           <p className="font-mono text-[11px] text-black/40 mt-2">
-            Approve each line item in the &ldquo;Proposed package&rdquo; section
-            below.
+            These deliverables are included in your contract.
           </p>
         </div>
       )}
