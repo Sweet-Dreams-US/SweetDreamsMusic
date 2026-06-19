@@ -253,7 +253,7 @@ export default function ArtistHub({ userId, relocated, initialTab }: { userId: s
                 />
               )}
               {tab === 'achievements' && <AchievementBadges newUnlocks={newAchievements} progress={achievementProgress} onDismiss={() => setNewAchievements([])} />}
-              {tab === 'perks' && <HubPerks />}
+              {tab === 'perks' && <HubPerks onNavigate={(t) => setTab(t as ExtendedTab)} />}
               {tab === 'roadmap' && <ArtistRoadmap />}
               {tab === 'notes' && <SessionNotes onXpEarned={onXpEarned} />}
             </div>

@@ -7,6 +7,7 @@ import { createServiceClient, createClient } from '@/lib/supabase/server';
 import ProfileBeatGrid from '@/components/beats/ProfileBeatGrid';
 import TierBadge from '@/components/career/TierBadge';
 import { fmtStampDate } from '@/lib/studio-time';
+import { getUnifiedSocialLinks } from '@/lib/social-links-server';
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -14,7 +15,7 @@ type Props = {
 
 const SOCIAL_ICONS: Record<string, string> = {
   spotify: 'Spotify',
-  appleMusic: 'Apple Music',
+  apple_music: 'Apple Music',
   instagram: 'Instagram',
   facebook: 'Facebook',
   youtube: 'YouTube',
@@ -123,8 +124,23 @@ export default async function PublicProfilePage({ params }: Props) {
   const hasUnreleased = unreleasedItems.length > 0;
   const hasProjects = projects && projects.length > 0;
   const hasBeats = producerBeats.length > 0;
-  const socialLinks = (profile.social_links || {}) as Record<string, string>;
+
+  // Social links come from the UNIFIED source (platform_connections) so the
+  // links shown here match what the metrics-tracking pipeline reads — not the
+  // legacy profiles.social_links blob.
+  let socialLinks: Record<string, string> = {};
+  if (profile.user_id) {
+    try {
+      const unified = await getUnifiedSocialLinks(supabase, profile.user_id);
+      socialLinks = unified.byPlatform;
+    } catch { /* social links are decorative here */ }
+  }
   const hasSocialLinks = Object.values(socialLinks).some(Boolean);
+
+  // Genres: prefer the multi-genre array, fall back to the legacy single genre.
+  const genres: string[] = Array.isArray(profile.genres) && profile.genres.length > 0
+    ? (profile.genres as string[])
+    : (profile.genre ? [profile.genre] : []);
   const isEmpty = !hasShowcase && !hasProjects && !hasBeats && !profile.bio;
 
   return (
@@ -162,8 +178,8 @@ export default async function PublicProfilePage({ params }: Props) {
             <div className="text-center sm:text-left flex-1">
               <h1 className="text-display-sm mb-3">{profile.display_name}</h1>
 
-              {/* Earned career stage + listener tier + genre */}
-              {(computedStageLabel || highestTier || profile.genre) && (
+              {/* Earned career stage + listener tier + genres */}
+              {(computedStageLabel || highestTier || genres.length > 0) && (
                 <div className="flex flex-wrap gap-2 mb-3 justify-center sm:justify-start items-center">
                   <TierBadge tier={highestTier} size="md" />
                   {computedStageLabel && (
@@ -171,11 +187,11 @@ export default async function PublicProfilePage({ params }: Props) {
                       {computedStageLabel}
                     </span>
                   )}
-                  {profile.genre && (
-                    <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-white/10 text-white/70 px-3 py-1">
-                      {profile.genre}
+                  {genres.map((g) => (
+                    <span key={g} className="font-mono text-[10px] font-bold uppercase tracking-wider bg-white/10 text-white/70 px-3 py-1">
+                      {g}
                     </span>
-                  )}
+                  ))}
                 </div>
               )}
 

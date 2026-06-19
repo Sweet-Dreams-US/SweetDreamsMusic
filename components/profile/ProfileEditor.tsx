@@ -13,6 +13,7 @@ interface Profile {
   public_profile_slug: string;
   career_stage: string | null;
   genre: string | null;
+  genres: string[] | null;
 }
 
 interface Project {
@@ -37,9 +38,13 @@ const PROJECT_LINK_FIELDS = [
   { key: 'other', label: 'Other Link', placeholder: 'https://...' },
 ];
 
+// Keys here are the CANONICAL platform_connections keys (see
+// SOCIAL_PLATFORM_KEYS in lib/social-links-server). The editor's social
+// section is the unified source of truth, so it speaks the canonical
+// namespace directly — note `apple_music` (snake_case), not `appleMusic`.
 const SOCIAL_FIELDS = [
   { key: 'spotify', label: 'Spotify', placeholder: 'https://open.spotify.com/artist/...' },
-  { key: 'appleMusic', label: 'Apple Music', placeholder: 'https://music.apple.com/...' },
+  { key: 'apple_music', label: 'Apple Music', placeholder: 'https://music.apple.com/...' },
   { key: 'instagram', label: 'Instagram', placeholder: 'https://instagram.com/...' },
   { key: 'facebook', label: 'Facebook', placeholder: 'https://facebook.com/...' },
   { key: 'youtube', label: 'YouTube', placeholder: 'https://youtube.com/...' },
@@ -47,6 +52,8 @@ const SOCIAL_FIELDS = [
   { key: 'tiktok', label: 'TikTok', placeholder: 'https://tiktok.com/@...' },
   { key: 'twitter', label: 'Twitter / X', placeholder: 'https://x.com/...' },
 ];
+
+const MIN_SOCIAL_LINKS = 3;
 
 export default function ProfileEditor({ userId, profileSlug }: { userId: string; profileSlug: string }) {
   const [loading, setLoading] = useState(true);
@@ -60,7 +67,8 @@ export default function ProfileEditor({ userId, profileSlug }: { userId: string;
   const [profilePicUrl, setProfilePicUrl] = useState('');
   const [coverPhotoUrl, setCoverPhotoUrl] = useState('');
   const [socialLinks, setSocialLinks] = useState<Record<string, string>>({});
-  const [genre, setGenre] = useState('');
+  const [genres, setGenres] = useState<string[]>([]);
+  const [slug, setSlug] = useState(profileSlug || '');
 
   // Projects
   const [projects, setProjects] = useState<Project[]>([]);
@@ -76,8 +84,20 @@ export default function ProfileEditor({ userId, profileSlug }: { userId: string;
           setBio(p.bio || '');
           setProfilePicUrl(p.profile_picture_url || '');
           setCoverPhotoUrl(p.cover_photo_url || '');
-          setSocialLinks(p.social_links || {});
-          setGenre(p.genre || '');
+          // Prefill social links from the UNIFIED source (platform_connections),
+          // which the GET route assembles via getUnifiedSocialLinks. Fall back to
+          // the legacy social_links blob if the unified map is absent.
+          setSocialLinks(p.social_links_unified || p.social_links || {});
+          // genres is the multi-select source; fall back to the legacy single
+          // `genre` so profiles saved before the migration still prefill.
+          setGenres(
+            Array.isArray(p.genres) && p.genres.length > 0
+              ? p.genres
+              : p.genre
+                ? [p.genre]
+                : [],
+          );
+          if (p.public_profile_slug) setSlug(p.public_profile_slug);
         }
       })
       .finally(() => setLoading(false));
@@ -92,11 +112,24 @@ export default function ProfileEditor({ userId, profileSlug }: { userId: string;
     setSocialLinks((prev) => ({ ...prev, [key]: value }));
   }
 
+  function toggleGenre(value: string) {
+    setGenres((prev) =>
+      prev.includes(value) ? prev.filter((g) => g !== value) : [...prev, value],
+    );
+  }
+
+  // Count of non-empty social links — drives the >=3 completion hint.
+  const filledSocialCount = SOCIAL_FIELDS.filter(
+    (f) => (socialLinks[f.key] || '').trim().length > 0,
+  ).length;
+
   async function handleSave() {
     setSaving(true);
     setSaved(false);
 
-    // Filter out empty social links
+    // Filter out empty social links, keyed by CANONICAL platform key. The PUT
+    // route fans these out to upsertSocialLink (platform_connections, canonical)
+    // AND writes profiles.social_links for back-compat.
     const filteredLinks: Record<string, string> = {};
     Object.entries(socialLinks).forEach(([k, v]) => {
       if (v?.trim()) filteredLinks[k] = v.trim();
@@ -109,13 +142,19 @@ export default function ProfileEditor({ userId, profileSlug }: { userId: string;
         display_name: displayName,
         bio,
         social_links: filteredLinks,
-        genre: genre || null,
+        genres,
       }),
     });
 
     if (res.ok) {
+      const data = await res.json().catch(() => null);
+      // Slug is server-derived; reflect whatever the server persisted.
+      if (data?.profile?.public_profile_slug) setSlug(data.profile.public_profile_slug);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+    } else {
+      const err = await res.json().catch(() => null);
+      alert(`Could not save: ${err?.error || 'Please try again.'}`);
     }
     setSaving(false);
   }
@@ -295,33 +334,51 @@ export default function ProfileEditor({ userId, profileSlug }: { userId: string;
         />
       </div>
 
-      {/* Career Stage & Genre */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block font-mono text-xs font-semibold uppercase tracking-wider mb-1">Career Stage</label>
-          <p className="font-mono text-xs text-black/50 border-2 border-dashed border-black/15 px-4 py-3">
-            Your stage is earned, not picked — it advances automatically as you
-            complete verified milestones. Track it in your Hub → Roadmap.
-          </p>
-        </div>
-        <div>
-          <label className="block font-mono text-xs font-semibold uppercase tracking-wider mb-1">Primary Genre</label>
-          <select
-            value={genre}
-            onChange={(e) => setGenre(e.target.value)}
-            className="w-full border-2 border-black/20 px-4 py-3 font-mono text-sm focus:border-accent focus:outline-none bg-white"
-          >
-            <option value="">Select...</option>
-            {BEAT_GENRES.map((g) => (
-              <option key={g.value} value={g.value}>{g.label}</option>
-            ))}
-          </select>
+      {/* Career Stage */}
+      <div>
+        <label className="block font-mono text-xs font-semibold uppercase tracking-wider mb-1">Career Stage</label>
+        <p className="font-mono text-xs text-black/50 border-2 border-dashed border-black/15 px-4 py-3">
+          Your stage is earned, not picked — it advances automatically as you
+          complete verified milestones. Track it in your Hub → Roadmap.
+        </p>
+      </div>
+
+      {/* Genres — multi-select. Saved to profiles.genres (string[]); the PUT
+          route also mirrors genres[0] to the legacy `genre` column. */}
+      <div>
+        <label className="block font-mono text-xs font-semibold uppercase tracking-wider mb-1">Genres</label>
+        <p className="font-mono text-[10px] text-black/60 mb-3">
+          Pick all that fit. {genres.length} selected{genres.length === 0 ? ' — pick at least 1' : ''}.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {BEAT_GENRES.map((g) => {
+            const selected = genres.includes(g.value);
+            return (
+              <button
+                key={g.value}
+                type="button"
+                onClick={() => toggleGenre(g.value)}
+                aria-pressed={selected}
+                className={`font-mono text-xs px-3 py-2 border-2 transition-colors ${
+                  selected
+                    ? 'bg-black text-white border-black'
+                    : 'bg-white text-black border-black/20 hover:border-black/50'
+                }`}
+              >
+                {g.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Social Links */}
+      {/* Social Links — unified source of truth. On save these are upserted into
+          platform_connections (canonical) AND mirrored to profiles.social_links. */}
       <div>
-        <label className="block font-mono text-xs font-semibold uppercase tracking-wider mb-3">Social Links</label>
+        <label className="block font-mono text-xs font-semibold uppercase tracking-wider mb-1">Social Links</label>
+        <p className={`font-mono text-[10px] mb-3 ${filledSocialCount >= MIN_SOCIAL_LINKS ? 'text-black/60' : 'text-accent'}`}>
+          Connect at least {MIN_SOCIAL_LINKS} to complete your profile. {filledSocialCount}/{MIN_SOCIAL_LINKS} added.
+        </p>
         <div className="space-y-3">
           {SOCIAL_FIELDS.map((field) => (
             <div key={field.key} className="flex items-center gap-3">
@@ -339,14 +396,17 @@ export default function ProfileEditor({ userId, profileSlug }: { userId: string;
       </div>
 
       {/* Public profile link */}
-      {profileSlug && (
+      {/* Public profile link — READ-ONLY. The slug is auto-derived from the
+          display name on save (deriveUniqueSlug); the artist never edits it. */}
+      {slug && (
         <div className="border border-black/10 p-4 flex items-center justify-between">
           <div>
             <p className="font-mono text-[10px] text-black/60 uppercase tracking-wider">Your Public Profile</p>
-            <p className="font-mono text-sm">/u/{profileSlug}</p>
+            <p className="font-mono text-sm">/u/{slug}</p>
+            <p className="font-mono text-[10px] text-black/50 mt-1">Auto-generated from your display name.</p>
           </div>
           <a
-            href={`/u/${profileSlug}`}
+            href={`/u/${slug}`}
             target="_blank"
             rel="noopener noreferrer"
             className="font-mono text-xs text-accent hover:underline inline-flex items-center gap-1"

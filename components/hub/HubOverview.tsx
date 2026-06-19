@@ -20,6 +20,7 @@ import { tierLabel } from '@/lib/career';
 import TierBadge from '@/components/career/TierBadge';
 import { SkeletonList } from './LoadingSkeleton';
 import ActivePackages from './ActivePackages';
+import ProfileCompletion from './ProfileCompletion';
 
 interface NextStep {
   id: string;
@@ -166,6 +167,15 @@ export default function HubOverview({ onXpEarned: _onXpEarned, onNavigate }: Hub
           a package, that's the highest-priority info on the page. */}
       <div className="mb-8">
         <ActivePackages />
+      </div>
+
+      {/* COMPLETE YOUR PROFILE — the carrot workflow. Self-fetches its own
+          completion state and renders ONLY when the profile is incomplete
+          (it collapses to null once every item is done), so a finished artist
+          isn't nagged. Placed near the top so artists actually finish it.
+          Deep-links social links to the Metrics tab via onNavigate. */}
+      <div className="mb-6">
+        <ProfileCompletion onNavigate={onNavigate} />
       </div>
 
       {/* WELCOME — brand-new users with zero content of any kind. Gives them a

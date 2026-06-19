@@ -53,6 +53,52 @@ const MEDIA_KIND: Record<string, string> = {
   bundled_cutdowns: 'short_video',
 };
 
+// Map a media reward_type → the media_offerings.slug it should land on as a
+// comped PROJECT in /media-team. Used to resolve offering_id (NOT NULL on
+// media_bookings). Order of fallbacks is handled at insert time: we try the
+// primary slug, then any sibling that shares the same `kind` family, so a
+// tenant whose offering catalog uses slightly different slugs still resolves.
+//
+// NOTE: free_sweet_spot has no standalone media offering in the seed catalog
+// (it's a studio/recording perk, not a media deliverable), so it has no slug
+// here — that reward issues the media_credit only, no project (see issues).
+const MEDIA_OFFERING_SLUG: Record<string, string[]> = {
+  free_short_video: ['short-basic', 'short-mid', 'short-premium'],
+  free_music_video: ['mv-mid', 'mv-premium'],
+  free_photo_session: ['photo-session'],
+  bundled_cutdowns: ['short-basic', 'short-mid', 'short-premium'],
+};
+
+/**
+ * Resolve the media_offerings.id for a comped reward project. media_bookings
+ * .offering_id is NOT NULL with an FK, so we MUST have a real offering to create
+ * the project. Tries the reward's candidate slugs in order; returns the first
+ * active match (or any match), else null (caller then skips the project and
+ * keeps only the media_credit). Uses the same cross-tenant client issueGrant
+ * already holds, so it sees the calling studio's offering catalog.
+ */
+async function resolveCompOfferingId(db: Client, rewardType: string): Promise<{ id: string; title: string } | null> {
+  const slugs = MEDIA_OFFERING_SLUG[rewardType];
+  if (!slugs || !slugs.length) return null;
+  const { data } = await db.from('media_offerings')
+    .select('id,title,slug,is_active')
+    .in('slug', slugs);
+  const rows = (data ?? []) as Array<{ id: string; title: string; slug: string; is_active: boolean }>;
+  if (!rows.length) return null;
+  // Prefer the first candidate slug that exists AND is active; fall back to the
+  // first existing row regardless of active flag (better a comped project on an
+  // inactive offering than none).
+  for (const slug of slugs) {
+    const active = rows.find((r) => r.slug === slug && r.is_active);
+    if (active) return { id: active.id, title: active.title };
+  }
+  for (const slug of slugs) {
+    const any = rows.find((r) => r.slug === slug);
+    if (any) return { id: any.id, title: any.title };
+  }
+  return null;
+}
+
 export interface IssueResult { ok: boolean; reason?: string; issued_ref?: string }
 
 /** Issue an already-approved grant (idempotent). Creates the credit ledger row + stamps the grant. */
@@ -85,7 +131,73 @@ export async function issueGrant(db: Client, grantId: string): Promise<IssueResu
       cost_basis_cents: 0, expires_at, notes: `Reward: ${g.rule_key}`,
     }).select('id').single();
     if (error || !data) return { ok: false, reason: `media_credits: ${error?.message}` };
-    issued_ref = `media_credits:${(data as any).id}`;
+    const mediaCreditId = (data as any).id as string;
+    issued_ref = `media_credits:${mediaCreditId}`;
+
+    // ── Also materialize a COMPED media PROJECT so the reward lands in
+    // /media-team Projects ("media rewards link to media bookings"). The
+    // booking is fully comped: $0 price/deposit, marked paid now, dropped into
+    // a SCHEDULABLE status ('deposited' — NOT 'inquiry') so the media team can
+    // schedule shoots. offering_id is REQUIRED (NOT NULL FK), so we only create
+    // the project when a matching media_offerings row resolves; otherwise we
+    // keep just the media_credit (see resolveCompOfferingId + issues).
+    //
+    // Idempotency: a re-issue is already blocked by the guard at the top of
+    // issueGrant (status/issued_ref short-circuit). As a second layer, we skip
+    // project creation if this grant's metadata already records a booking id —
+    // so a manual force-reissue can never spawn a duplicate project.
+    const alreadyHasProject = !!((g as any).metadata?.comp_media_booking_id);
+    let compBookingId: string | null = null;
+    if (!alreadyHasProject) {
+      const offering = await resolveCompOfferingId(db, g.reward_type);
+      if (offering) {
+        const compNow = new Date().toISOString();
+        const projectDetails = {
+          comped: true,
+          source: 'reward_grant',
+          reward_grant_id: g.id,
+          reward_type: g.reward_type,
+          rule_key: g.rule_key,
+          media_credit_id: mediaCreditId,
+          additional_notes: `Comped from reward "${g.rule_key}" (grant ${g.id}). Fully covered — no charge to the artist.`,
+        };
+        const { data: booking, error: bookErr } = await db.from('media_bookings').insert({
+          offering_id: offering.id,
+          user_id: g.owner_user_id,
+          band_id: g.owner_band_id,
+          status: 'deposited', // schedulable, not 'inquiry'
+          configured_components: null,
+          project_details: projectDetails,
+          final_price_cents: 0,
+          deposit_cents: 0,
+          actual_deposit_paid: 0,
+          deposit_paid_at: compNow,
+          final_paid_at: compNow, // $0 owed → fully settled now
+          stripe_payment_intent_id: `REWARD-COMP-${g.id}`,
+          stripe_session_id: null,
+          notes_to_us: `Reward comp: ${offering.title} — issued from grant ${g.id} (${g.rule_key}). Linked media_credit ${mediaCreditId}.`,
+          is_test: false,
+          created_by: 'rewards-engine',
+        }).select('id').single();
+        if (bookErr || !booking) {
+          // Non-fatal: the credit already exists and is the source of truth for
+          // redemption. Log and continue so issuance still succeeds + stamps.
+          console.error('[rewards-issue] comp media_bookings insert failed:', bookErr?.message);
+        } else {
+          compBookingId = (booking as any).id as string;
+        }
+      } else {
+        console.warn(`[rewards-issue] no media offering matched reward_type=${g.reward_type}; comp project skipped, media_credit ${mediaCreditId} kept.`);
+      }
+    }
+
+    // Stamp the created booking id back onto the grant metadata so a re-issue
+    // detects it (idempotency) and the project<->grant link is queryable.
+    if (compBookingId) {
+      await db.from('reward_grants').update({
+        metadata: { ...((g as any).metadata || {}), comp_media_booking_id: compBookingId, comp_media_credit_id: mediaCreditId },
+      }).eq('id', grantId);
+    }
   } else {
     // discount / account_credit / cash_bonus / status — consumed by reading the grant.
     issued_ref = `inline:${g.reward_type}`;

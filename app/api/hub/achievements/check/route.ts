@@ -4,6 +4,8 @@ import { calculateLevel } from '@/lib/xp-system';
 import { ACHIEVEMENTS } from '@/lib/achievements';
 import { ENGINEERS } from '@/lib/constants';
 import { grantEventReward } from '@/lib/rewards-server';
+import { computeProfileCompletion } from '@/lib/profile-completion';
+import { getUnifiedSocialLinks } from '@/lib/social-links-server';
 
 export async function POST() {
   const supabase = await createClient();
@@ -269,16 +271,29 @@ export async function POST() {
     }
   }
 
-  // career_stage retired (computed by the career engine now) — bio replaces
-  // it here, matching the s1_brand gate (photo + bio).
-  const { data: bioRow } = await service.from('profiles')
-    .select('bio').eq('user_id', user.id).maybeSingle();
-  const profileComplete = !!(
-    profile?.display_name &&
-    profile?.genre &&
-    (bioRow as { bio?: string | null } | null)?.bio &&
-    profile?.profile_picture_url
-  );
+  // Profile completion now uses the canonical shared definition
+  // (lib/profile-completion) so the reward gate and the Hub checklist agree
+  // byte-for-byte. The FULL profile must be complete — display name, profile
+  // photo, cover photo, bio, >=1 genre, and >=3 connected social platforms.
+  // We feed the profile fields plus the UNIFIED social-link count from
+  // platform_connections (lib/social-links-server) into computeProfileCompletion.
+  const { data: completionRow } = await service.from('profiles')
+    .select('bio, cover_photo_url, genres').eq('user_id', user.id).maybeSingle();
+  const completionFields = completionRow as {
+    bio?: string | null;
+    cover_photo_url?: string | null;
+    genres?: string[] | null;
+  } | null;
+  const { count: socialLinkCount } = await getUnifiedSocialLinks(service, user.id);
+  const profileCompletion = computeProfileCompletion({
+    display_name: profile?.display_name,
+    profile_picture_url: profile?.profile_picture_url,
+    cover_photo_url: completionFields?.cover_photo_url,
+    bio: completionFields?.bio,
+    genres: completionFields?.genres,
+    socialLinkCount,
+  });
+  const profileComplete = profileCompletion.complete;
 
   // Reward: completing your profile earns the one-time 'cust_profile_complete'
   // grant (1 free studio hour, approval-gated). This is the ONLY trigger for the
