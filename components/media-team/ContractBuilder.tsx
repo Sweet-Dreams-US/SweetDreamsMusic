@@ -25,7 +25,6 @@
 //   - contract_terms (section 5/6).
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Plus,
@@ -126,8 +125,6 @@ export default function ContractBuilder({
 }: {
   mediaManagers: MediaManagerOption[];
 }) {
-  const router = useRouter();
-
   // ── Option pools ───────────────────────────────────────────────────
   const [clients, setClients] = useState<UserSearchUser[]>([]);
   const [offerings, setOfferings] = useState<OfferingOption[]>([]);
@@ -616,7 +613,7 @@ export default function ContractBuilder({
             </Link>
             <button
               type="button"
-              onClick={() => router.refresh()}
+              onClick={() => { window.location.href = '/media-team/contracts/new'; }}
               className="border-2 border-black/15 font-mono text-sm font-bold tracking-wider uppercase px-8 py-4 hover:border-black/40 transition-colors inline-flex items-center justify-center"
             >
               Build another
