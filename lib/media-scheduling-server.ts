@@ -399,3 +399,109 @@ export async function getContractsAwaitingSignature(
     };
   });
 }
+
+/**
+ * Active media PROJECTS the artist has ALREADY SIGNED — i.e. the mirror of
+ * `getContractsAwaitingSignature` for the *post-signature* phase. Once an
+ * artist signs (`contract_agreed_at` set) the contract drops off the
+ * "to sign" banner, and today the only way back to it is digging through the
+ * media orders list. This surfaces those signed, in-progress projects right
+ * on the dashboard so the artist (and studio owner) can always find them,
+ * review the contract, and pay the outstanding balance.
+ *
+ * Filter (a "project" = a custom booking with contract terms):
+ *   - personal OR band-attached (same OR-builder as the sibling fns).
+ *   - contract_agreed_at IS NOT NULL  → the artist has signed.
+ *   - status NOT IN (cancelled, delivered) → still in progress.
+ *   - contract_terms IS NOT NULL → it's a real project (these always have terms).
+ *
+ * Balance: loads every installment for the matched bookings in ONE query and
+ * aggregates `paid = SUM(amount_cents WHERE status='paid')` per booking in JS.
+ * `remaining = max(0, total - paid)`.
+ *
+ * NEVER throws — returns [] on any error, because this loads on every
+ * dashboard render and an installments hiccup must not 500 the page.
+ */
+export async function getActiveMediaProjectsForOwner(
+  args: { userId: string; bandIds: string[] },
+  client?: SupabaseClient,
+): Promise<Array<{
+  id: string;
+  offering_title: string;
+  status: string;
+  total_cents: number;
+  paid_cents: number;
+  remaining_cents: number;
+}>> {
+  const supabase = client || createServiceClient();
+
+  let q = supabase
+    .from('media_bookings')
+    .select('id, status, final_price_cents, media_offerings(title)')
+    .not('contract_agreed_at', 'is', null)
+    .not('status', 'in', '(cancelled,delivered)')
+    .not('contract_terms', 'is', null)
+    .order('created_at', { ascending: false });
+
+  if (args.bandIds.length > 0) {
+    const bandList = args.bandIds.map((b) => `band_id.eq.${b}`).join(',');
+    q = q.or(`user_id.eq.${args.userId},${bandList}`);
+  } else {
+    q = q.eq('user_id', args.userId);
+  }
+
+  const { data, error } = await q;
+  if (error) {
+    console.error('[media-scheduling] getActiveMediaProjectsForOwner error:', error);
+    return [];
+  }
+
+  const rows = (data || []) as Array<{
+    id: string;
+    status: string;
+    final_price_cents: number;
+    media_offerings: { title: string } | { title: string }[] | null;
+  }>;
+  if (rows.length === 0) return [];
+
+  // One query for every installment of every matched booking; aggregate the
+  // paid amount per booking in JS so we avoid N round-trips.
+  const bookingIds = rows.map((r) => r.id);
+  const paidByBooking = new Map<string, number>();
+  const { data: installments, error: instErr } = await supabase
+    .from('media_payment_installments')
+    .select('booking_id, amount_cents, status')
+    .in('booking_id', bookingIds);
+  if (instErr) {
+    console.error('[media-scheduling] getActiveMediaProjectsForOwner installments error:', instErr);
+    // Degrade gracefully: treat as "nothing paid via plan" rather than 500.
+  } else {
+    for (const inst of (installments || []) as Array<{
+      booking_id: string;
+      amount_cents: number;
+      status: string;
+    }>) {
+      if (inst.status !== 'paid') continue;
+      paidByBooking.set(
+        inst.booking_id,
+        (paidByBooking.get(inst.booking_id) ?? 0) + (inst.amount_cents ?? 0),
+      );
+    }
+  }
+
+  return rows.map((row) => {
+    const off = Array.isArray(row.media_offerings)
+      ? row.media_offerings[0]
+      : row.media_offerings;
+    const total = row.final_price_cents ?? 0;
+    const paid = paidByBooking.get(row.id) ?? 0;
+    return {
+      id: row.id,
+      offering_title: off?.title ?? 'Media project',
+      status: row.status,
+      total_cents: total,
+      paid_cents: paid,
+      remaining_cents: Math.max(0, total - paid),
+    };
+  });
+}

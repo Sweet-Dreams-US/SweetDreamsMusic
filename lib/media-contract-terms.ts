@@ -30,7 +30,7 @@ export interface ContractTermsContext {
 export function buildDefaultContractTerms(ctx: ContractTermsContext = {}): string {
   const project = (ctx.projectTitle || '').trim() || 'this media campaign';
   const artist = (ctx.artistName || '').trim();
-  const artistClause = artist ? ` with ${artist} (the "Artist")` : ' with the Artist';
+  const artistParty = artist ? `${artist} (the "Artist")` : 'the Artist';
   const total =
     typeof ctx.totalCents === 'number' && ctx.totalCents > 0
       ? formatCents(ctx.totalCents)
@@ -43,9 +43,9 @@ export function buildDefaultContractTerms(ctx: ContractTermsContext = {}): strin
     : `The total investment is the sum of the deliverables listed in this contract, payable to Sweet Dreams per the payment schedule set out herein.`;
 
   return [
-    `AUTHORIZATION & AGREEMENT — SWEET DREAMS MUSIC`,
+    `AUTHORIZATION & AGREEMENT — SWEET DREAMS US LLC`,
     ``,
-    `This agreement is entered into between Sweet Dreams LLC ("Sweet Dreams") and the Artist${artistClause} for ${project}.`,
+    `This agreement is entered into between Sweet Dreams US LLC ("Sweet Dreams") and ${artistParty} for ${project}.`,
     ``,
     `1. SCOPE OF WORK`,
     `Sweet Dreams will produce and deliver the specific deliverables itemized in this contract. The scope of this agreement is limited to those listed deliverables. Any work not listed — additional shoots, edits, revisions, or assets — is out of scope and will be quoted separately before it begins.`,

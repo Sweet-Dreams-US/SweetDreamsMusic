@@ -23,6 +23,7 @@ import { SkeletonList } from './LoadingSkeleton';
 import ActivePackages from './ActivePackages';
 import ProfileCompletion from './ProfileCompletion';
 import AvailableBalances from './AvailableBalances';
+import ActiveProjectsPanel, { type ActiveProject } from '@/components/dashboard/ActiveProjectsPanel';
 import type { MediaCreditBalance } from '@/lib/media-credits';
 
 interface NextStep {
@@ -81,6 +82,9 @@ interface HubOverviewProps {
   // Media contracts the manager has agreed to but the artist hasn't signed —
   // surfaced as a top-of-page banner so artists can FIND + open them to sign.
   awaitingContracts?: { id: string; offering_id: string; offering_title: string; final_price_cents: number }[];
+  // SIGNED, in-progress media projects — surfaced right after the contract
+  // banner so a signed project stays easy to find (review contract + pay).
+  activeProjects?: ActiveProject[];
 }
 
 const DISMISS_PREFIX = 'career_dismissed_';
@@ -101,6 +105,7 @@ export default function HubOverview({
   studioHours,
   mediaCredits,
   awaitingContracts,
+  activeProjects,
 }: HubOverviewProps) {
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -166,11 +171,20 @@ export default function HubOverview({
     </div>
   ) : null;
 
+  // SIGNED, in-progress projects. Server-provided (like the contract banner) so
+  // it renders even while the overview API loads or if it fails — the whole
+  // point is that a signed project stays findable. ActiveProjectsPanel returns
+  // null when empty, so this is safe to always render.
+  const projectsPanel = (
+    <ActiveProjectsPanel projects={activeProjects ?? []} />
+  );
+
   if (loading) {
     return (
       <div>
         <h2 className="text-heading-md mb-6">OVERVIEW</h2>
         {contractBanner}
+        {projectsPanel}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <SkeletonList count={4} />
         </div>
@@ -180,11 +194,13 @@ export default function HubOverview({
 
   if (!data) {
     // Even if the overview API failed, still surface a contract the artist
-    // needs to sign — it's too important to hide behind an API error.
-    return contractBanner ? (
+    // needs to sign — and any signed/active project — too important to hide
+    // behind an API error.
+    return (contractBanner || (activeProjects && activeProjects.length > 0)) ? (
       <div>
         <h2 className="text-heading-md mb-6">OVERVIEW</h2>
         {contractBanner}
+        {projectsPanel}
       </div>
     ) : null;
   }
@@ -226,6 +242,11 @@ export default function HubOverview({
           reliable; links straight to the order page where MediaContractSchedule
           handles the actual signing. */}
       {contractBanner}
+
+      {/* YOUR MEDIA PROJECTS — signed, in-progress projects. Once signed they
+          drop off the contract banner above; this keeps them easy to find
+          (review contract + pay balance). Renders null when there are none. */}
+      {projectsPanel}
 
       {/* Active packages & memberships — only renders when the customer
           has at least one entitlement, so users without packages see

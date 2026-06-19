@@ -18,7 +18,8 @@ import { getStudioCreditBalanceForUser, getMediaCreditsForOwner } from '@/lib/me
 import { getUserBands } from '@/lib/bands-server';
 import DashboardBalances from '@/components/dashboard/DashboardBalances';
 import ContractsToSignBanner from '@/components/dashboard/ContractsToSignBanner';
-import { getContractsAwaitingSignature } from '@/lib/media-scheduling-server';
+import ActiveProjectsPanel from '@/components/dashboard/ActiveProjectsPanel';
+import { getContractsAwaitingSignature, getActiveMediaProjectsForOwner } from '@/lib/media-scheduling-server';
 
 export const metadata: Metadata = {
   title: 'Dashboard',
@@ -42,10 +43,11 @@ export default async function DashboardPage() {
   // in the Artist Hub. Mirrors the Hub overview's data sources exactly.
   const bandMemberships = await getUserBands(user.id);
   const bandIds = bandMemberships.map((m) => m.band_id);
-  const [studioHours, mediaCredits, awaitingContracts] = await Promise.all([
+  const [studioHours, mediaCredits, awaitingContracts, activeProjects] = await Promise.all([
     getStudioCreditBalanceForUser(user.id),
     getMediaCreditsForOwner({ userId: user.id, bandIds }),
     getContractsAwaitingSignature({ userId: user.id, bandIds }),
+    getActiveMediaProjectsForOwner({ userId: user.id, bandIds }),
   ]);
 
   // Fetch user's bookings
@@ -157,6 +159,18 @@ export default async function DashboardPage() {
         <section className="bg-white text-black pt-8">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <ContractsToSignBanner contracts={awaitingContracts} />
+          </div>
+        </section>
+      )}
+
+      {/* Your media projects — SIGNED, in-progress projects. Once a contract is
+          signed it drops off the "to sign" banner above; this keeps the project
+          easy to find (review the contract, pay any balance) instead of buried
+          in the media orders list. Renders nothing when there are none. */}
+      {activeProjects.length > 0 && (
+        <section className="bg-white text-black pt-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <ActiveProjectsPanel projects={activeProjects} />
           </div>
         </section>
       )}

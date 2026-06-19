@@ -38,6 +38,9 @@ export interface HubRelocatedData {
     // Media contracts the manager has agreed to but the artist hasn't signed
     // yet — surfaced as a banner in HubOverview so artists can FIND + sign them.
     awaitingContracts: { id: string; offering_id: string; offering_title: string; final_price_cents: number }[];
+    // SIGNED, in-progress media projects — surfaced in HubOverview right after
+    // the contract banner so a signed project stays easy to find (and pay).
+    activeProjects: { id: string; offering_title: string; status: string; total_cents: number; paid_cents: number; remaining_cents: number }[];
   };
   events: {
     myEvents: EventWithRsvp[];
@@ -235,6 +238,7 @@ export default function ArtistHub({ userId, relocated, initialTab }: { userId: s
                   studioHours={relocated.media.studioHours}
                   mediaCredits={relocated.media.credits}
                   awaitingContracts={relocated.media.awaitingContracts}
+                  activeProjects={relocated.media.activeProjects}
                 />
               )}
               {tab === 'projects' && <ProjectList onXpEarned={onXpEarned} />}
