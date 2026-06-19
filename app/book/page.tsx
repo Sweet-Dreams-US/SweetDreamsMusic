@@ -10,6 +10,7 @@ import { getMembership } from '@/lib/bands-server';
 import { getStudioConfigs } from '@/lib/studio-config-server';
 import { getEngineers } from '@/lib/engineers-server';
 import BookingFlow from '@/components/booking/BookingFlow';
+import MediaAddOnsSection from '@/components/booking/MediaAddOnsSection';
 
 export const metadata: Metadata = {
   title: 'Book a Recording Session — Schedule Online',
@@ -158,6 +159,14 @@ export default async function BookPage({
           )}
         </div>
       </section>
+
+      {/* Media Add-Ons Showcase - Black.
+          Sits BELOW the session-booking flow. It's a showcase for EVERYONE
+          (logged in or not) — "what media can I add to my session?" — that
+          routes into the real Media Hub flow. The booking action itself is
+          login-gated, same as the session flow above. Pass the already-resolved
+          `user` so the CTA + visibility adapt without re-fetching the session. */}
+      <MediaAddOnsSection user={user} />
     </>
   );
 }
