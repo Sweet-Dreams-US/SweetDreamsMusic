@@ -17,6 +17,8 @@ import ProfileBeatGrid from '@/components/beats/ProfileBeatGrid';
 import { getStudioCreditBalanceForUser, getMediaCreditsForOwner } from '@/lib/media-server';
 import { getUserBands } from '@/lib/bands-server';
 import DashboardBalances from '@/components/dashboard/DashboardBalances';
+import ContractsToSignBanner from '@/components/dashboard/ContractsToSignBanner';
+import { getContractsAwaitingSignature } from '@/lib/media-scheduling-server';
 
 export const metadata: Metadata = {
   title: 'Dashboard',
@@ -40,9 +42,10 @@ export default async function DashboardPage() {
   // in the Artist Hub. Mirrors the Hub overview's data sources exactly.
   const bandMemberships = await getUserBands(user.id);
   const bandIds = bandMemberships.map((m) => m.band_id);
-  const [studioHours, mediaCredits] = await Promise.all([
+  const [studioHours, mediaCredits, awaitingContracts] = await Promise.all([
     getStudioCreditBalanceForUser(user.id),
     getMediaCreditsForOwner({ userId: user.id, bandIds }),
+    getContractsAwaitingSignature({ userId: user.id, bandIds }),
   ]);
 
   // Fetch user's bookings
@@ -146,6 +149,17 @@ export default async function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {/* Contracts awaiting YOUR signature — highest-priority action, surfaced
+          the moment you land on /dashboard (not just the Artist Hub). Links
+          straight to the order page to review, sign, and pay. */}
+      {awaitingContracts.length > 0 && (
+        <section className="bg-white text-black pt-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <ContractsToSignBanner contracts={awaitingContracts} />
+          </div>
+        </section>
+      )}
 
       {/* Available Balances — surfaced at the top so a user with a free studio
           hour (or media credits) sees it immediately on /dashboard. Renders
