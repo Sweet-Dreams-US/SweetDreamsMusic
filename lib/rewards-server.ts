@@ -401,6 +401,71 @@ export async function persistGrants(db: Client, grants: DesiredGrant[], source =
   return { inserted, skipped };
 }
 
+// ───────────────────────── event-driven grants ─────────────────────────
+
+/**
+ * Grant an EVENT-DRIVEN reward (the per_event / one_time / per_purchase rules the
+ * window sweeps skip — see SWEEP_WINDOWS). Fired by hooks when the real thing
+ * happens (e.g. a profile is completed → 'cust_profile_complete'). Reuses the same
+ * rule→grant shape as persistGrants/mkGrant + the same status mapping:
+ *   • issuance 'auto'     → 'approved' (ready for the issuer)
+ *   • issuance 'approval' → 'pending_approval' (admin approves, then it issues)
+ *
+ * Idempotent. For a one_total / one_time rule it is ONE PER OWNER for all time:
+ * we use a fixed 'one_time' period_key AND first check whether the owner already
+ * holds ANY grant for this rule_key (any status/period) before inserting, so the
+ * free hour is granted exactly once per real person. Cumulative/per_event rules
+ * can pass a distinct `periodKey` (e.g. a purchase/referral id) to allow repeats.
+ *
+ * Returns whether a new grant was created (false = already had one / no-op).
+ */
+export async function grantEventReward(
+  db: Client,
+  rule_key: string,
+  owner: { userId: string | null; bandId?: string | null },
+  opts: { periodKey?: string; counterValue?: number; source?: string } = {},
+): Promise<{ created: boolean; reason?: string }> {
+  const rule = REWARD_RULES.find((r) => r.rule_key === rule_key);
+  if (!rule) return { created: false, reason: 'unknown rule_key' };
+
+  const owner_user_id = owner.userId ?? null;
+  const owner_band_id = owner.bandId ?? null;
+  if (!owner_user_id && !owner_band_id) return { created: false, reason: 'no owner' };
+
+  // rule id (the grant FKs the rule).
+  const { data: ruleRow } = await db.from('reward_rules').select('id').eq('rule_key', rule_key).maybeSingle();
+  const rid = (ruleRow as any)?.id;
+  if (!rid) return { created: false, reason: 'rule not seeded' };
+
+  const isOnce = rule.stack_mode === 'one_total' || rule.window === 'one_time';
+  // one_time → a single fixed period so it can never recur across years; otherwise
+  // the caller's key, falling back to this window's calendar period.
+  const period_key = isOnce ? 'one_time' : (opts.periodKey ?? periodKeyFor(rule.window, new Date()));
+
+  // Idempotency / one-per-person guard. For a once rule, ANY existing grant of this
+  // rule for the owner blocks a re-grant (honors one_total across all periods).
+  let existQ = db.from('reward_grants').select('id').eq('rule_key', rule_key);
+  if (owner_band_id) existQ = existQ.eq('owner_band_id', owner_band_id);
+  else existQ = existQ.eq('owner_user_id', owner_user_id);
+  if (!isOnce) existQ = existQ.eq('period_key', period_key); // repeatable rules dedup per period
+  const { data: existing } = await existQ.limit(1).maybeSingle();
+  if (existing) return { created: false, reason: 'already granted' };
+
+  const { error } = await db.from('reward_grants').insert({
+    studio_id: null, rule_id: rid, rule_key,
+    owner_user_id, owner_band_id,
+    track: rule.track, counter: rule.counter,
+    status: rule.issuance === 'auto' ? 'approved' : 'pending_approval',
+    period_key, threshold: rule.threshold, counter_value: opts.counterValue ?? rule.threshold,
+    reward_type: rule.reward_type, reward_value: rule.reward_value, value_cents: rewardValueCents(rule),
+    issuance: rule.issuance, metadata: { source: opts.source ?? 'event', label: rule.label },
+  } as any);
+  // A concurrent insert can lose the (rule,owner,period) unique index race; that's
+  // still the idempotent outcome we want, so treat a duplicate as "not created".
+  if (error) return { created: false, reason: error.message };
+  return { created: true };
+}
+
 // ───────────────────────── go-live backfill ─────────────────────────
 
 export interface BackfillReport {

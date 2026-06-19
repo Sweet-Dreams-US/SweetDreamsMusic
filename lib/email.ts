@@ -2557,3 +2557,37 @@ export async function sendPackageQuoteDeclined(details: {
     });
   } catch (e) { console.error('Email error (quote declined admin):', e); }
 }
+
+// ── Reward Issued ──────────────────────────────────────────────────────
+
+/**
+ * "Your reward is ready 🎁" — sent when an admin approves a reward grant and it
+ * materializes (status -> issued). Names the reward (rewardLabel) and points the
+ * recipient at their dashboard Perks + the booking flow to redeem it. Email-only
+ * here; the in-app mirror is fired separately in lib/rewards-issue so a band
+ * grant can fan out to every member's thread.
+ *
+ * Fire-and-forget: wrapped in try/catch, logs on error, never throws — issuing
+ * the reward must never fail because an email bounced.
+ */
+export async function sendRewardReadyEmail(to: string, details: {
+  recipientName: string; rewardLabel: string;
+}) {
+  try {
+    await resend.emails.send({
+      from: FROM, to,
+      subject: 'Your reward is ready 🎁 — Sweet Dreams Music',
+      html: wrap(`
+        ${h1('Your Reward Is Ready 🎁')}
+        ${p(`Hey ${escapeHtml(details.recipientName)} — you earned it.`)}
+        ${detailTable(`
+          ${detail('Reward', escapeHtml(details.rewardLabel))}
+          ${detail('Status', 'Ready to use')}
+        `)}
+        ${p('It\'s waiting in your dashboard under <strong>Perks</strong>. Free studio time and discounts apply automatically when you book your next session — credits and media perks are redeemed right from the booking flow.')}
+        ${btn('View My Perks', `${SITE_URL}/dashboard`)}
+        ${p('<span style="color:#666;font-size:11px">Thanks for being part of Sweet Dreams Music. Questions? Just reply to this email.</span>')}
+      `),
+    });
+  } catch (e) { console.error('Email error (reward ready):', e); }
+}

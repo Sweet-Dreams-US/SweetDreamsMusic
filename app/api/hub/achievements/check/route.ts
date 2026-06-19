@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { calculateLevel } from '@/lib/xp-system';
 import { ACHIEVEMENTS } from '@/lib/achievements';
 import { ENGINEERS } from '@/lib/constants';
+import { grantEventReward } from '@/lib/rewards-server';
 
 export async function POST() {
   const supabase = await createClient();
@@ -278,6 +279,21 @@ export async function POST() {
     (bioRow as { bio?: string | null } | null)?.bio &&
     profile?.profile_picture_url
   );
+
+  // Reward: completing your profile earns the one-time 'cust_profile_complete'
+  // grant (1 free studio hour, approval-gated). This is the ONLY trigger for the
+  // event-driven 'profile_complete' counter — the window sweeps skip one_time rules.
+  // Idempotent + one-per-real-person: grantEventReward no-ops if the user already
+  // holds this grant (any status). Never auto-issues — it lands 'pending_approval'
+  // per the rule's issuance='approval', so an admin approves the free hour.
+  // Best-effort: a rewards hiccup must not break achievement/XP processing.
+  if (profileComplete) {
+    try {
+      await grantEventReward(service, 'cust_profile_complete', { userId: user.id }, { source: 'achievements-check' });
+    } catch {
+      // swallow — rewards are a side-effect of this check, not its contract
+    }
+  }
 
   const artistLevel = profile?.artist_level || 0;
   const dailyStreak = profile?.daily_streak || 0;

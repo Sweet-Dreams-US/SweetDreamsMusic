@@ -262,6 +262,40 @@ export function applyRewardsToPricing(
   return { serviceValueCents, customerChargeCents, depositCents, discountCents, compedBaseCents, rewardsCostCents };
 }
 
+/**
+ * Human label for a reward grant, for notifications + customer-facing copy.
+ * Names the actual thing earned ("1 free short video", "2 free studio hours",
+ * "10% off your next session", "$20 account credit"). reward_value carries the
+ * count/percent/cents per reward_type (see RewardRule). Pure — no server deps.
+ */
+export function rewardLabel(
+  reward: Pick<RewardRule, 'reward_type' | 'reward_value' | 'reward_cap_cents'>,
+): string {
+  const n = Math.max(1, Math.round(Number(reward.reward_value) || 1));
+  const plural = (one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
+  const pct = Math.round(Number(reward.reward_value) || 0);
+  const cents = Math.round(Number(reward.reward_value) || 0);
+  switch (reward.reward_type) {
+    case 'free_hours':          return plural('free studio hour', 'free studio hours');
+    case 'free_short_video':    return plural('free short video', 'free short videos');
+    case 'free_music_video':    return 'a free music video';
+    case 'free_photo_session':  return 'a free photo session';
+    case 'free_sweet_spot':     return 'a free Band Sweet Spot';
+    case 'bundled_cutdowns':    return plural('free cutdown', 'free cutdowns');
+    case 'mv_discount_pct':     return `${pct}% off a music video`;
+    case 'spend_discount_pct':  return `${pct}% off your next session`;
+    case 'referral_discount_pct': return `${pct}% off your next session`;
+    case 'beat_lease_discount_pct': return `${pct}% off beat leases`;
+    case 'beat_exclusive_discount_pct': return `${pct}% off exclusive beats`;
+    case 'account_credit_cents': return `$${(cents / 100).toFixed(0)} account credit`;
+    case 'cash_bonus':          return `$${(cents / 100).toFixed(0)} cash bonus`;
+    case 'cash_per_hour':       return `$${(cents / 100).toFixed(0)} per hour run`;
+    case 'status':              return 'a new status';
+    case 'perk':                return 'a new perk';
+    default:                    return 'your reward';
+  }
+}
+
 /** Money/value of a reward, in cents, for accounting + admin display (0 when not monetary). */
 export function rewardValueCents(rule: Pick<RewardRule, 'reward_type' | 'reward_value' | 'reward_cap_cents'>): number {
   switch (rule.reward_type) {

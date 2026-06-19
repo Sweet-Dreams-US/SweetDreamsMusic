@@ -15,6 +15,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { MEDIA_WORKER_TOTAL } from '@/lib/constants';
+import { rewardLabel } from '@/lib/rewards';
+import { mirrorToThread } from '@/lib/messaging-mirror';
+import { sendRewardReadyEmail } from '@/lib/email';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Client = SupabaseClient<any, any, any>;
@@ -92,7 +95,79 @@ export async function issueGrant(db: Client, grantId: string): Promise<IssueResu
     status: 'issued', issued_at: new Date().toISOString(), issued_ref, expires_at,
   }).eq('id', grantId);
   if (upd) return { ok: false, reason: `stamp: ${upd.message}` };
+
+  // Real earned/approved -> issued transition: notify the recipient. We only
+  // reach here on a fresh issue (the idempotent guard above early-returns for
+  // already-issued/redeemed grants), so this fires exactly once per grant.
+  // Fire-and-forget — a notify/email failure must never fail the issuance.
+  await notifyGrantIssued(db, g);
+
   return { ok: true, issued_ref };
+}
+
+/**
+ * In-app + email "your reward is ready" notification, fired once when a grant
+ * reaches 'issued'. Reuses the career system's inbox helper (mirrorToThread)
+ * for the in-app post and the studio's Resend sender (sendRewardReadyEmail).
+ *
+ * For a band grant we fan the in-app congrats out to every band member's thread
+ * (mirrorToThread supports a per-user thread); the email goes to the band's
+ * owner. For a personal grant, both go to owner_user_id.
+ *
+ * NEVER throws: each side is wrapped so issuance is never blocked by a notify or
+ * email failure (matches the codebase's fire-and-forget email pattern).
+ */
+async function notifyGrantIssued(db: Client, grant: any): Promise<void> {
+  try {
+    const label = rewardLabel({
+      reward_type: grant.reward_type,
+      reward_value: grant.reward_value,
+      reward_cap_cents: grant.reward_cap_cents,
+    });
+    const subject = 'Your reward is ready 🎁';
+    const body = `You earned ${label}. It's waiting in your dashboard under Perks — free studio time and discounts apply automatically when you book, and credits + media perks redeem right from the booking flow.`;
+
+    // Resolve recipient user ids: a band grant -> every band member; otherwise
+    // the single owner. Email goes to the band owner (or the owner user).
+    const recipientUserIds: string[] = [];
+    let emailUserId: string | null = null;
+
+    if (grant.owner_band_id) {
+      const { data: members } = await db.from('band_members')
+        .select('user_id,role').eq('band_id', grant.owner_band_id);
+      for (const m of ((members ?? []) as any[])) {
+        if (m.user_id) recipientUserIds.push(m.user_id);
+      }
+      const owner = ((members ?? []) as any[]).find((m) => m.role === 'owner');
+      emailUserId = owner?.user_id ?? recipientUserIds[0] ?? null;
+    } else if (grant.owner_user_id) {
+      recipientUserIds.push(grant.owner_user_id);
+      emailUserId = grant.owner_user_id;
+    }
+
+    // In-app: one inbox post per recipient. Each is independently best-effort.
+    for (const uid of recipientUserIds) {
+      try {
+        await mirrorToThread({ userId: uid, kind: 'update', subject, body });
+      } catch (e) { console.error('[rewards-issue] in-app notify failed:', e); }
+    }
+
+    // Email: resolve the recipient's address from profiles using the route's client.
+    if (emailUserId) {
+      const { data: prof } = await db.from('profiles')
+        .select('email,display_name').eq('user_id', emailUserId).maybeSingle();
+      const to = (prof as any)?.email as string | undefined;
+      if (to) {
+        await sendRewardReadyEmail(to, {
+          recipientName: (prof as any)?.display_name || 'there',
+          rewardLabel: label,
+        });
+      }
+    }
+  } catch (e) {
+    // Top-level guard: issuance already succeeded; swallow everything.
+    console.error('[rewards-issue] notifyGrantIssued failed:', e);
+  }
 }
 
 /** Approve a pending grant (and, by default, issue it immediately). */
