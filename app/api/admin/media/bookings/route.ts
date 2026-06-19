@@ -27,6 +27,7 @@ export async function GET() {
       stripe_payment_intent_id, stripe_session_id,
       deliverables, component_status, notes_to_us,
       customer_phone, is_test, created_by,
+      contract_terms, contract_agreed_at, contract_agreed_by,
       created_at, updated_at
     `)
     .order('created_at', { ascending: false })

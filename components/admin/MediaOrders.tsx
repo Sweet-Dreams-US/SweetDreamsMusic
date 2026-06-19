@@ -37,6 +37,8 @@ import {
   TestTube2,
   History,
   Send,
+  FileText,
+  ListChecks,
 } from 'lucide-react';
 import { formatCents } from '@/lib/utils';
 import { fmtStampDate, fmtStampDateTime, fmtStampTime } from '@/lib/studio-time';
@@ -79,8 +81,38 @@ interface BookingRow {
   customer_phone: string | null;
   is_test: boolean | null;
   created_by: string | null;
+  // Media Projects: per-project contract (free text) + artist agreement
+  // timestamp. null/absent on legacy bookings — those render unchanged.
+  contract_terms: string | null;
+  contract_agreed_at: string | null;
+  contract_agreed_by: string | null;
   created_at: string;
   updated_at?: string;
+}
+
+// Installment row shape mirrors lib/media-installments-server.ts MediaInstallment,
+// but client-side (no server imports). Empty list for a booking = legacy
+// deposit/remainder booking; we never show the installment UI for those.
+type InstallmentStatus = 'pending' | 'link_sent' | 'paid' | 'void';
+type InstallmentPaidMethod = 'card' | 'link' | 'cash' | 'venmo' | 'check' | 'other';
+interface MediaInstallment {
+  id: string;
+  booking_id: string;
+  sort_order: number;
+  label: string;
+  amount_cents: number;
+  due_date: string | null;
+  status: InstallmentStatus;
+  stripe_payment_link_url: string | null;
+  paid_at: string | null;
+  paid_method: InstallmentPaidMethod | null;
+}
+
+// One editable line in the create-flow / replace-plan installment editor.
+interface PlanLine {
+  label: string;
+  amountDollars: string;
+  dueDate: string; // '' or 'YYYY-MM-DD'
 }
 
 interface OfferingRow {
@@ -175,10 +207,10 @@ export default function MediaOrders() {
             type="button"
             onClick={() => setShowManualModal(true)}
             className="font-mono text-xs uppercase tracking-wider px-3 py-2 bg-black text-white hover:bg-accent hover:text-black inline-flex items-center gap-1.5"
-            title="Create a media booking manually (cash collected, or send a payment link)"
+            title="Create a media project (buyer, scope, contract, and an optional installment plan) or a one-off booking"
           >
             <Plus className="w-3 h-3" />
-            New booking
+            New project
           </button>
           <select
             value={filterStatus}
@@ -324,6 +356,10 @@ function BookingPanel({
 }) {
   const [sessions, setSessions] = useState<MediaSessionBooking[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
+  // Installments for this booking. Empty = legacy (no plan) → the new
+  // installment + contract UI is hidden and the legacy money buttons show.
+  const [installments, setInstallments] = useState<MediaInstallment[]>([]);
+  const [loadingInstallments, setLoadingInstallments] = useState(true);
   const [status, setStatus] = useState(booking.status);
   const [savingStatus, setSavingStatus] = useState(false);
   const [deliverables, setDeliverables] = useState<DeliverableItem[]>(
@@ -364,6 +400,22 @@ function BookingPanel({
     }
   }
 
+  async function loadInstallments() {
+    setLoadingInstallments(true);
+    try {
+      const res = await fetch(
+        `/api/admin/media/bookings/${booking.id}/installments`,
+        { cache: 'no-store' },
+      );
+      const data = await res.json();
+      if (res.ok) setInstallments(data.installments || []);
+    } catch (e) {
+      console.error('[admin-media-orders] installments fetch error:', e);
+    } finally {
+      setLoadingInstallments(false);
+    }
+  }
+
   useEffect(() => {
     // Inline the fetch so the effect's only dependency is booking.id —
     // loadSessions captured via closure would invalidate the dep array
@@ -383,6 +435,22 @@ function BookingPanel({
         console.error('[admin-media-orders] sessions fetch error:', e);
       } finally {
         if (!cancelled) setLoadingSessions(false);
+      }
+    })();
+    // Installments — drives the contract/plan UI. Empty = legacy booking.
+    (async () => {
+      setLoadingInstallments(true);
+      try {
+        const res = await fetch(
+          `/api/admin/media/bookings/${booking.id}/installments`,
+          { cache: 'no-store' },
+        );
+        const data = await res.json();
+        if (!cancelled && res.ok) setInstallments(data.installments || []);
+      } catch (e) {
+        console.error('[admin-media-orders] installments fetch error:', e);
+      } finally {
+        if (!cancelled) setLoadingInstallments(false);
       }
     })();
     setStatus(booking.status);
@@ -465,14 +533,24 @@ function BookingPanel({
     saveDeliverables(next);
   }
 
+  // Plan vs legacy. A plan project derives "paid so far" from SUM(paid
+  // installments); a legacy booking uses actual_deposit_paid. The two never
+  // mix — a booking with installments hides the legacy deposit/remainder UI.
+  const hasPlan = installments.length > 0;
+  const planPaid = installments
+    .filter((i) => i.status === 'paid')
+    .reduce((sum, i) => sum + i.amount_cents, 0);
+
   // Money math — derive the same way the buyer-facing page does so the two
   // views can never drift. `actual_deposit_paid` is the authoritative
   // "money received" figure; `deposit_cents` is the original target amount
   // (before admin record-payment / charge-remainder mutations land).
   const total = booking.final_price_cents ?? 0;
-  const paid = booking.actual_deposit_paid ?? 0;
+  const paid = hasPlan ? planPaid : booking.actual_deposit_paid ?? 0;
   const remainder = Math.max(0, total - paid);
-  const fullyPaid = !!booking.final_paid_at || (total > 0 && remainder === 0);
+  const fullyPaid = hasPlan
+    ? total > 0 && remainder === 0
+    : !!booking.final_paid_at || (total > 0 && remainder === 0);
 
   // Fast contact line for admin in case they need to call/text the buyer.
   const buyerEmail = buyer?.email ?? null;
@@ -514,10 +592,16 @@ function BookingPanel({
           <div className="bg-white border border-black/10 p-3">
             <p className="font-mono text-[10px] uppercase tracking-wider text-black/50">Paid</p>
             <p className="text-lg font-bold tabular-nums text-green-700">{formatCents(paid)}</p>
-            {booking.deposit_paid_at && (
+            {hasPlan ? (
               <p className="font-mono text-[9px] text-black/40">
-                deposit {fmtStampDate(booking.deposit_paid_at)}
+                {installments.filter((i) => i.status === 'paid').length}/{installments.length} stints paid
               </p>
+            ) : (
+              booking.deposit_paid_at && (
+                <p className="font-mono text-[9px] text-black/40">
+                  deposit {fmtStampDate(booking.deposit_paid_at)}
+                </p>
+              )
             )}
           </div>
           <div className={`border p-3 ${remainder > 0 ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'}`}>
@@ -532,50 +616,56 @@ function BookingPanel({
         </div>
       </div>
 
-      {/* Action row: charge / resend / record / adjust / add-item / cancel */}
+      {/* Action row: charge / resend / record / adjust / add-item / cancel.
+          The charge/resend/record-payment trio is the LEGACY deposit/remainder
+          path — hidden for plan projects, which collect per-installment below. */}
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setActiveModal('chargeRemainder')}
-          disabled={booking.is_test === true || fullyPaid}
-          className="font-mono text-xs px-3 py-1.5 bg-black text-white hover:bg-accent hover:text-black disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
-          title={
-            booking.is_test
-              ? 'Test bookings cannot run real charges'
-              : fullyPaid
-              ? 'Already paid in full'
-              : 'Charge the saved card or send a payment link'
-          }
-        >
-          <CreditCard className="w-3 h-3" />
-          Charge remainder
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveModal('resendLink')}
-          disabled={booking.is_test === true || fullyPaid}
-          className="font-mono text-xs px-3 py-1.5 border border-black/30 hover:bg-black hover:text-white disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
-          title={
-            booking.is_test
-              ? 'Test bookings cannot send real payment links'
-              : fullyPaid
-              ? 'Already paid in full'
-              : 'Email a fresh Stripe payment link to the buyer'
-          }
-        >
-          <Send className="w-3 h-3" />
-          Resend link
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveModal('recordPayment')}
-          disabled={booking.is_test === true}
-          className="font-mono text-xs px-3 py-1.5 border border-black/30 hover:bg-black hover:text-white disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
-          title={booking.is_test ? 'Test bookings cannot record real payments' : 'Record cash, Venmo, check, or other'}
-        >
-          <Banknote className="w-3 h-3" />
-          Record payment
-        </button>
+        {!hasPlan && (
+          <>
+            <button
+              type="button"
+              onClick={() => setActiveModal('chargeRemainder')}
+              disabled={booking.is_test === true || fullyPaid}
+              className="font-mono text-xs px-3 py-1.5 bg-black text-white hover:bg-accent hover:text-black disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+              title={
+                booking.is_test
+                  ? 'Test bookings cannot run real charges'
+                  : fullyPaid
+                  ? 'Already paid in full'
+                  : 'Charge the saved card or send a payment link'
+              }
+            >
+              <CreditCard className="w-3 h-3" />
+              Charge remainder
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveModal('resendLink')}
+              disabled={booking.is_test === true || fullyPaid}
+              className="font-mono text-xs px-3 py-1.5 border border-black/30 hover:bg-black hover:text-white disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+              title={
+                booking.is_test
+                  ? 'Test bookings cannot send real payment links'
+                  : fullyPaid
+                  ? 'Already paid in full'
+                  : 'Email a fresh Stripe payment link to the buyer'
+              }
+            >
+              <Send className="w-3 h-3" />
+              Resend link
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveModal('recordPayment')}
+              disabled={booking.is_test === true}
+              className="font-mono text-xs px-3 py-1.5 border border-black/30 hover:bg-black hover:text-white disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+              title={booking.is_test ? 'Test bookings cannot record real payments' : 'Record cash, Venmo, check, or other'}
+            >
+              <Banknote className="w-3 h-3" />
+              Record payment
+            </button>
+          </>
+        )}
         <button
           type="button"
           onClick={() => setActiveModal('adjustPrice')}
@@ -637,6 +727,41 @@ function BookingPanel({
           {savingStatus ? 'Saving…' : 'Save'}
         </button>
       </div>
+
+      {/* Contract — Media Projects. Shows when terms exist OR a plan exists
+          (a plan with no terms still wants the agree-state visible). The
+          edit control writes contract_terms via PATCH. For legacy bookings
+          with neither plan nor terms, the manager can add a plan from the
+          installments section below; the bare edit-terms affordance lives
+          inside that panel so a no-plan/no-terms booking stays clean. */}
+      {(hasPlan || !!booking.contract_terms) && (
+        <ProjectContractPanel
+          bookingId={booking.id}
+          contractTerms={booking.contract_terms}
+          contractAgreedAt={booking.contract_agreed_at}
+          onChange={onChange}
+        />
+      )}
+
+      {/* Installment plan — Media Projects. Renders the schedule table with
+          per-stint Send link / Resend / Record payment when a plan exists,
+          and a "set plan" editor when there is none. Legacy bookings simply
+          show the set-plan affordance (collapsed) and keep their legacy
+          money buttons above — nothing else changes. */}
+      <InstallmentsSection
+        bookingId={booking.id}
+        installments={installments}
+        loading={loadingInstallments}
+        totalCents={total}
+        paidCents={paid}
+        contractAgreedAt={booking.contract_agreed_at}
+        hasContractTerms={!!booking.contract_terms}
+        isTest={booking.is_test === true}
+        onChange={() => {
+          loadInstallments();
+          onChange();
+        }}
+      />
 
       {/* Per-component completion checkboxes */}
       {slots.length > 0 && (
@@ -1718,6 +1843,681 @@ interface OfferingOption {
   active: boolean;
 }
 
+// Dollars string → integer cents. Mirrors the rest of this file (Math.round
+// on dollars*100) so editor + project total stay cents-exact.
+function dollarsToCents(s: string): number {
+  return Math.round((Number(s) || 0) * 100);
+}
+
+// ============================================================
+// Installment plan editor — shared by the create flow + the
+// detail "set/replace plan" surface
+// ============================================================
+//
+// Pure, controlled editor. The parent owns the lines + the project total
+// (in cents) and decides what to do on submit. We surface the running sum,
+// the diff vs total, and whether the plan is balanced so the parent can
+// gate its submit button. Amounts are typed in dollars and converted at
+// the boundary — the server only ever sees integer cents.
+
+function planLinesSumCents(lines: PlanLine[]): number {
+  return lines.reduce((acc, l) => acc + dollarsToCents(l.amountDollars), 0);
+}
+
+function InstallmentPlanEditor({
+  lines,
+  setLines,
+  totalCents,
+  disabled,
+}: {
+  lines: PlanLine[];
+  setLines: (next: PlanLine[]) => void;
+  totalCents: number;
+  disabled?: boolean;
+}) {
+  const sum = planLinesSumCents(lines);
+  const diff = sum - totalCents;
+  const balanced = lines.length > 0 && diff === 0;
+
+  function update(idx: number, patch: Partial<PlanLine>) {
+    setLines(lines.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  }
+  function add() {
+    // Default the new line's amount to the outstanding (so a 1-line plan
+    // auto-balances to the total). Floor at 0.
+    const remaining = Math.max(0, totalCents - sum);
+    setLines([
+      ...lines,
+      { label: '', amountDollars: (remaining / 100).toFixed(2), dueDate: '' },
+    ]);
+  }
+  function remove(idx: number) {
+    setLines(lines.filter((_, i) => i !== idx));
+  }
+
+  return (
+    <div className="space-y-2">
+      {lines.length > 0 && (
+        <ul className="space-y-2">
+          {lines.map((l, i) => (
+            <li key={i} className="flex items-center gap-2">
+              <span className="font-mono text-[10px] text-black/40 w-4 shrink-0">{i + 1}</span>
+              <input
+                type="text"
+                value={l.label}
+                onChange={(e) => update(i, { label: e.target.value })}
+                placeholder="Label (e.g. Deposit)"
+                disabled={disabled}
+                className="flex-1 min-w-0 px-2 py-1.5 border border-black/20 bg-white text-sm disabled:bg-black/5"
+              />
+              <div className="relative shrink-0">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 font-mono text-xs text-black/40">$</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={l.amountDollars}
+                  onChange={(e) => update(i, { amountDollars: e.target.value })}
+                  disabled={disabled}
+                  className="w-24 pl-5 pr-2 py-1.5 border border-black/20 bg-white text-sm disabled:bg-black/5"
+                />
+              </div>
+              <input
+                type="date"
+                value={l.dueDate}
+                onChange={(e) => update(i, { dueDate: e.target.value })}
+                disabled={disabled}
+                title="Due date (optional)"
+                className="w-36 shrink-0 px-2 py-1.5 border border-black/20 bg-white text-xs font-mono disabled:bg-black/5"
+              />
+              <button
+                type="button"
+                onClick={() => remove(i)}
+                disabled={disabled}
+                className="text-black/40 hover:text-red-700 disabled:opacity-30 shrink-0"
+                aria-label="Remove installment"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button
+        type="button"
+        onClick={add}
+        disabled={disabled}
+        className="font-mono text-xs px-3 py-1.5 border border-black/30 hover:bg-black hover:text-white disabled:opacity-30 inline-flex items-center gap-1.5"
+      >
+        <Plus className="w-3 h-3" />
+        Add installment
+      </button>
+      {lines.length > 0 && (
+        <div
+          className={`flex items-center justify-between px-3 py-2 font-mono text-xs border ${
+            balanced
+              ? 'bg-green-50 border-green-200 text-green-900'
+              : 'bg-amber-50 border-amber-200 text-amber-900'
+          }`}
+        >
+          <span>
+            Plan total: <span className="font-bold tabular-nums">{formatCents(sum)}</span>
+            {' / '}
+            <span className="tabular-nums">{formatCents(totalCents)}</span>
+          </span>
+          <span className="font-bold">
+            {balanced
+              ? 'Balanced ✓'
+              : diff > 0
+              ? `${formatCents(diff)} over`
+              : `${formatCents(-diff)} short`}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// Project contract panel (manager) — terms display + agreed badge + edit
+// ============================================================
+//
+// Shows the contract terms the artist agrees to before the first payment.
+// Editing PATCHes contract_terms (string|null) and does NOT touch the
+// artist's prior agreement. The badge reflects contract_agreed_at.
+
+function ProjectContractPanel({
+  bookingId,
+  contractTerms,
+  contractAgreedAt,
+  onChange,
+}: {
+  bookingId: string;
+  contractTerms: string | null;
+  contractAgreedAt: string | null;
+  onChange: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(contractTerms ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraft(contractTerms ?? '');
+  }, [contractTerms]);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/media/bookings/${bookingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contract_terms: draft.trim() || null }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Could not save contract terms');
+        return;
+      }
+      setEditing(false);
+      onChange();
+    } catch (e) {
+      console.error('[contract-panel] save error:', e);
+      setError('Network error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="border border-black/10 bg-white p-4">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <p className="font-mono text-[11px] uppercase tracking-wider font-bold text-black/60 inline-flex items-center gap-1.5">
+          <FileText className="w-3 h-3" />
+          Contract
+        </p>
+        <div className="flex items-center gap-2">
+          {contractAgreedAt ? (
+            <span className="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 bg-green-100 text-green-900">
+              Agreed ✓ {fmtStampDate(contractAgreedAt)}
+            </span>
+          ) : (
+            <span className="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 bg-amber-100 text-amber-900">
+              Awaiting agreement
+            </span>
+          )}
+          {!editing && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="font-mono text-[11px] text-black/60 hover:text-black inline-flex items-center gap-1"
+            >
+              <Pencil className="w-3 h-3" />
+              Edit terms
+            </button>
+          )}
+        </div>
+      </div>
+
+      {editing ? (
+        <div className="space-y-2">
+          <textarea
+            rows={5}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Scope, revisions, usage rights, cancellation policy…"
+            className="w-full px-3 py-2 border border-black/20 bg-white text-sm resize-y"
+          />
+          {contractAgreedAt && draft.trim() !== (contractTerms ?? '').trim() && (
+            <p className="font-mono text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-2 py-1.5">
+              The artist already agreed to the prior terms. Editing does not reset their
+              agreement — re-confirm with them if the change is material.
+            </p>
+          )}
+          {error && (
+            <p className="font-mono text-xs text-red-700 inline-flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" /> {error}
+            </p>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving}
+              className="font-mono text-xs px-3 py-1.5 bg-black text-white hover:bg-accent hover:text-black disabled:opacity-30 inline-flex items-center gap-1"
+            >
+              <Save className="w-3 h-3" />
+              {saving ? 'Saving…' : 'Save terms'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(false);
+                setDraft(contractTerms ?? '');
+                setError(null);
+              }}
+              className="font-mono text-xs px-3 py-1.5 text-black/50 hover:text-black"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : contractTerms ? (
+        <p className="text-sm whitespace-pre-wrap text-black/85">{contractTerms}</p>
+      ) : (
+        <p className="font-mono text-xs text-black/50">
+          No contract terms yet. Click <span className="font-bold">Edit terms</span> to add them —
+          the artist must agree before paying.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// Installments section (manager) — schedule table + per-stint actions,
+// plus a "set plan" editor for bookings without one
+// ============================================================
+
+function InstallmentsSection({
+  bookingId,
+  installments,
+  loading,
+  totalCents,
+  paidCents,
+  contractAgreedAt,
+  hasContractTerms,
+  isTest,
+  onChange,
+}: {
+  bookingId: string;
+  installments: MediaInstallment[];
+  loading: boolean;
+  totalCents: number;
+  paidCents: number;
+  contractAgreedAt: string | null;
+  hasContractTerms: boolean;
+  isTest: boolean;
+  onChange: () => void;
+}) {
+  const hasPlan = installments.length > 0;
+  const [showEditor, setShowEditor] = useState(false);
+  const [lines, setLines] = useState<PlanLine[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const sum = planLinesSumCents(lines);
+  const balanced = lines.length > 0 && sum === totalCents;
+
+  async function savePlan() {
+    setError(null);
+    for (let i = 0; i < lines.length; i++) {
+      if (!lines[i].label.trim()) {
+        setError(`Installment #${i + 1} needs a label.`);
+        return;
+      }
+    }
+    if (!balanced) {
+      const diff = sum - totalCents;
+      setError(
+        `Installments must sum to ${formatCents(totalCents)}. Currently ${formatCents(sum)} — ` +
+          `${diff > 0 ? `${formatCents(diff)} over` : `${formatCents(-diff)} short`}.`,
+      );
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/media/bookings/${bookingId}/installments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          installments: lines.map((l) => ({
+            label: l.label.trim(),
+            amount_cents: dollarsToCents(l.amountDollars),
+            due_date: l.dueDate || undefined,
+          })),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Could not save plan');
+        return;
+      }
+      setShowEditor(false);
+      setLines([]);
+      onChange();
+    } catch (e) {
+      console.error('[installments-section] save plan error:', e);
+      setError('Network error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <p className="font-mono text-xs text-black/50">Loading installment plan…</p>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <p className="font-mono text-[11px] uppercase tracking-wider font-bold text-black/60 inline-flex items-center gap-1.5">
+          <ListChecks className="w-3 h-3" />
+          {hasPlan ? `Installment plan (${installments.length})` : 'Installment plan'}
+        </p>
+        {hasPlan && (
+          <span className="font-mono text-[11px] text-black/60">
+            Paid <span className="font-bold text-green-700 tabular-nums">{formatCents(paidCents)}</span>
+            {' / '}
+            <span className="tabular-nums">{formatCents(totalCents)}</span>
+          </span>
+        )}
+      </div>
+
+      {hasPlan ? (
+        <div className="border border-black/10 bg-white divide-y divide-black/10">
+          {installments.map((inst) => (
+            <InstallmentRow
+              key={inst.id}
+              bookingId={bookingId}
+              installment={inst}
+              contractAgreedAt={contractAgreedAt}
+              isTest={isTest}
+              onChange={onChange}
+            />
+          ))}
+        </div>
+      ) : showEditor ? (
+        <div className="border border-black/10 bg-white p-4 space-y-2">
+          <p className="font-mono text-[10px] text-black/50">
+            Add stints summing to the project total ({formatCents(totalCents)}). Sending links
+            and recording payments happens per-stint once the plan is set.
+          </p>
+          <InstallmentPlanEditor
+            lines={lines}
+            setLines={setLines}
+            totalCents={totalCents}
+            disabled={saving}
+          />
+          {error && (
+            <p className="font-mono text-xs text-red-700 inline-flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" /> {error}
+            </p>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={savePlan}
+              disabled={saving || !balanced}
+              title={!balanced ? 'Installments must sum to the project total' : undefined}
+              className="font-mono text-xs px-3 py-1.5 bg-black text-white hover:bg-accent hover:text-black disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1"
+            >
+              <Save className="w-3 h-3" />
+              {saving ? 'Saving…' : 'Save plan'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowEditor(false);
+                setLines([]);
+                setError(null);
+              }}
+              className="font-mono text-xs px-3 py-1.5 text-black/50 hover:text-black"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="border border-dashed border-black/15 p-3 flex items-center justify-between gap-2">
+          <p className="font-mono text-xs text-black/50">
+            No installment plan. This booking uses the standard deposit / remainder flow above.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setShowEditor(true);
+              setLines([
+                { label: 'Deposit', amountDollars: (totalCents / 100).toFixed(2), dueDate: '' },
+              ]);
+            }}
+            disabled={totalCents <= 0}
+            title={totalCents <= 0 ? 'Set a project total first (Adjust price)' : undefined}
+            className="font-mono text-xs px-3 py-1.5 border border-black/30 hover:bg-black hover:text-white disabled:opacity-30 inline-flex items-center gap-1.5 shrink-0"
+          >
+            <Plus className="w-3 h-3" />
+            Add plan
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// One installment row in the manager's schedule table. Per-stint actions:
+// Send link / Resend (send-link route; surfaces the contract gate inline)
+// and Record payment (method picker → record-payment route).
+function InstallmentRow({
+  bookingId,
+  installment,
+  contractAgreedAt,
+  isTest,
+  onChange,
+}: {
+  bookingId: string;
+  installment: MediaInstallment;
+  contractAgreedAt: string | null;
+  isTest: boolean;
+  onChange: () => void;
+}) {
+  const [busy, setBusy] = useState<null | 'link' | 'record'>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showRecord, setShowRecord] = useState(false);
+  const [method, setMethod] = useState<'cash' | 'venmo' | 'check' | 'other'>('cash');
+  const [note, setNote] = useState('');
+  const [linkResult, setLinkResult] = useState<string | null>(null);
+
+  const isPaid = installment.status === 'paid';
+  const isVoid = installment.status === 'void';
+  const linkSent = installment.status === 'link_sent';
+
+  async function sendLink() {
+    setBusy('link');
+    setError(null);
+    setLinkResult(null);
+    try {
+      const res = await fetch(
+        `/api/admin/media/bookings/${bookingId}/installments/${installment.id}/send-link`,
+        { method: 'POST' },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data.code === 'contract_not_agreed') {
+          setError('Artist must agree to the contract first.');
+        } else {
+          setError(data.error || 'Could not send link');
+        }
+        return;
+      }
+      setLinkResult(data.resend ? 'Fresh link emailed.' : 'Payment link emailed.');
+      onChange();
+    } catch (e) {
+      console.error('[installment-row] send-link error:', e);
+      setError('Network error');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function recordPayment() {
+    setBusy('record');
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/admin/media/bookings/${bookingId}/installments/${installment.id}/record-payment`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method, note: note.trim() || undefined }),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Could not record payment');
+        return;
+      }
+      setShowRecord(false);
+      onChange();
+    } catch (e) {
+      console.error('[installment-row] record-payment error:', e);
+      setError('Network error');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-sm truncate">{installment.label}</span>
+            <span
+              className={`font-mono text-[10px] uppercase tracking-wider px-1.5 py-0.5 ${
+                isPaid
+                  ? 'bg-green-100 text-green-900'
+                  : linkSent
+                  ? 'bg-blue-100 text-blue-900'
+                  : isVoid
+                  ? 'bg-black/10 text-black/50'
+                  : 'bg-amber-100 text-amber-900'
+              }`}
+            >
+              {installment.status}
+            </span>
+          </div>
+          <p className="font-mono text-[11px] text-black/50">
+            {installment.due_date && <>due {fmtStampDate(installment.due_date)} · </>}
+            {isPaid && installment.paid_at && (
+              <>
+                paid {fmtStampDate(installment.paid_at)}
+                {installment.paid_method && ` · ${installment.paid_method}`}
+              </>
+            )}
+            {!isPaid && linkSent && 'link sent to artist'}
+            {!isPaid && !linkSent && !isVoid && 'awaiting link'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="font-bold text-sm tabular-nums">{formatCents(installment.amount_cents)}</span>
+          {!isPaid && !isVoid && (
+            <>
+              <button
+                type="button"
+                onClick={sendLink}
+                disabled={busy !== null || isTest}
+                title={isTest ? 'Test bookings cannot send real payment links' : undefined}
+                className="font-mono text-[11px] px-2.5 py-1 border border-black/30 hover:bg-black hover:text-white disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1"
+              >
+                <Send className="w-3 h-3" />
+                {busy === 'link' ? '…' : linkSent ? 'Resend' : 'Send link'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRecord((s) => !s);
+                  setError(null);
+                }}
+                disabled={busy !== null || isTest}
+                title={isTest ? 'Test bookings cannot record real payments' : undefined}
+                className="font-mono text-[11px] px-2.5 py-1 border border-black/30 hover:bg-black hover:text-white disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1"
+              >
+                <Banknote className="w-3 h-3" />
+                Record
+              </button>
+            </>
+          )}
+          {installment.stripe_payment_link_url && !isPaid && (
+            <a
+              href={installment.stripe_payment_link_url}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono text-[11px] text-black/50 hover:text-accent inline-flex items-center gap-1"
+              title="Open the current Stripe link"
+            >
+              <LinkIcon className="w-3 h-3" />
+              link
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Contract gate hint — only when there's an unsent stint and no agreement */}
+      {!isPaid && !isVoid && !contractAgreedAt && (
+        <p className="font-mono text-[10px] text-amber-800 mt-1">
+          Artist hasn&apos;t agreed to the contract yet — sending a link will be blocked until they do.
+        </p>
+      )}
+
+      {linkResult && (
+        <p className="font-mono text-[10px] text-green-700 mt-1">{linkResult}</p>
+      )}
+      {error && (
+        <p className="font-mono text-[10px] text-red-700 mt-1 inline-flex items-center gap-1">
+          <AlertCircle className="w-3 h-3" /> {error}
+        </p>
+      )}
+
+      {showRecord && (
+        <div className="mt-2 p-2.5 bg-black/[0.03] border border-black/10 space-y-2">
+          <div className="flex flex-wrap gap-1.5">
+            {(['cash', 'venmo', 'check', 'other'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMethod(m)}
+                className={`font-mono text-[11px] px-2.5 py-1 border ${
+                  method === m ? 'bg-black text-white border-black' : 'border-black/20 hover:bg-black/5'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Note (optional)"
+            className="w-full px-2 py-1 border border-black/20 bg-white text-sm"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={recordPayment}
+              disabled={busy !== null}
+              className="font-mono text-[11px] px-3 py-1 bg-black text-white hover:bg-accent hover:text-black disabled:opacity-30 inline-flex items-center gap-1"
+            >
+              <CheckCircle2 className="w-3 h-3" />
+              {busy === 'record' ? 'Recording…' : `Mark paid (${formatCents(installment.amount_cents)})`}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowRecord(false)}
+              className="font-mono text-[11px] text-black/50 hover:text-black"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ManualBookingModal({
   onClose,
   onSuccess,
@@ -1736,6 +2536,12 @@ function ManualBookingModal({
   const [offeringOpts, setOfferingOpts] = useState<OfferingOption[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(true);
 
+  // Buyer selection mode: pick an existing customer, or invite by email.
+  // When prefilled (Add item for buyer), the buyer is locked → existing.
+  const [buyerMode, setBuyerMode] = useState<'existing' | 'email'>('existing');
+  const [buyerEmail, setBuyerEmail] = useState('');
+  const [buyerName, setBuyerName] = useState('');
+
   // Form state
   const [userId, setUserId] = useState(prefillUserId || '');
   const [offeringId, setOfferingId] = useState('');
@@ -1747,6 +2553,11 @@ function ManualBookingModal({
   const [note, setNote] = useState('');
   const [phone, setPhone] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
+
+  // Media Projects: per-project contract terms + optional installment plan.
+  // Empty terms + zero plan lines == a plain legacy booking (unchanged path).
+  const [contractTerms, setContractTerms] = useState('');
+  const [planLines, setPlanLines] = useState<PlanLine[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1808,24 +2619,66 @@ function ManualBookingModal({
     );
   });
 
+  // Plan presence + balance. When the manager adds installment lines the
+  // project becomes a plan project: we create an unpaid shell (method 'plan')
+  // then POST the installments. With zero lines it's a plain legacy booking
+  // using the existing cash/check/other/link path — completely unchanged.
+  const hasPlan = planLines.length > 0;
+  const cents = dollarsToCents(priceDollars);
+  const planSum = planLinesSumCents(planLines);
+  const planBalanced = hasPlan && planSum === cents;
+
   async function submit() {
     setError(null);
-    if (!userId) return setError('Pick a customer.');
+    // Buyer: existing selection OR a valid email to invite.
+    if (buyerMode === 'existing' && !userId) return setError('Pick a customer.');
+    if (buyerMode === 'email' && !/.+@.+\..+/.test(buyerEmail.trim())) {
+      return setError('Enter a valid buyer email.');
+    }
     if (!offeringId) return setError('Pick an offering.');
-    const cents = Math.round((Number(priceDollars) || 0) * 100);
     if (!Number.isInteger(cents) || cents < 0) return setError('Price must be a non-negative integer.');
+
+    // Plan must balance to the project total exactly (cents).
+    if (hasPlan) {
+      for (let i = 0; i < planLines.length; i++) {
+        if (!planLines[i].label.trim()) {
+          return setError(`Installment #${i + 1} needs a label.`);
+        }
+      }
+      if (planSum !== cents) {
+        const diff = planSum - cents;
+        return setError(
+          `Installments must sum to the project total (${formatCents(cents)}). ` +
+            `Currently ${formatCents(planSum)} — ${diff > 0 ? `${formatCents(diff)} over` : `${formatCents(-diff)} short`}.`,
+        );
+      }
+    }
+
+    // For a plan project we never collect at create time — the method is
+    // forced to 'plan' (unpaid shell). Otherwise use the picked method.
+    const effectiveMethod = hasPlan ? 'plan' : paymentMethod;
 
     setSubmitting(true);
     try {
+      // Buyer field: locked prefill (user_id) wins; else mode-driven.
+      const buyerFields: Record<string, unknown> =
+        prefillUserId || buyerMode === 'existing'
+          ? { user_id: userId }
+          : {
+              buyer_email: buyerEmail.trim().toLowerCase(),
+              buyer_name: buyerName.trim() || undefined,
+            };
+
       const res = await fetch('/api/admin/media/bookings/manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: userId,
+          ...buyerFields,
           offering_id: offeringId,
           final_price_cents: cents,
-          paymentMethod,
-          collected_by: collectedBy.trim() || undefined,
+          paymentMethod: effectiveMethod,
+          contract_terms: contractTerms.trim() || undefined,
+          collected_by: !hasPlan ? collectedBy.trim() || undefined : undefined,
           note: note.trim() || undefined,
           customer_phone: phone.trim() || undefined,
         }),
@@ -1836,8 +2689,46 @@ function ManualBookingModal({
         setSubmitting(false);
         return;
       }
+
+      const newBookingId: string | undefined = data.bookingId || data.id;
+
+      // Step 2: if a plan was authored, attach it to the new booking.
+      if (hasPlan && newBookingId) {
+        const planRes = await fetch(
+          `/api/admin/media/bookings/${newBookingId}/installments`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              installments: planLines.map((l) => ({
+                label: l.label.trim(),
+                amount_cents: dollarsToCents(l.amountDollars),
+                due_date: l.dueDate || undefined,
+              })),
+            }),
+          },
+        );
+        if (!planRes.ok) {
+          const planData = await planRes.json().catch(() => ({}));
+          // The booking exists; the plan didn't attach. Surface it clearly —
+          // the manager can set the plan from the project detail panel.
+          setError(
+            `Project created, but the installment plan failed to save: ${
+              planData.error || 'unknown error'
+            }. Open the project and set the plan there.`,
+          );
+          setSubmitting(false);
+          return;
+        }
+      }
+
+      const invitedNote = data.artistInvited
+        ? ' A welcome / set-password email was sent to the new artist.'
+        : '';
       if (data.mode === 'link' && data.paymentUrl) {
-        setResult(`Booking created. Payment link sent to buyer: ${data.paymentUrl}`);
+        setResult(`Booking created. Payment link sent to buyer: ${data.paymentUrl}${invitedNote}`);
+      } else if (data.artistInvited) {
+        setResult(`Project created.${invitedNote}`);
       } else {
         onSuccess();
       }
@@ -1850,7 +2741,7 @@ function ManualBookingModal({
   }
 
   return (
-    <ModalShell title="New manual media booking" onClose={onClose}>
+    <ModalShell title={prefillUserId ? 'Add item for buyer' : 'New media project'} onClose={onClose}>
       {result ? (
         <div className="space-y-3">
           <p className="text-sm">{result}</p>
@@ -1878,27 +2769,68 @@ function ManualBookingModal({
           ) : (
             <div>
               <p className="font-mono text-[10px] uppercase tracking-wider text-black/50 mb-1">
-                Customer
+                Buyer
               </p>
-              <input
-                type="text"
-                value={customerSearch}
-                onChange={(e) => setCustomerSearch(e.target.value)}
-                placeholder="Search by name or email…"
-                className="w-full px-3 py-1.5 border border-black/20 bg-white text-sm mb-1"
-              />
-              <select
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                className="w-full px-3 py-1.5 border border-black/20 bg-white text-sm font-mono"
-              >
-                <option value="">— Pick a customer —</option>
-                {filteredCustomers.map((c) => (
-                  <option key={c.user_id} value={c.user_id}>
-                    {c.display_name || '(no name)'} · {c.email || '(no email)'}
-                  </option>
+              <div className="flex gap-2 mb-2">
+                {(['existing', 'email'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setBuyerMode(m)}
+                    className={`font-mono text-xs px-3 py-1.5 border ${
+                      buyerMode === m
+                        ? 'bg-black text-white border-black'
+                        : 'border-black/20 hover:bg-black/5'
+                    }`}
+                  >
+                    {m === 'existing' ? 'Existing customer' : 'Invite by email'}
+                  </button>
                 ))}
-              </select>
+              </div>
+              {buyerMode === 'existing' ? (
+                <>
+                  <input
+                    type="text"
+                    value={customerSearch}
+                    onChange={(e) => setCustomerSearch(e.target.value)}
+                    placeholder="Search by name or email…"
+                    className="w-full px-3 py-1.5 border border-black/20 bg-white text-sm mb-1"
+                  />
+                  <select
+                    value={userId}
+                    onChange={(e) => setUserId(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-black/20 bg-white text-sm font-mono"
+                  >
+                    <option value="">— Pick a customer —</option>
+                    {filteredCustomers.map((c) => (
+                      <option key={c.user_id} value={c.user_id}>
+                        {c.display_name || '(no name)'} · {c.email || '(no email)'}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <input
+                    type="email"
+                    value={buyerEmail}
+                    onChange={(e) => setBuyerEmail(e.target.value)}
+                    placeholder="artist@email.com"
+                    className="w-full px-3 py-1.5 border border-black/20 bg-white text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={buyerName}
+                    onChange={(e) => setBuyerName(e.target.value)}
+                    placeholder="Artist name (optional)"
+                    className="w-full px-3 py-1.5 border border-black/20 bg-white text-sm"
+                  />
+                  <p className="font-mono text-[10px] text-black/50">
+                    New email → we create the artist account + email a welcome / set-password
+                    link so they can log in and see this project. An existing email just attaches.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -1922,7 +2854,7 @@ function ManualBookingModal({
 
           <div>
             <p className="font-mono text-[10px] uppercase tracking-wider text-black/50 mb-1">
-              Price ($)
+              Project total ($)
             </p>
             <input
               type="number"
@@ -1937,38 +2869,79 @@ function ManualBookingModal({
             </p>
           </div>
 
+          {/* Contract terms — optional. Authored here so the artist can agree
+              before the first payment. Leave blank for no contract. */}
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-wider text-black/50 mb-1">
-              Payment method
+            <p className="font-mono text-[10px] uppercase tracking-wider text-black/50 mb-1 inline-flex items-center gap-1.5">
+              <FileText className="w-3 h-3" />
+              Contract terms (optional)
             </p>
-            <div className="flex flex-wrap gap-2">
-              {/* Email link is the primary card-payment path for manual
-                  bookings — admin creates the booking + Stripe emails the
-                  buyer a payment link. Venmo was dropped per Cole; cash /
-                  check / other cover offline collection. */}
-              {(['cash', 'check', 'other', 'link'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setPaymentMethod(m)}
-                  className={`font-mono text-xs px-3 py-1.5 border ${
-                    paymentMethod === m
-                      ? 'bg-black text-white border-black'
-                      : 'border-black/20 hover:bg-black/5'
-                  }`}
-                >
-                  {m === 'link' ? 'Email link' : m}
-                </button>
-              ))}
-            </div>
-            <p className="font-mono text-[10px] text-black/50 mt-1">
-              {paymentMethod === 'link'
-                ? 'Creates a Stripe Payment Link, emails buyer, marks booking as inquiry until paid.'
-                : 'Marks booking fully paid; cash flows through the cash ledger.'}
-            </p>
+            <textarea
+              rows={4}
+              value={contractTerms}
+              onChange={(e) => setContractTerms(e.target.value)}
+              placeholder="Scope, revisions, usage rights, cancellation policy… The artist agrees to this before paying."
+              className="w-full px-3 py-1.5 border border-black/20 bg-white text-sm resize-y"
+            />
           </div>
 
-          {paymentMethod !== 'link' && (
+          {/* Installment plan — optional. Add lines to turn this into a plan
+              project (artist self-pays each stint after agreeing). No lines =
+              a plain booking that uses the payment method below. */}
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-wider text-black/50 mb-2 inline-flex items-center gap-1.5">
+              <ListChecks className="w-3 h-3" />
+              Installment plan (optional)
+            </p>
+            <InstallmentPlanEditor
+              lines={planLines}
+              setLines={setPlanLines}
+              totalCents={cents}
+              disabled={submitting}
+            />
+            {hasPlan && (
+              <p className="font-mono text-[10px] text-black/50 mt-1">
+                Plan project: created unpaid. After the artist agrees to the contract, send each
+                stint&apos;s payment link from the project detail.
+              </p>
+            )}
+          </div>
+
+          {/* Payment method — only for plain (no-plan) bookings. */}
+          {!hasPlan && (
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-wider text-black/50 mb-1">
+                Payment method
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {/* Email link is the primary card-payment path for manual
+                    bookings — admin creates the booking + Stripe emails the
+                    buyer a payment link. Venmo was dropped per Cole; cash /
+                    check / other cover offline collection. */}
+                {(['cash', 'check', 'other', 'link'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setPaymentMethod(m)}
+                    className={`font-mono text-xs px-3 py-1.5 border ${
+                      paymentMethod === m
+                        ? 'bg-black text-white border-black'
+                        : 'border-black/20 hover:bg-black/5'
+                    }`}
+                  >
+                    {m === 'link' ? 'Email link' : m}
+                  </button>
+                ))}
+              </div>
+              <p className="font-mono text-[10px] text-black/50 mt-1">
+                {paymentMethod === 'link'
+                  ? 'Creates a Stripe Payment Link, emails buyer, marks booking as inquiry until paid.'
+                  : 'Marks booking fully paid; cash flows through the cash ledger.'}
+              </p>
+            </div>
+          )}
+
+          {!hasPlan && paymentMethod !== 'link' && (
             <div>
               <p className="font-mono text-[10px] uppercase tracking-wider text-black/50 mb-1">
                 Who collected (optional)
@@ -2019,10 +2992,17 @@ function ManualBookingModal({
             <button
               type="button"
               onClick={submit}
-              disabled={submitting}
-              className="font-mono text-xs px-4 py-2 bg-black text-white hover:bg-accent hover:text-black disabled:opacity-30"
+              disabled={submitting || (hasPlan && !planBalanced)}
+              title={hasPlan && !planBalanced ? 'Installments must sum to the project total' : undefined}
+              className="font-mono text-xs px-4 py-2 bg-black text-white hover:bg-accent hover:text-black disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              {submitting ? 'Creating…' : paymentMethod === 'link' ? 'Create + email link' : 'Create booking'}
+              {submitting
+                ? 'Creating…'
+                : hasPlan
+                ? 'Create project + plan'
+                : paymentMethod === 'link'
+                ? 'Create + email link'
+                : 'Create booking'}
             </button>
             <button
               type="button"
@@ -2164,6 +3144,14 @@ function formatAuditAction(action: string): string {
     case 'manual_created_check': return 'Manual booking — check';
     case 'manual_created_other': return 'Manual booking — other';
     case 'manual_created_link': return 'Manual booking — Stripe link';
+    case 'manual_created_plan': return 'Project created — installment plan';
+    case 'payment_plan_set': return 'Installment plan set';
+    case 'installment_link_sent': return 'Installment link emailed';
+    case 'installment_link_resent': return 'Installment link RE-sent';
+    case 'installment_paid_manual': return 'Installment paid (manual)';
+    case 'installment_paid_card': return 'Installment paid (card)';
+    case 'contract_terms_edited': return 'Contract terms edited';
+    case 'contract_agreed': return 'Contract agreed by artist';
     case 'cart_item_added': return 'Cart item added';
     case 'cart_item_removed': return 'Cart item removed';
     default: return action;
