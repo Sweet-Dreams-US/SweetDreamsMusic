@@ -46,7 +46,7 @@ export async function POST(
   // ── Load booking (for buyer + contract gate + test guard) ──────────
   const { data: bookingRow, error: bErr } = await service
     .from('media_bookings')
-    .select('id, user_id, is_test, contract_agreed_at')
+    .select('id, user_id, is_test, contract_agreed_at, manager_agreed_at')
     .eq('id', id)
     .maybeSingle();
   if (bErr || !bookingRow) {
@@ -57,6 +57,7 @@ export async function POST(
     user_id: string;
     is_test: boolean | null;
     contract_agreed_at: string | null;
+    manager_agreed_at: string | null;
   };
   if (booking.is_test) {
     return NextResponse.json(
@@ -65,7 +66,20 @@ export async function POST(
     );
   }
 
-  // ── Contract gate ──────────────────────────────────────────────────
+  // ── Contract gate — BOTH signatures required ───────────────────────
+  // A payment link can only go out once the contract is fully executed: the
+  // manager signs on send (manager_agreed_at) AND the artist agrees
+  // (contract_agreed_at). Either missing → block.
+  if (!booking.manager_agreed_at) {
+    return NextResponse.json(
+      {
+        error:
+          'Send the contract (manager signature) before any payment link can go out.',
+        code: 'contract_not_agreed',
+      },
+      { status: 409 },
+    );
+  }
   if (!booking.contract_agreed_at) {
     return NextResponse.json(
       {

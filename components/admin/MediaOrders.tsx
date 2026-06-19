@@ -18,6 +18,7 @@
 // admin doing ops, this is fine — no need for optimistic updates yet.
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
   ChevronDown,
   ChevronRight,
@@ -160,7 +161,6 @@ export default function MediaOrders() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [showManualModal, setShowManualModal] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -203,15 +203,18 @@ export default function MediaOrders() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowManualModal(true)}
-            className="font-mono text-xs uppercase tracking-wider px-3 py-2 bg-black text-white hover:bg-accent hover:text-black inline-flex items-center gap-1.5"
-            title="Create a media project (buyer, scope, contract, and an optional installment plan) or a one-off booking"
+          {/* New Project → the full-page CONTRACT BUILDER (client, shoots,
+              priced deliverables, payment schedule, terms → send for signature),
+              not the cramped modal. The modal still backs "Add item for buyer"
+              on an existing order below. */}
+          <Link
+            href="/media-team/contracts/new"
+            className="font-mono text-xs uppercase tracking-wider px-3 py-2 bg-black text-white hover:bg-accent hover:text-black inline-flex items-center gap-1.5 no-underline"
+            title="Build a media project as a contract: client, shoots, priced deliverables, payment schedule, then send to the artist for signature"
           >
             <Plus className="w-3 h-3" />
             New project
-          </button>
+          </Link>
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
@@ -226,16 +229,6 @@ export default function MediaOrders() {
           </select>
         </div>
       </div>
-
-      {showManualModal && (
-        <ManualBookingModal
-          onClose={() => setShowManualModal(false)}
-          onSuccess={() => {
-            setShowManualModal(false);
-            refresh();
-          }}
-        />
-      )}
 
       {loading ? (
         <p className="font-mono text-sm text-black/50">Loading…</p>

@@ -76,6 +76,17 @@ export default async function OrderDetailPage({
       vibe?: string | null;
       release_date?: string | null;
       notes?: string | null;
+      // Contract builder: penciled-in shoots + finalize stamp.
+      planned_shoots?: Array<{
+        date: string;
+        start_time: string;
+        duration_hours: number;
+        location: 'studio' | 'external';
+        external_location_text?: string | null;
+        engineer_name?: string | null;
+        session_kind?: string | null;
+      }>;
+      contract_finalized_at?: string | null;
     } | null;
     final_price_cents: number;
     deposit_cents: number | null;
@@ -83,6 +94,7 @@ export default async function OrderDetailPage({
     final_paid_at: string | null;
     contract_terms: string | null;
     contract_agreed_at: string | null;
+    manager_agreed_at: string | null;
     is_test: boolean | null;
     component_status: Record<string, {
       completed?: boolean;
@@ -211,6 +223,17 @@ export default async function OrderDetailPage({
               bookingId={booking.id}
               contractTerms={booking.contract_terms}
               contractAgreedAt={booking.contract_agreed_at}
+              managerAgreedAt={booking.manager_agreed_at}
+              contractFinalizedAt={booking.project_details?.contract_finalized_at ?? null}
+              plannedShoots={(booking.project_details?.planned_shoots ?? []).map((s) => ({
+                date: s.date,
+                start_time: s.start_time,
+                duration_hours: s.duration_hours,
+                location: s.location,
+                external_location_text: s.external_location_text ?? null,
+                engineer_name: s.engineer_name ?? null,
+                session_kind: s.session_kind ?? null,
+              }))}
               installments={installments.map((i) => ({
                 id: i.id,
                 sort_order: i.sort_order,
