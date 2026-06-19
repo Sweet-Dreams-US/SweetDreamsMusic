@@ -52,7 +52,11 @@ import { resolveOrInviteArtist } from '@/lib/media-installments-server';
 
 const VALID_OFFLINE_METHODS = ['cash', 'venmo', 'check', 'other'] as const;
 type OfflineMethod = (typeof VALID_OFFLINE_METHODS)[number];
-type PaymentMethod = OfflineMethod | 'link';
+// 'plan' = create an UNPAID inquiry shell (no charge, no email) so an
+// installment plan can be layered on top. The per-stint payment links are
+// sent later from the project detail panel after the artist agrees to the
+// contract. Additive: cash/check/other/link paths are untouched.
+type PaymentMethod = OfflineMethod | 'link' | 'plan';
 
 export async function POST(request: NextRequest) {
   // ── Admin gate ─────────────────────────────────────────────────────
@@ -114,7 +118,7 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  const allMethods = [...VALID_OFFLINE_METHODS, 'link'] as const;
+  const allMethods = [...VALID_OFFLINE_METHODS, 'link', 'plan'] as const;
   if (!allMethods.includes(paymentMethod)) {
     return NextResponse.json(
       { error: `paymentMethod must be one of: ${allMethods.join(', ')}` },
@@ -165,6 +169,63 @@ export async function POST(request: NextRequest) {
   }
 
   const now = new Date().toISOString();
+
+  // ── Branch: plan — UNPAID inquiry shell (installments layered on after) ──
+  // No charge, no email, no ledger entry. The caller (manager UI) POSTs the
+  // installment plan to /installments next, then sends per-stint links from
+  // the project detail panel once the artist agrees to the contract.
+  if (paymentMethod === 'plan') {
+    const { data: planRow, error: planErr } = await service
+      .from('media_bookings')
+      .insert({
+        offering_id: offeringId,
+        user_id: userId,
+        band_id: bandId,
+        status: 'inquiry',
+        configured_components: null,
+        project_details: projectDetails,
+        contract_terms: contractTerms,
+        final_price_cents: priceCents,
+        deposit_cents: priceCents,
+        actual_deposit_paid: 0,
+        notes_to_us: notesToUs,
+        customer_phone: customerPhone,
+        is_test: false,
+        created_by: user.email,
+      })
+      .select('id')
+      .single();
+    if (planErr || !planRow) {
+      console.error('[admin/media/bookings/manual] plan insert error:', planErr);
+      return NextResponse.json(
+        { error: `Could not create project: ${planErr?.message || 'unknown error'}` },
+        { status: 500 },
+      );
+    }
+    const bookingId = (planRow as { id: string }).id;
+
+    await service.from('media_booking_audit_log').insert({
+      booking_id: bookingId,
+      action: 'manual_created_plan',
+      performed_by: user.email,
+      details: {
+        offering_id: offeringId,
+        offering_title: offering.title,
+        final_price_cents: priceCents,
+        has_contract_terms: !!contractTerms,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      bookingId,
+      paymentMethod: 'plan',
+      mode: 'plan',
+      userId,
+      artistInvited: resolved.invited,
+      artistCreated: resolved.created,
+    });
+  }
 
   // ── Branch: offline (cash/venmo/check/other) — fully paid immediately
   if (paymentMethod !== 'link') {

@@ -25,6 +25,7 @@ import { getSessionUser } from '@/lib/auth';
 import { getUserBands } from '@/lib/bands-server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { getSessionsForBooking, getEngineerByUserId } from '@/lib/media-scheduling-server';
+import { getInstallmentsForBooking } from '@/lib/media-installments-server';
 import { SESSION_KIND_LABELS } from '@/lib/media-scheduling';
 import { formatCents } from '@/lib/utils';
 import { fmtStampDate, fmtStampDateTime, fmtStampTime } from '@/lib/studio-time';
@@ -33,6 +34,7 @@ import DashboardNav from '@/components/layout/DashboardNav';
 import CancelSessionButton from '@/components/media/CancelSessionButton';
 import MessageThread from '@/components/media/MessageThread';
 import PackageReview from '@/components/media/PackageReview';
+import MediaContractSchedule from '@/components/media/MediaContractSchedule';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +81,8 @@ export default async function OrderDetailPage({
     deposit_cents: number | null;
     actual_deposit_paid: number | null;
     final_paid_at: string | null;
+    contract_terms: string | null;
+    contract_agreed_at: string | null;
     is_test: boolean | null;
     component_status: Record<string, {
       completed?: boolean;
@@ -121,6 +125,13 @@ export default async function OrderDetailPage({
 
   // Sessions for this order
   const sessions = await getSessionsForBooking(id, service);
+
+  // Installments + contract — Media Projects. Empty list + null terms = a
+  // legacy booking, which renders exactly as before (BalancePanel below).
+  const installments = await getInstallmentsForBooking(id, service);
+  const hasPlan = installments.length > 0;
+  const hasContractTerms = !!booking.contract_terms;
+  const isProject = hasPlan || hasContractTerms;
 
   // Resolve engineer names for each session — small batch, one query
   // per unique engineer. For Phase D MVP this is fine; if we ever surface
@@ -191,11 +202,37 @@ export default async function OrderDetailPage({
       <section className="bg-white text-black py-12">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
 
+          {/* Media Projects — contract + installment schedule. Shown when a
+              plan and/or contract terms exist (and not a test order). This
+              supersedes the deposit/remainder BalancePanel for plan projects,
+              where "paid so far" is the sum of paid stints. */}
+          {isProject && !booking.is_test && (
+            <MediaContractSchedule
+              bookingId={booking.id}
+              contractTerms={booking.contract_terms}
+              contractAgreedAt={booking.contract_agreed_at}
+              installments={installments.map((i) => ({
+                id: i.id,
+                sort_order: i.sort_order,
+                label: i.label,
+                amount_cents: i.amount_cents,
+                due_date: i.due_date,
+                status: i.status,
+                stripe_payment_link_url: i.stripe_payment_link_url,
+                paid_at: i.paid_at,
+                paid_method: i.paid_method,
+              }))}
+              totalCents={booking.final_price_cents}
+            />
+          )}
+
           {/* Balance owed — Round 7. Shows what's been collected, what's
               still owed, and whether the order is fully paid. The team
               calls to plan + bills the remainder, so the buyer needs to
-              see the gap clearly. */}
-          {booking.final_price_cents > 0 && (
+              see the gap clearly. LEGACY path: hidden for plan/contract
+              projects (which show the schedule above) — unchanged otherwise.
+              Test orders always show this panel's test banner. */}
+          {booking.final_price_cents > 0 && (!isProject || booking.is_test) && (
             <BalancePanel
               total={booking.final_price_cents}
               depositPaid={booking.actual_deposit_paid ?? booking.deposit_cents ?? 0}
