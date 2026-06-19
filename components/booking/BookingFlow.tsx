@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Calendar, Clock, Home, User, Users, ChevronLeft, ChevronRight, AlertTriangle, Star, Video, Music2 } from 'lucide-react';
+import { Calendar, Clock, Home, User, Users, ChevronLeft, ChevronRight, AlertTriangle, Star, Music2 } from 'lucide-react';
 import { formatCents, cn, isSameDay, formatTime, parseTimeSlot, decimalToTimeStr } from '@/lib/utils';
 import { priceSessionFromConfig, priceBandFromConfig, hourSurchargeFromConfig, sweetSpotAddonCents, type StudioConfig } from '@/lib/studio-config';
+import { FREE_HOUR_VALUE_CENTS } from '@/lib/credit-redemption-pricing';
 
 // Self-serve band tiers. As of 2026-04-28 the 24h ("3 Days") tier is
 // self-serve bookable — checkout creates 3 linked bookings rows and the
@@ -195,14 +196,13 @@ export default function BookingFlow({
   }, [isBandMode, cfg, bandCfg, duration, startHour, isSameDayBooking, guestCount, sweetSpotAddon, sweetSpotFilmingDay]);
 
   // ── Free studio hour discount (display + submit) ───────────────────────
-  // Mirrors /api/booking/create + lib/credit-redemption-pricing: one base hour
-  // off at the SAME per-hour rate the base session uses (single-hour rate for a
-  // 1-hour booking, multi-hour rate otherwise), capped at the session total so
-  // surcharges are always paid. Solo only. The SERVER re-computes + re-validates
-  // this against the live credit; this is preview math, kept identical so the
-  // displayed total/deposit match what's charged.
+  // Mirrors /api/booking/create + lib/credit-redemption-pricing: a free hour is a
+  // FLAT $50 (FREE_HOUR_VALUE_CENTS) regardless of room/duration, capped at the
+  // session total so surcharges are always paid. Solo only. The SERVER re-computes
+  // + re-validates this against the live credit; this is preview math, kept
+  // identical so the displayed total/deposit match what's charged.
   const freeHourActive = freeHourEligible && applyFreeHour;
-  const freeHourApplicableRate = duration === 1 ? cfg.singleHourRateCents : cfg.hourlyRateCents;
+  const freeHourApplicableRate = FREE_HOUR_VALUE_CENTS;
   const freeHourDiscount = freeHourActive
     ? Math.min(freeHourApplicableRate, pricing.total)
     : 0;
@@ -752,9 +752,6 @@ export default function BookingFlow({
                 {duration === sweet4HoursFor(cfg) && (
                   <span className="text-accent ml-2 inline-flex items-center gap-1"><Star className="w-3 h-3" /> The Sweet 4!</span>
                 )}
-                {duration === 3 && (
-                  <span className="text-accent ml-2 inline-flex items-center gap-1"><Video className="w-3 h-3" /> Free short-form video included</span>
-                )}
               </>
             )}
           </h3>
@@ -798,30 +795,6 @@ export default function BookingFlow({
                   </button>
                 ))}
           </div>
-
-          {/* 2-hour → 3-hour upsell nudge: adding one hour unlocks a free
-              short-form video. Solo only — band packages already include
-              everything, and 24h bookings go through contact, not upsell. */}
-          {!isBandMode && duration === 2 && (
-            <div className="mt-4 bg-yellow-300 border-2 border-black p-4 flex items-start gap-3">
-              <Video className="w-5 h-5 text-black flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="font-mono text-sm font-bold uppercase tracking-wider mb-1">
-                  Add 1 hour — get a free short-form video
-                </p>
-                <p className="font-mono text-xs text-black/80 mb-3">
-                  Every 3-hour session includes a free short-form video deliverable for reels, shorts, or feed — shot while you record.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setDuration(3)}
-                  className="bg-black text-yellow-300 font-mono text-xs font-bold uppercase tracking-wider px-4 py-2 hover:bg-black/80 transition-colors"
-                >
-                  Bump to 3 hours
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Band-mode 3-day notice: when the 24hr tier is selected, the
               picked date acts as Day 1 — the studio is reserved for the

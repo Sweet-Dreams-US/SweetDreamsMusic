@@ -6,6 +6,7 @@ import { PRICING, SITE_URL, ROOM_LABELS, STUDIO_A_WEEKDAY_START, MAX_GUESTS, typ
 import { isSelfServeBandHours, parseTimeSlot, formatDuration } from '@/lib/utils';
 import { getStudioConfig } from '@/lib/studio-config-server';
 import { priceSessionFromConfig, priceBandFromConfig } from '@/lib/studio-config';
+import { FREE_HOUR_VALUE_CENTS } from '@/lib/credit-redemption-pricing';
 import { memberHasFlag } from '@/lib/bands';
 import { getMembership } from '@/lib/bands-server';
 import { isEngineerBlocked } from '@/lib/engineer-blocks';
@@ -287,12 +288,9 @@ export async function POST(request: NextRequest) {
           (c) => Number(c.hours_granted) - Number(c.hours_used) >= 1,
         ) as { id: string } | undefined;
         if (eligible) {
-          // Same per-hour rate the base session used: M==1 → single-hour rate,
-          // M>=2 → multi-hour rate. One hour of credit applied.
-          const applicableRate =
-            Number(duration) === 1 ? studioConfig.singleHourRateCents : studioConfig.hourlyRateCents;
-          // Never discount more than the base value present in this session.
-          freeHourDiscountCents = Math.min(applicableRate, pricing.total);
+          // A free hour is a FLAT $50 (FREE_HOUR_VALUE_CENTS) regardless of
+          // room/duration. Never discount more than the session total.
+          freeHourDiscountCents = Math.min(FREE_HOUR_VALUE_CENTS, pricing.total);
           freeHourCreditId = eligible.id;
         }
       } catch (e) {
