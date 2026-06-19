@@ -139,6 +139,39 @@ export async function POST(
     },
   });
 
+  // ── final_paid_at consistency ──────────────────────────────────────
+  // Recompute paid-so-far across all PAID installments; if the booking is now
+  // fully covered and isn't already stamped, stamp media_bookings.final_paid_at.
+  // Mirrors the webhook media_project_payment / media_installment logic so the
+  // "paid in full" signal is consistent across every paid path.
+  {
+    const { data: afterRows } = await service
+      .from('media_payment_installments')
+      .select('amount_cents, status')
+      .eq('booking_id', id);
+    const paidCents = ((afterRows ?? []) as Array<{ amount_cents: number; status: string }>)
+      .filter((r) => r.status === 'paid')
+      .reduce((sum, r) => sum + r.amount_cents, 0);
+
+    const { data: bookingNow } = await service
+      .from('media_bookings')
+      .select('final_price_cents, final_paid_at')
+      .eq('id', id)
+      .maybeSingle();
+    const bk = bookingNow as
+      | { final_price_cents: number; final_paid_at: string | null }
+      | null;
+    if (bk && paidCents >= bk.final_price_cents && !bk.final_paid_at) {
+      const { error: stampErr } = await service
+        .from('media_bookings')
+        .update({ final_paid_at: nowIso })
+        .eq('id', id);
+      if (stampErr) {
+        console.error('[installments/record-payment] final_paid_at stamp error:', stampErr);
+      }
+    }
+  }
+
   // ── Cash ledger (cash only) — same alt-pointer pattern as the
   //    booking-level record-payment route. Failure doesn't fail the
   //    payment recording; the audit log already has the trail.

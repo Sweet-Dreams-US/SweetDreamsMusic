@@ -90,6 +90,7 @@ export default function MediaContractSchedule({
   installments,
   totalCents,
   isTest,
+  hasScheduledSessions,
 }: {
   bookingId: string;
   contractTerms: string | null;
@@ -100,6 +101,10 @@ export default function MediaContractSchedule({
   installments: ArtistInstallment[];
   totalCents: number;
   isTest?: boolean;
+  // True when real calendar sessions (media_session_bookings) actually exist
+  // for this booking. We only claim "on the calendar" when this is true — a
+  // finalized contract with no scheduled sessions means a shoot was dropped.
+  hasScheduledSessions: boolean;
 }) {
   const router = useRouter();
   const [agreeing, setAgreeing] = useState(false);
@@ -220,17 +225,35 @@ export default function MediaContractSchedule({
           </p>
 
           {finalized ? (
-            <div className="border-2 border-green-300 bg-green-50 p-5">
-              <p className="font-mono text-sm font-bold text-green-900 inline-flex items-center gap-2">
-                <CalendarCheck className="w-5 h-5" />
-                Contract finalized — your booking is on the calendar
-              </p>
-              <p className="font-mono text-xs text-green-800/80 mt-2">
-                Both you and the Sweet Dreams team have signed. Your shoot dates
-                (shown in Production logistics above) are locked in — the team
-                blocks the studio time for you.
-              </p>
-            </div>
+            hasScheduledSessions ? (
+              <div className="border-2 border-green-300 bg-green-50 p-5">
+                <p className="font-mono text-sm font-bold text-green-900 inline-flex items-center gap-2">
+                  <CalendarCheck className="w-5 h-5" />
+                  Contract finalized — your booking is on the calendar
+                </p>
+                <p className="font-mono text-xs text-green-800/80 mt-2">
+                  Both you and the Sweet Dreams team have signed. Your shoot dates
+                  (shown in Production logistics above) are locked in — the team
+                  blocks the studio time for you.
+                </p>
+              </div>
+            ) : (
+              // Finalized, but no real calendar sessions exist — don't claim
+              // the booking is "on the calendar" (it isn't). The team still
+              // needs to confirm the shoot date(s).
+              <div className="border-2 border-green-300 bg-green-50 p-5">
+                <p className="font-mono text-sm font-bold text-green-900 inline-flex items-center gap-2">
+                  <CalendarCheck className="w-5 h-5" />
+                  Contract finalized — the Sweet Dreams team is confirming your
+                  shoot date(s)
+                </p>
+                <p className="font-mono text-xs text-green-800/80 mt-2">
+                  Both you and the Sweet Dreams team have signed. We&apos;re
+                  locking in your shoot date(s) now — you&apos;ll see them here
+                  once they&apos;re confirmed.
+                </p>
+              </div>
+            )
           ) : (
             <div className="border-2 border-black/10 grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-black/10">
               <SignatureCell

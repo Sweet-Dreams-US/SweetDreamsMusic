@@ -164,6 +164,9 @@ export default function ContractBuilder({
     bookingId: string;
     finalized: boolean;
     emailedArtist: boolean;
+    sessionsCreated: number;
+    warnings: string[];
+    plannedShootCount: number;
   } | null>(null);
 
   // ── Load offerings + clients (same endpoints the modal uses) ───────
@@ -372,7 +375,10 @@ export default function ContractBuilder({
     }
     if (!offeringId) return 'Pick an offering for this project.';
 
-    // Section 2 — shoots (optional, but if present must be complete).
+    // Section 2 — shoots (optional, but if present must be complete). Every
+    // shoot MUST have a media manager in charge — without one the shoot is
+    // silently dropped at finalize (no media_session_bookings row), so we
+    // reject it here.
     for (let i = 0; i < shoots.length; i++) {
       const s = shoots[i];
       if (!/^\d{4}-\d{2}-\d{2}$/.test(s.date)) return `Shoot #${i + 1}: pick a date.`;
@@ -381,6 +387,9 @@ export default function ContractBuilder({
       if (!Number.isFinite(dur) || dur <= 0) return `Shoot #${i + 1}: duration must be > 0.`;
       if (s.location === 'external' && !s.external_location_text.trim()) {
         return `Shoot #${i + 1}: external shoots need a location.`;
+      }
+      if (!s.manager_user_id.trim()) {
+        return `Shoot #${i + 1}: each shoot needs a media manager in charge.`;
       }
     }
 
@@ -526,6 +535,12 @@ export default function ContractBuilder({
         bookingId: newBookingId,
         finalized: !!sendData.finalized,
         emailedArtist: !!sendData.emailedArtist,
+        sessionsCreated:
+          typeof sendData.sessionsCreated === 'number' ? sendData.sessionsCreated : 0,
+        warnings: Array.isArray(sendData.warnings)
+          ? sendData.warnings.filter((w: unknown): w is string => typeof w === 'string')
+          : [],
+        plannedShootCount: shoots.length,
       });
     } catch (e) {
       console.error('[contract-builder] submit error:', e);
@@ -537,6 +552,20 @@ export default function ContractBuilder({
 
   // ── Success screen ─────────────────────────────────────────────────
   if (success) {
+    // A shoot was dropped if finalize reported warnings, OR it finalized with
+    // planned shoots yet created no calendar sessions. Surface this loudly so
+    // the manager never assumes a shoot landed on the calendar when it didn't.
+    const droppedShoot =
+      success.warnings.length > 0 ||
+      (success.finalized &&
+        success.plannedShootCount > 0 &&
+        success.sessionsCreated === 0);
+    const warningLines =
+      success.warnings.length > 0
+        ? success.warnings
+        : droppedShoot
+          ? ['A planned shoot was not scheduled — no calendar session was created.']
+          : [];
     return (
       <section className="bg-white text-black min-h-[70vh]">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
@@ -552,9 +581,32 @@ export default function ContractBuilder({
           </p>
           <p className="font-mono text-xs text-black/50 max-w-md mx-auto mb-8">
             {success.finalized
-              ? 'Both signatures are in — the project is finalized and its shoots are on the calendar.'
+              ? droppedShoot
+                ? 'Both signatures are in — the project is finalized. See the warning below: a shoot could not be scheduled.'
+                : 'Both signatures are in — the project is finalized and its shoots are on the calendar.'
               : 'Once the artist signs, both parties are confirmed → the booking goes final and the shoots land on the calendar.'}
           </p>
+
+          {/* Dropped-shoot warning — VISIBLE so the manager knows a shoot
+              didn't make it onto the calendar. */}
+          {warningLines.length > 0 && (
+            <div className="border-2 border-amber-300 bg-amber-50 text-amber-900 text-left p-4 mb-8 max-w-md mx-auto space-y-1.5">
+              <p className="font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                Shoot scheduling needs attention
+              </p>
+              <ul className="font-mono text-xs space-y-1">
+                {warningLines.map((w, i) => (
+                  <li key={i}>⚠ A shoot could not be scheduled: {w}</li>
+                ))}
+              </ul>
+              <p className="font-mono text-[11px] text-amber-900/70 pt-1">
+                Open the project in the Projects tab to fix the shoot and confirm
+                the date with the artist.
+              </p>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               href="/media-team"
@@ -771,7 +823,9 @@ export default function ContractBuilder({
                             }
                             className={inputCls}
                           >
-                            <option value="">— None —</option>
+                            <option value="" disabled>
+                              Select a manager…
+                            </option>
                             {mediaManagers.map((m) => (
                               <option key={m.user_id} value={m.user_id}>
                                 {m.name}
@@ -814,8 +868,21 @@ export default function ContractBuilder({
                   ))}
                 </div>
 
+                {mediaManagers.length === 0 && (
+                  <div className="flex items-start gap-2 p-4 border-2 border-amber-200 bg-amber-50 text-amber-900 font-mono text-xs">
+                    <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                    No media managers are on the roster yet — add one before
+                    planning shoots, since every shoot needs a manager in charge.
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between flex-wrap gap-3">
-                  <button type="button" onClick={addShoot} className={addBtnCls}>
+                  <button
+                    type="button"
+                    onClick={addShoot}
+                    disabled={mediaManagers.length === 0}
+                    className={`${addBtnCls} disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-black`}
+                  >
                     <Plus className="w-3.5 h-3.5" /> Add shoot
                   </button>
                   {shoots.length > 0 && (

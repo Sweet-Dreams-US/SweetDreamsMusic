@@ -2148,6 +2148,64 @@ export async function sendMediaPaymentLink(to: string, details: {
 }
 
 /**
+ * Media PAYMENT RECEIPT — sent to the buyer the moment a payment lands against
+ * their media project (self-serve project payment OR a single installment).
+ * A real paying customer expects a receipt: this confirms the amount that just
+ * settled, where they stand against the contract total (paid-so-far / total /
+ * remaining), and links back to the order page. Mirrors the structure of the
+ * other media senders (sendMediaPaymentLink / sendMediaContractFinalized).
+ *
+ * Fire-and-forget at the call site — a failed receipt must never block or roll
+ * back the payment that already landed.
+ */
+export async function sendMediaPaymentReceipt(to: string, details: {
+  buyerName: string;
+  amountPaidCents: number;
+  offeringTitle: string;
+  bookingId: string;
+  paidSoFarCents: number;
+  totalCents: number;
+  remainingCents: number;
+}) {
+  const orderUrl = `${SITE_URL}/dashboard/media/orders/${details.bookingId}`;
+  const fullyPaid = details.remainingCents <= 0;
+  await mirrorToThread({
+    userEmail: to,
+    mediaBookingId: details.bookingId,
+    kind: 'booking_notification',
+    subject: 'Payment received',
+    body: `We received your ${formatMoney(details.amountPaidCents)} payment toward ${details.offeringTitle}. ${
+      fullyPaid
+        ? 'Your project is now paid in full — thank you!'
+        : `Paid so far ${formatMoney(details.paidSoFarCents)} of ${formatMoney(details.totalCents)} — ${formatMoney(details.remainingCents)} remaining.`
+    }`,
+    attachments: [{ label: 'View order', url: orderUrl, kind: 'link' as const }],
+  });
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to,
+      subject: `Payment Received — ${details.offeringTitle}`,
+      html: wrap(
+        h1('PAYMENT RECEIVED') +
+        p(`Hey ${details.buyerName}, thanks — we received your payment toward <strong>${details.offeringTitle}</strong>.`) +
+        detailTable(
+          detail('Amount Paid', formatMoney(details.amountPaidCents)) +
+          detail('Paid So Far', `${formatMoney(details.paidSoFarCents)} of ${formatMoney(details.totalCents)}`) +
+          detail('Remaining Balance', fullyPaid ? 'Paid in full' : formatMoney(details.remainingCents)) +
+          detail('Order', `#${details.bookingId.slice(0, 8)}`)
+        ) +
+        (fullyPaid
+          ? p('Your project is now <strong style="color:#F4C430">paid in full</strong> — thank you! Production continues on your end deliverables.')
+          : p('You can pay the remaining balance any time from your order page.')) +
+        btn('VIEW ORDER', orderUrl) +
+        p('<span style="color:#666;font-size:11px">This is your receipt for the payment above, powered by Stripe. Questions? Just reply to this email.</span>')
+      ),
+    });
+  } catch (e) { console.error('Email error (media payment receipt):', e); }
+}
+
+/**
  * Media contract READY FOR SIGNATURE — sent to the artist the moment the
  * manager signs + sends the contract. The manager has already agreed
  * (manager_agreed_at); this asks the artist to review the terms and sign on

@@ -247,6 +247,7 @@ export default async function OrderDetailPage({
               }))}
               totalCents={booking.final_price_cents}
               isTest={!!booking.is_test}
+              hasScheduledSessions={activeSessions.length > 0}
             />
           )}
 

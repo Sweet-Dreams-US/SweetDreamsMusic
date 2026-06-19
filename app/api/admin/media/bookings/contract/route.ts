@@ -241,16 +241,26 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+    // A shoot with no media manager in charge is silently dropped at finalize
+    // (no media_session_bookings row is created), yet the contract still
+    // finalizes — so reject it here. Defense in depth: never trust the client.
+    const managerUserId =
+      typeof raw?.manager_user_id === 'string' && raw.manager_user_id.trim()
+        ? raw.manager_user_id.trim()
+        : null;
+    if (!managerUserId) {
+      return NextResponse.json(
+        { error: `Shoot #${i + 1}: each shoot needs a media manager in charge` },
+        { status: 400 },
+      );
+    }
     plannedShoots.push({
       date,
       start_time: startTime,
       duration_hours: dur,
       location,
       external_location_text: externalText,
-      manager_user_id:
-        typeof raw?.manager_user_id === 'string' && raw.manager_user_id.trim()
-          ? raw.manager_user_id.trim()
-          : null,
+      manager_user_id: managerUserId,
       manager_name:
         typeof raw?.manager_name === 'string' && raw.manager_name.trim()
           ? raw.manager_name.trim()

@@ -15,6 +15,7 @@ import {
   sendEngineerPriorityAlert,
   sendMediaPurchaseConfirmation,
   sendMediaPurchaseAdminAlert,
+  sendMediaPaymentReceipt,
   sendPackageQuoteAccepted,
 } from '@/lib/email';
 import { mintEntitlementFromQuote, extendEntitlement } from '@/lib/packages-mint';
@@ -43,6 +44,132 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 function padClockHm(t: string | undefined | null): string {
   const [h = '0', m = '00'] = String(t ?? '').split(':');
   return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+}
+
+/**
+ * FIX A: after a media payment is applied (self-serve project payment OR a
+ * single installment) send (1) a branded receipt to the buyer and (2) a
+ * team/admin notification — mirroring the booking_deposit admin-alert pattern.
+ *
+ * Both sends are fire-and-forget inside this helper's try/catch: a failed
+ * email must NEVER block or roll back the payment that already landed. The
+ * caller stays clean by `await`ing this once after final_paid_at handling.
+ *
+ * Skips entirely for is_test bookings (no real customer to receipt).
+ *
+ * Resolves the buyer email (media_bookings.user_id → profiles.email), the
+ * offering title (media_offerings.title), and the current paid/total/remaining
+ * so the receipt + alert can show where the buyer stands.
+ */
+async function notifyMediaPaymentApplied(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  args: { bookingId: string; amountPaidCents: number; paidSoFarCents: number },
+): Promise<void> {
+  try {
+    const { data: bookingRow } = await supabase
+      .from('media_bookings')
+      .select('id, user_id, offering_id, final_price_cents, is_test')
+      .eq('id', args.bookingId)
+      .maybeSingle();
+    const booking = bookingRow as
+      | {
+          id: string;
+          user_id: string | null;
+          offering_id: string | null;
+          final_price_cents: number | null;
+          is_test: boolean | null;
+        }
+      | null;
+    if (!booking) {
+      console.error('[webhook] media payment notify: booking not found', args.bookingId);
+      return;
+    }
+    // Never email for test bookings — there's no real customer to receipt.
+    if (booking.is_test) {
+      return;
+    }
+
+    // Buyer name + email (media_bookings.user_id → profiles).
+    let buyerEmail: string | null = null;
+    let buyerName = 'there';
+    if (booking.user_id) {
+      const { data: profileRow } = await supabase
+        .from('profiles')
+        .select('email, display_name')
+        .eq('user_id', booking.user_id)
+        .maybeSingle();
+      const profile = profileRow as
+        | { email: string | null; display_name: string | null }
+        | null;
+      buyerEmail = profile?.email ?? null;
+      if (profile?.display_name) buyerName = profile.display_name;
+    }
+
+    // Offering title.
+    let offeringTitle = 'your media project';
+    if (booking.offering_id) {
+      const { data: offeringRow } = await supabase
+        .from('media_offerings')
+        .select('title')
+        .eq('id', booking.offering_id)
+        .maybeSingle();
+      const offering = offeringRow as { title: string | null } | null;
+      if (offering?.title) offeringTitle = offering.title;
+    }
+
+    const totalCents = booking.final_price_cents ?? 0;
+    const paidSoFarCents = args.paidSoFarCents;
+    const remainingCents = Math.max(0, totalCents - paidSoFarCents);
+
+    // (1) Buyer receipt — only if we resolved an email.
+    if (buyerEmail) {
+      await sendMediaPaymentReceipt(buyerEmail, {
+        buyerName,
+        amountPaidCents: args.amountPaidCents,
+        offeringTitle,
+        bookingId: booking.id,
+        paidSoFarCents,
+        totalCents,
+        remainingCents,
+      });
+    } else {
+      console.error(
+        '[webhook] media payment notify: no buyer email for booking',
+        booking.id,
+      );
+    }
+
+    // (2) Team/admin notification — mirrors the booking_deposit admin alert.
+    const fullyPaid = remainingCents <= 0;
+    try {
+      await resend.emails.send({
+        from: 'Sweet Dreams Music <studio@sweetdreamsmusic.com>',
+        to: [...SUPER_ADMINS],
+        subject: `Media Payment — ${offeringTitle} — ${fmtMoney(args.amountPaidCents)}${
+          fullyPaid ? ' (PAID IN FULL)' : ''
+        }`,
+        html: `
+          <h2 style="color:#F4C430">Media payment received</h2>
+          <p><strong>Order:</strong> ${offeringTitle} (#${booking.id.slice(0, 8)})</p>
+          <p><strong>Buyer:</strong> ${buyerName}${buyerEmail ? ` &lt;${buyerEmail}&gt;` : ''}</p>
+          <p><strong>Amount paid:</strong> ${fmtMoney(args.amountPaidCents)}</p>
+          <p><strong>Paid so far:</strong> ${fmtMoney(paidSoFarCents)} of ${fmtMoney(totalCents)}</p>
+          <p><strong>Remaining:</strong> ${fullyPaid ? 'Paid in full' : fmtMoney(remainingCents)}</p>
+          <p><a href="${SITE_URL}/admin">Open admin</a> · <a href="${SITE_URL}/dashboard/media/orders/${booking.id}">View order</a></p>
+        `,
+      });
+    } catch (e) {
+      console.error('[webhook] media payment team alert send failed (swallowed):', e);
+    }
+  } catch (e) {
+    // Notification is best-effort — never let it surface to the payment path.
+    console.error('[webhook] media payment notify failed (swallowed):', e);
+  }
+}
+
+function fmtMoney(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
 /**
@@ -1779,6 +1906,56 @@ export async function POST(request: NextRequest) {
               },
             });
 
+            // FIX B: stamp final_paid_at on this paid path too (previously only
+            // media_project_payment did). Recompute paid-so-far across all PAID
+            // installments; if it now covers the contract total and the booking
+            // isn't already stamped, stamp final_paid_at. Mirrors the
+            // media_project_payment logic below.
+            const { data: afterRows } = await supabase
+              .from('media_payment_installments')
+              .select('amount_cents, status')
+              .eq('booking_id', bookingId);
+            const paidCents = ((afterRows ?? []) as Array<{
+              amount_cents: number;
+              status: string;
+            }>)
+              .filter((r) => r.status === 'paid')
+              .reduce((sum, r) => sum + r.amount_cents, 0);
+
+            const { data: bookingNow } = await supabase
+              .from('media_bookings')
+              .select('final_price_cents, final_paid_at')
+              .eq('id', bookingId)
+              .maybeSingle();
+            const bk = bookingNow as
+              | { final_price_cents: number; final_paid_at: string | null }
+              | null;
+            if (
+              bk &&
+              paidCents >= bk.final_price_cents &&
+              !bk.final_paid_at
+            ) {
+              const { error: stampErr } = await supabase
+                .from('media_bookings')
+                .update({ final_paid_at: nowIso })
+                .eq('id', bookingId);
+              if (stampErr) {
+                console.error(
+                  '[webhook] media_installment: final_paid_at stamp error',
+                  stampErr,
+                );
+              }
+            }
+
+            // FIX A: receipt to the buyer + team notification. Fire-and-forget
+            // in try/catch — a failed email must NEVER block or roll back the
+            // payment. Skip for is_test bookings.
+            await notifyMediaPaymentApplied(supabase, {
+              bookingId,
+              amountPaidCents: amountPaid || inst.amount_cents,
+              paidSoFarCents: paidCents,
+            });
+
             console.log(
               `[webhook] media_installment paid: booking=${bookingId} installment=${installmentId} amount=${amountPaid}`,
             );
@@ -1975,6 +2152,15 @@ export async function POST(request: NextRequest) {
                 stripe_checkout_session_id: sess,
                 payment_intent: pi,
               },
+            });
+
+            // FIX A: receipt to the buyer + team notification. Fire-and-forget
+            // in try/catch — a failed email must NEVER block or roll back the
+            // payment. Skip for is_test bookings.
+            await notifyMediaPaymentApplied(supabase, {
+              bookingId,
+              amountPaidCents: amountPaid,
+              paidSoFarCents: paidCents,
             });
 
             console.log(
