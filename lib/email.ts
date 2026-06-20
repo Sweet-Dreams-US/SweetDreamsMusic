@@ -2223,16 +2223,17 @@ export async function sendMediaContractForSignature(to: string, details: {
 }) {
   // PUBLIC, no-login link for the emailed button (the credential is the token).
   const publicUrl = `${SITE_URL}/contract/${details.publicToken}`;
-  // Account-bound order page — kept ONLY for the in-app thread mirror, which is
-  // read by logged-in staff. The customer's emailed CTA never uses this.
-  const orderUrl = `${SITE_URL}/dashboard/media/orders/${details.bookingId}`;
   await mirrorToThread({
     userEmail: to,
     mediaBookingId: details.bookingId,
     kind: 'booking_notification',
     subject: 'Your contract is ready to sign',
-    body: `Your contract for ${details.offeringTitle} is ready. Review the terms and sign on your order page to lock it in.`,
-    attachments: [{ label: 'Review & sign', url: orderUrl, kind: 'link' as const }],
+    body: `Your contract for ${details.offeringTitle} is ready. Review the terms and add your signature to lock it in.`,
+    // Use the PUBLIC no-login link here too — so the "Review & sign" link works
+    // for EVERYONE who sees the thread: the customer AND logged-in staff. The
+    // account-bound order page 404s for anyone who isn't the booking's owner
+    // (e.g. an admin/media manager reviewing a customer's contract).
+    attachments: [{ label: 'Review & sign', url: publicUrl, kind: 'link' as const }],
   });
   try {
     await resend.emails.send({
