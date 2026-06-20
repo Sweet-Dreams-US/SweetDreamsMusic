@@ -24,12 +24,18 @@ export default function EngineerProfile() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [savingName, setSavingName] = useState(false);
 
   useEffect(() => {
     let alive = true;
     fetch('/api/engineer/profile', { cache: 'no-store' })
       .then((r) => r.json())
-      .then((d) => { if (alive) setProfile(d.engineer ?? null); })
+      .then((d) => {
+        if (!alive) return;
+        setProfile(d.engineer ?? null);
+        setDisplayName(d.engineer?.display_name || d.engineer?.name || '');
+      })
       .catch(() => { if (alive) setError('Could not load your profile.'); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
@@ -63,6 +69,27 @@ export default function EngineerProfile() {
       setError('Photo upload failed — use a JPG, PNG, or WebP under 10MB.');
     } finally {
       setUploading(false);
+    }
+  }
+
+  // Save the display name shown on the public /engineers page. The canonical
+  // payroll `name` is never touched — only `display_name` (the route whitelist
+  // enforces this server-side too).
+  async function saveName() {
+    const trimmed = displayName.trim();
+    if (!trimmed) { setError('Enter a display name.'); return; }
+    setError(''); setSuccess(''); setSavingName(true);
+    try {
+      const res = await fetch('/api/engineer/profile', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ display_name: trimmed }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'save failed');
+      setProfile((p) => (p ? { ...p, display_name: trimmed } : p));
+      setSuccess("Name updated — it'll show on the engineers page shortly.");
+    } catch {
+      setError('Could not save your name — try again.');
+    } finally {
+      setSavingName(false);
     }
   }
 
@@ -116,6 +143,32 @@ export default function EngineerProfile() {
             onChange={(ev) => { const f = ev.target.files?.[0]; if (f) uploadPhoto(f); ev.target.value = ''; }}
           />
         </label>
+
+        <div className="pt-3 border-t border-black/10 space-y-2">
+          <label className="font-mono text-[11px] font-bold uppercase tracking-wider text-black/50 block">
+            Display name{' '}
+            <span className="text-black/30 normal-case font-normal">(shown on the engineers page)</span>
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              maxLength={60}
+              placeholder="Your name as it should appear publicly"
+              className="flex-1 min-w-0 border-2 border-black/15 focus:border-accent px-3 py-2 font-mono text-sm outline-none"
+            />
+            <button
+              type="button"
+              onClick={saveName}
+              disabled={savingName || !displayName.trim()}
+              className="font-mono text-[11px] font-bold uppercase px-4 py-2 border-2 border-black/15 hover:border-accent disabled:opacity-50 inline-flex items-center gap-1.5 whitespace-nowrap"
+            >
+              {savingName ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              {savingName ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
 
         {success && <p className="font-mono text-xs text-green-700">{success}</p>}
         {error && <p className="font-mono text-xs text-red-600">{error}</p>}
