@@ -157,6 +157,49 @@ const TEMPLATES: EmailTemplate[] = [
     color: 'bg-orange-50 border-orange-200 text-orange-700',
   },
   {
+    key: 'rewards_progress',
+    name: 'Rewards Update',
+    // Special, personalized template: picking it shows a dedicated send-to-all
+    // panel (each customer gets their OWN progress) instead of the normal
+    // compose/recipients steps. Subject/body here are unused placeholders.
+    subject: "You're getting close — Sweet Dreams Music",
+    body: '<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">This template is personalized per customer — pick it to send everyone their own rewards progress.</p>',
+    icon: 'Rewards',
+    color: 'bg-accent/10 border-accent/40 text-black',
+  },
+  {
+    key: 'rewards_program',
+    name: 'Rewards Program',
+    subject: 'Your Sweet Dreams Rewards',
+    body: '<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">EARN AS YOU CREATE</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Every hour you book at Sweet Dreams Music earns you rewards — automatically. The more you create, the more you unlock.</p>\n<table style="margin:20px 0;border-collapse:collapse"><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">10 hours</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">1 free studio hour</td></tr><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">20 hours</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">25% off a music video</td></tr><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">35 hours</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">2 free studio hours</td></tr><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">100 hours</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">A free music video</td></tr></table>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Track your progress anytime in your dashboard — we\'ll let you know when you\'re close to your next reward.</p>\n<a href="https://sweetdreamsmusic.com/dashboard" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">VIEW MY REWARDS</a>\n<br/><br/>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— Sweet Dreams Music</p>',
+    icon: 'Rewards',
+    color: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+  },
+  {
+    key: 'redeem_perks',
+    name: 'Redeem Perks',
+    subject: "You've Got Rewards Waiting",
+    body: '<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">DON\'T LEAVE PERKS ON THE TABLE</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">You\'ve earned rewards at Sweet Dreams Music — make sure you put them to use!</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Your free hour / discount / perk] is sitting in your account, ready to redeem on your next session.</p>\n<a href="https://sweetdreamsmusic.com/book" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">BOOK &amp; REDEEM</a>\n<br/><br/>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— Sweet Dreams Music</p>',
+    icon: 'Perks',
+    color: 'bg-teal-50 border-teal-200 text-teal-700',
+  },
+  {
+    key: 'open_slots',
+    name: 'Open Slots',
+    subject: 'Open Studio Time This Week',
+    body: '<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">STUDIO TIME AVAILABLE</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We\'ve got open sessions coming up at Sweet Dreams Music:</p>\n<table style="margin:20px 0;border-collapse:collapse"><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Days</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">[days here]</td></tr><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Times</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">[times here]</td></tr></table>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Grab a slot before they\'re gone.</p>\n<a href="https://sweetdreamsmusic.com/book" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">BOOK A SESSION</a>\n<br/><br/>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— Sweet Dreams Music</p>',
+    icon: 'Slots',
+    color: 'bg-sky-50 border-sky-200 text-sky-700',
+  },
+  {
+    key: 'new_beats',
+    name: 'New Beats',
+    subject: 'Fresh Beats Just Dropped',
+    body: '<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">NEW BEATS IN THE STORE</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We just added new beats to the Sweet Dreams catalog.</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Describe the new beats — vibe, producers, genres]</p>\n<a href="https://sweetdreamsmusic.com/beats" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">BROWSE BEATS</a>\n<br/><br/>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— Sweet Dreams Music</p>',
+    icon: 'Beats',
+    color: 'bg-violet-50 border-violet-200 text-violet-700',
+  },
+  {
     key: 'custom',
     name: 'Custom',
     subject: '',
@@ -428,7 +471,12 @@ export default function Notifications() {
   // For event_announcement we additionally require an event to be picked
   // before revealing Step 2 (body editor), Step 3 (recipients), Step 4 (send);
   // otherwise the admin could send the placeholder "Pick an event below" body.
-  const isTemplateReady = !!selectedTemplate &&
+  // The rewards "update" template is special: it doesn't compose one fixed body
+  // to a chosen recipient list — it sends each customer their OWN personalized
+  // progress. So it shows a dedicated send-to-all panel instead of Steps 2–4
+  // (which are all gated on isTemplateReady, hence the exclusion here).
+  const isRewardsTemplate = selectedTemplate?.key === 'rewards_progress';
+  const isTemplateReady = !!selectedTemplate && !isRewardsTemplate &&
     (selectedTemplate.key !== 'event_announcement' || !!selectedEventId);
 
   // ── Render ─────────────────────────────────────────────────────────
@@ -494,72 +542,6 @@ export default function Notifications() {
             );
           })()}
 
-          {/* ── Rewards-progress blast ── */}
-          <div className="border-2 border-accent/40 bg-accent/5 p-4">
-            <div className="flex items-start gap-3">
-              <Gift className="w-5 h-5 text-accent shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0">
-                <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-black/80">
-                  Send rewards update to all customers
-                </h3>
-                <p className="font-mono text-[11px] text-black/60 mt-1 leading-relaxed">
-                  Sends each customer their OWN personalized progress — current studio hours this
-                  year and how far they are from their next reward — by email and in-app message.
-                  Going forward this auto-sends after each session; use this for a one-time catch-up blast.
-                </p>
-
-                {rewardsResult && (
-                  <div className="mt-3 flex items-center gap-2 border border-green-300 bg-green-50 px-3 py-2">
-                    <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
-                    <p className="font-mono text-xs font-bold text-black/80">
-                      Sent rewards updates to {rewardsResult.attempted} customer{rewardsResult.attempted === 1 ? '' : 's'}
-                      {rewardsResult.failed > 0 && ` · ${rewardsResult.failed} failed`}
-                    </p>
-                  </div>
-                )}
-                {rewardsError && (
-                  <p className="font-mono text-xs text-red-600 font-bold mt-3">{rewardsError}</p>
-                )}
-
-                <button
-                  onClick={handleSendRewardsToAll}
-                  disabled={rewardsSending}
-                  className="mt-3 bg-accent text-black font-mono text-xs font-bold uppercase tracking-wider px-4 py-2 hover:bg-accent/90 disabled:opacity-50 inline-flex items-center gap-2"
-                >
-                  <Gift className="w-3.5 h-3.5" />
-                  {rewardsSending ? 'Sending…' : 'Send rewards update to all customers'}
-                </button>
-
-                {/* Example email — what each customer receives (their own
-                    numbers are substituted at send time). Rendered in a
-                    sandboxed iframe (scripts disabled) so the email's own inline
-                    styles stay isolated, just like a real mail client. */}
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowRewardsPreview((v) => !v)}
-                    className="font-mono text-[11px] font-bold uppercase tracking-wider text-black/50 hover:text-black underline underline-offset-2"
-                  >
-                    {showRewardsPreview ? 'Hide email preview' : 'Preview the email'}
-                  </button>
-                  {showRewardsPreview && (
-                    <div className="mt-2">
-                      <p className="font-mono text-[10px] text-black/40 uppercase tracking-wider mb-1">
-                        Example — each customer sees their own name, hours &amp; next reward
-                      </p>
-                      <iframe
-                        title="Rewards progress email preview"
-                        sandbox=""
-                        className="w-full h-80 border border-black/10 bg-black"
-                        srcDoc={`<div style="background:#000;padding:24px;font-family:'IBM Plex Mono',monospace">${REWARDS_EXAMPLE_HTML}</div>`}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Step 1: Pick template */}
           <div>
             <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-black/60 mb-3">1. Choose a Template</h3>
@@ -579,6 +561,76 @@ export default function Notifications() {
               ))}
             </div>
           </div>
+
+          {/* Rewards "update" template — personalized send-to-all panel. Shown
+              in place of Steps 2–4 when that template is picked, because each
+              customer gets their OWN progress (not one fixed body to a list). */}
+          {isRewardsTemplate && (
+            <div className="border-2 border-accent/40 bg-accent/5 p-4">
+              <div className="flex items-start gap-3">
+                <Gift className="w-5 h-5 text-accent shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-black/80">
+                    Send rewards update to all customers
+                  </h3>
+                  <p className="font-mono text-[11px] text-black/60 mt-1 leading-relaxed">
+                    Unlike the other templates, this one is personalized: each customer gets their
+                    OWN current studio hours this year and how far they are from their next reward —
+                    by email and in-app message. Going forward it auto-sends after each session; use
+                    this for a one-time catch-up blast to everyone.
+                  </p>
+
+                  {rewardsResult && (
+                    <div className="mt-3 flex items-center gap-2 border border-green-300 bg-green-50 px-3 py-2">
+                      <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+                      <p className="font-mono text-xs font-bold text-black/80">
+                        Sent rewards updates to {rewardsResult.attempted} customer{rewardsResult.attempted === 1 ? '' : 's'}
+                        {rewardsResult.failed > 0 && ` · ${rewardsResult.failed} failed`}
+                      </p>
+                    </div>
+                  )}
+                  {rewardsError && (
+                    <p className="font-mono text-xs text-red-600 font-bold mt-3">{rewardsError}</p>
+                  )}
+
+                  <button
+                    onClick={handleSendRewardsToAll}
+                    disabled={rewardsSending}
+                    className="mt-3 bg-accent text-black font-mono text-xs font-bold uppercase tracking-wider px-4 py-2 hover:bg-accent/90 disabled:opacity-50 inline-flex items-center gap-2"
+                  >
+                    <Gift className="w-3.5 h-3.5" />
+                    {rewardsSending ? 'Sending…' : 'Send rewards update to all customers'}
+                  </button>
+
+                  {/* Example email — each customer's own numbers are substituted
+                      at send time. Sandboxed iframe (scripts disabled) so the
+                      email's own inline styles stay isolated. */}
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowRewardsPreview((v) => !v)}
+                      className="font-mono text-[11px] font-bold uppercase tracking-wider text-black/50 hover:text-black underline underline-offset-2"
+                    >
+                      {showRewardsPreview ? 'Hide email preview' : 'Preview the email'}
+                    </button>
+                    {showRewardsPreview && (
+                      <div className="mt-2">
+                        <p className="font-mono text-[10px] text-black/40 uppercase tracking-wider mb-1">
+                          Example — each customer sees their own name, hours &amp; next reward
+                        </p>
+                        <iframe
+                          title="Rewards progress email preview"
+                          sandbox=""
+                          className="w-full h-80 border border-black/10 bg-black"
+                          srcDoc={`<div style="background:#000;padding:24px;font-family:'IBM Plex Mono',monospace">${REWARDS_EXAMPLE_HTML}</div>`}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Step 1.5: Pick an event (event-announcement template only) */}
           {selectedTemplate?.key === 'event_announcement' && (
