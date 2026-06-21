@@ -68,6 +68,27 @@ function buildEventAnnouncement(event: SweetEvent): { subject: string; body: str
   return { subject, body };
 }
 
+// A faithful sample of the PERSONALIZED rewards-progress email that
+// lib/email.ts → sendRewardsProgressEmail() sends after each session (and that
+// the "Send rewards update to all customers" blast fires now). Real sends swap
+// in each customer's own name, hours, next reward, and progress — this uses
+// representative sample data so admins can preview the format. Styling mirrors
+// the email's wrap/h1/p/detailTable/btn helpers (dark bg, gold headline).
+const REWARDS_EXAMPLE_HTML = [
+  '<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">You\'re Getting Close 🔥</h1>',
+  '<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Hey Alex — you\'ve booked <strong style="color:#fff">7 hrs</strong> of studio time this year, and you\'re just <strong style="color:#fff">3 hrs</strong> away from unlocking <strong style="color:#fff">1 free studio hour</strong>.</p>',
+  '<table style="margin:20px 0;border-collapse:collapse">',
+  '<tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Hours this year</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">7 hrs</td></tr>',
+  '<tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Next reward</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">1 free studio hour</td></tr>',
+  '<tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Hours to go</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">3 hrs</td></tr>',
+  '<tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Progress</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">70%</td></tr>',
+  '</table>',
+  '<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Book your next session to keep the momentum going — your rewards stack up automatically as you log studio hours.</p>',
+  '<a href="https://sweetdreamsmusic.com/dashboard" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">Book &amp; Track My Perks</a>',
+  '<br/><br/>',
+  '<p style="font-size:11px;line-height:1.6;color:#666;margin:0">Thanks for being part of Sweet Dreams Music. Questions? Just reply to this email.</p>',
+].join('\n');
+
 const TEMPLATES: EmailTemplate[] = [
   {
     key: 'disregard',
@@ -189,6 +210,7 @@ export default function Notifications() {
   const [rewardsSending, setRewardsSending] = useState(false);
   const [rewardsResult, setRewardsResult] = useState<{ attempted: number; failed: number; total: number } | null>(null);
   const [rewardsError, setRewardsError] = useState<string | null>(null);
+  const [showRewardsPreview, setShowRewardsPreview] = useState(false);
 
   // Recipients data
   const [allRecipients, setAllRecipients] = useState<Recipient[]>([]);
@@ -507,6 +529,33 @@ export default function Notifications() {
                   <Gift className="w-3.5 h-3.5" />
                   {rewardsSending ? 'Sending…' : 'Send rewards update to all customers'}
                 </button>
+
+                {/* Example email — what each customer receives (their own
+                    numbers are substituted at send time). Rendered in a
+                    sandboxed iframe (scripts disabled) so the email's own inline
+                    styles stay isolated, just like a real mail client. */}
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowRewardsPreview((v) => !v)}
+                    className="font-mono text-[11px] font-bold uppercase tracking-wider text-black/50 hover:text-black underline underline-offset-2"
+                  >
+                    {showRewardsPreview ? 'Hide email preview' : 'Preview the email'}
+                  </button>
+                  {showRewardsPreview && (
+                    <div className="mt-2">
+                      <p className="font-mono text-[10px] text-black/40 uppercase tracking-wider mb-1">
+                        Example — each customer sees their own name, hours &amp; next reward
+                      </p>
+                      <iframe
+                        title="Rewards progress email preview"
+                        sandbox=""
+                        className="w-full h-80 border border-black/10 bg-black"
+                        srcDoc={`<div style="background:#000;padding:24px;font-family:'IBM Plex Mono',monospace">${REWARDS_EXAMPLE_HTML}</div>`}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
