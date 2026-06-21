@@ -2760,6 +2760,41 @@ export async function sendPackageQuoteDeclined(details: {
  * Fire-and-forget: wrapped in try/catch, logs on error, never throws — issuing
  * the reward must never fail because an email bounced.
  */
+/**
+ * "You're getting close" rewards-progress nudge — tells a customer how many
+ * studio hours they've booked this year and how many more until their next
+ * reward (and what it is). Branded to match sendRewardReadyEmail. Never throws.
+ */
+export async function sendRewardsProgressEmail(to: string, details: {
+  recipientName: string;
+  currentHours: number;
+  nextThreshold: number;
+  hoursRemaining: number;
+  nextRewardLabel: string;
+  progressPct: number;
+}) {
+  try {
+    const hrs = (n: number) => `${Number.isInteger(n) ? n : n.toFixed(1)} ${n === 1 ? 'hr' : 'hrs'}`;
+    await resend.emails.send({
+      from: FROM, to,
+      subject: "You're getting close — Sweet Dreams Music",
+      html: wrap(`
+        ${h1("You're Getting Close 🔥")}
+        ${p(`Hey ${escapeHtml(details.recipientName)} — you've booked <strong>${hrs(details.currentHours)}</strong> of studio time this year, and you're just <strong>${hrs(details.hoursRemaining)}</strong> away from unlocking <strong>${escapeHtml(details.nextRewardLabel)}</strong>.`)}
+        ${detailTable(`
+          ${detail('Hours this year', hrs(details.currentHours))}
+          ${detail('Next reward', escapeHtml(details.nextRewardLabel))}
+          ${detail('Hours to go', hrs(details.hoursRemaining))}
+          ${detail('Progress', `${details.progressPct}%`)}
+        `)}
+        ${p('Book your next session to keep the momentum going — your rewards stack up automatically as you log studio hours.')}
+        ${btn('Book & Track My Perks', `${SITE_URL}/dashboard`)}
+        ${p('<span style="color:#666;font-size:11px">Thanks for being part of Sweet Dreams Music. Questions? Just reply to this email.</span>')}
+      `),
+    });
+  } catch (e) { console.error('Email error (rewards progress):', e); }
+}
+
 export async function sendRewardReadyEmail(to: string, details: {
   recipientName: string; rewardLabel: string;
 }) {

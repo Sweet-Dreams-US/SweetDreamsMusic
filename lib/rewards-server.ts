@@ -14,7 +14,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ENGINEERS } from '@/lib/constants';
 import {
-  REWARD_RULES, periodKeyFor, windowRange, rewardValueCents,
+  REWARD_RULES, periodKeyFor, windowRange, rewardValueCents, rewardLabel,
   type RewardRule, type RewardWindow, type RewardCounter,
 } from '@/lib/rewards';
 
@@ -243,6 +243,62 @@ export async function customerProgress(db: Client, userId: string, email: string
     customerBeatSpend(db, userId, r),
   ]);
   return { studio_hours, dollars_spent, beat_spend };
+}
+
+export interface CustomerNextReward {
+  currentHours: number;     // studio hours booked this calendar year
+  nextThreshold: number;    // hours needed to reach the next reward rung
+  hoursRemaining: number;   // nextThreshold - currentHours (always > 0)
+  nextRewardLabel: string;  // what they unlock at nextThreshold (e.g. "1 free studio hour")
+  progressPct: number;      // 0..100 progress from the PREVIOUS rung to the next
+}
+
+/**
+ * Where a customer is on the studio-hours reward ladder right now: their current
+ * calendar-year studio hours, the NEXT rung's threshold + what it unlocks, the
+ * hours remaining, and a progress percent measured from the previous rung.
+ *
+ * Drives the "rewards progress" notification (lib/rewards-issue.ts) + any
+ * progress UI. Reads customerProgress().studio_hours and the sorted CUSTOMER
+ * `studio_hours` REWARD_RULES thresholds. Returns null when the top tier is
+ * already reached (nothing left to chase). Pure read — no side effects.
+ */
+export async function customerNextReward(db: Client, userId: string, email: string, now: Date): Promise<CustomerNextReward | null> {
+  const progress = await customerProgress(db, userId, email, now);
+  const currentHours = progress.studio_hours;
+
+  // The customer studio-hours track, ascending by threshold. (cust_sh_50a/50b
+  // share threshold 50 — dedupe to a single rung per distinct threshold so the
+  // ladder reads as 5 → 10 → 20 → 35 → 50 → 75 → 100.)
+  const rungs = REWARD_RULES
+    .filter((r) => r.track === 'customer' && r.counter === 'studio_hours' && r.threshold > 0)
+    .sort((a, b) => a.threshold - b.threshold);
+  const seen = new Set<number>();
+  const ladder: RewardRule[] = [];
+  for (const r of rungs) {
+    if (seen.has(r.threshold)) continue;
+    seen.add(r.threshold);
+    ladder.push(r);
+  }
+
+  // First rung strictly above the current hours.
+  const nextIdx = ladder.findIndex((r) => r.threshold > currentHours);
+  if (nextIdx === -1) return null; // already at/over the top tier — nothing left to chase
+  const next = ladder[nextIdx];
+
+  const prevThreshold = nextIdx > 0 ? ladder[nextIdx - 1].threshold : 0;
+  const span = next.threshold - prevThreshold;
+  const progressPct = span > 0
+    ? Math.max(0, Math.min(100, Math.round(((currentHours - prevThreshold) / span) * 100)))
+    : 0;
+
+  return {
+    currentHours,
+    nextThreshold: next.threshold,
+    hoursRemaining: next.threshold - currentHours,
+    nextRewardLabel: rewardLabel(next),
+    progressPct,
+  };
 }
 
 /**

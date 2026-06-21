@@ -5,7 +5,7 @@ import { stripe } from '@/lib/stripe';
 import { createServiceClient } from '@/lib/supabase/server';
 import { getStudioConfig } from '@/lib/studio-config-server';
 import { sweetSpotAddonCents } from '@/lib/studio-config';
-import { markGrantRedeemed, redeemBeatDiscountUse } from '@/lib/rewards-issue';
+import { markGrantRedeemed, redeemBeatDiscountUse, notifyRewardsProgress } from '@/lib/rewards-issue';
 import { BEAT_EXCLUSIVE_DISCOUNT_MAX_USES } from '@/lib/rewards';
 import { paidBookingStatus } from '@/lib/booking-status';
 import {
@@ -884,6 +884,7 @@ export async function POST(request: NextRequest) {
         // Award XP for booking — look up user by email. xp_log FKs auth.users,
         // so pass user_id, NOT profiles.id (the old arg violated the FK and
         // this hook had never landed a row — career-path fix).
+        let bookerUserId: string | null = null;
         try {
           const { data: bookerProfile } = await supabase
             .from('profiles')
@@ -891,13 +892,26 @@ export async function POST(request: NextRequest) {
             .eq('email', meta.customer_email)
             .limit(1)
             .single();
-          if (bookerProfile?.user_id && newBooking?.id) {
-            await awardXP(supabase, bookerProfile.user_id, 'book_session', {
+          bookerUserId = bookerProfile?.user_id ?? null;
+          if (bookerUserId && newBooking?.id) {
+            await awardXP(supabase, bookerUserId, 'book_session', {
               referenceId: newBooking.id,
               metadata: { room: meta.room, date: meta.session_date },
             });
           }
         } catch { /* user may not have an account — skip XP */ }
+
+        // Rewards-progress nudge: SOLO customer bookings only (band hours are a
+        // separate ladder). Fire-and-forget — wrapped so it can NEVER block or
+        // fail the booking; notifyRewardsProgress also guards itself internally.
+        // Skipped when we couldn't resolve a user id (guest/no-account booking).
+        if (!isBandBooking && bookerUserId) {
+          try {
+            await notifyRewardsProgress(supabase, bookerUserId);
+          } catch (e) {
+            console.error('[webhook] rewards-progress notify failed (non-fatal):', e);
+          }
+        }
       } else if (meta.type === 'invite_deposit') {
         // Invite booking — deposit paid, confirm the existing pending booking
         const bookingId = meta.booking_id;

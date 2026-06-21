@@ -16,8 +16,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { MEDIA_WORKER_TOTAL } from '@/lib/constants';
 import { rewardLabel } from '@/lib/rewards';
+import { customerNextReward } from '@/lib/rewards-server';
 import { mirrorToThread } from '@/lib/messaging-mirror';
-import { sendRewardReadyEmail } from '@/lib/email';
+import { sendRewardReadyEmail, sendRewardsProgressEmail } from '@/lib/email';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Client = SupabaseClient<any, any, any>;
@@ -279,6 +280,57 @@ async function notifyGrantIssued(db: Client, grant: any): Promise<void> {
   } catch (e) {
     // Top-level guard: issuance already succeeded; swallow everything.
     console.error('[rewards-issue] notifyGrantIssued failed:', e);
+  }
+}
+
+/**
+ * "Rewards progress" nudge: tell a customer where they are on the studio-hours
+ * reward ladder — current calendar-year hours, hours until the NEXT reward, and
+ * WHAT that reward is. Fired (fire-and-forget) after a solo studio booking is
+ * confirmed, so the customer sees their progress climb.
+ *
+ * Resolves the user's email + display_name from profiles, computes the next rung
+ * via customerNextReward, and — when there's something left to chase — posts an
+ * in-app update (mirrorToThread, kind 'update') AND sends the branded progress
+ * email. No-op (does nothing) when:
+ *   • the user has no profile/email, or
+ *   • currentHours is 0 (haven't logged any hours yet — nothing to celebrate), or
+ *   • the top tier is already reached (customerNextReward returns null).
+ *
+ * NEVER throws — wrapped end-to-end so it can never block or fail a booking.
+ */
+export async function notifyRewardsProgress(db: Client, userId: string): Promise<void> {
+  try {
+    if (!userId) return;
+    const { data: prof } = await db.from('profiles')
+      .select('email,display_name').eq('user_id', userId).maybeSingle();
+    const email = (prof as any)?.email as string | undefined;
+    if (!email) return; // can't compute customer studio hours without an email
+
+    const next = await customerNextReward(db, userId, email, new Date());
+    if (!next || next.currentHours <= 0) return; // top tier reached, or no hours yet
+
+    const hrs = (n: number) => `${Number.isInteger(n) ? n : n.toFixed(1)} ${n === 1 ? 'hr' : 'hrs'}`;
+    const subject = 'Your rewards update';
+    const body = `You've booked ${hrs(next.currentHours)} this year — ${hrs(next.hoursRemaining)} more for ${next.nextRewardLabel}! See Perks in your dashboard.`;
+
+    // In-app (best-effort, independent of the email).
+    try {
+      await mirrorToThread({ userId, kind: 'update', subject, body });
+    } catch (e) { console.error('[rewards-issue] progress in-app notify failed:', e); }
+
+    // Email (never throws — sendRewardsProgressEmail swallows its own errors).
+    await sendRewardsProgressEmail(email, {
+      recipientName: (prof as any)?.display_name || 'there',
+      currentHours: next.currentHours,
+      nextThreshold: next.nextThreshold,
+      hoursRemaining: next.hoursRemaining,
+      nextRewardLabel: next.nextRewardLabel,
+      progressPct: next.progressPct,
+    });
+  } catch (e) {
+    // Top-level guard: this is a fire-and-forget nudge; never let it surface.
+    console.error('[rewards-issue] notifyRewardsProgress failed:', e);
   }
 }
 

@@ -161,6 +161,10 @@ interface Broadcast {
   recipient_emails: string[];
   sent_by: string | null;
   created_at: string;
+  // Per-recipient delivery roll-up (added with resumable broadcasts).
+  sent_count?: number | null;
+  failed_count?: number | null;
+  send_status?: 'sending' | 'partial' | 'complete' | null;
 }
 
 type SubView = 'compose' | 'history';
@@ -177,7 +181,9 @@ export default function Notifications() {
   const [manualEmails, setManualEmails] = useState('');
   const [recipientMode, setRecipientMode] = useState<'groups' | 'individual' | 'manual'>('groups');
   const [sending, setSending] = useState(false);
-  const [sendResult, setSendResult] = useState<{ sentCount: number; failedCount: number; total: number } | null>(null);
+  const [sendResult, setSendResult] = useState<{ broadcastId?: string; sentCount: number; failedCount: number; pending?: number; total: number } | null>(null);
+  // Tracks which broadcast id is mid-resume (compose result or a history row).
+  const [resumingId, setResumingId] = useState<string | null>(null);
 
   // Recipients data
   const [allRecipients, setAllRecipients] = useState<Recipient[]>([]);
@@ -337,6 +343,24 @@ export default function Notifications() {
     setSending(false);
   }
 
+  // Resume a partial broadcast: POST the resume route, which re-sends ONLY to
+  // recipients still pending/failed (never re-sends anyone already 'sent', so
+  // no duplicates), then refresh both the compose result and history list.
+  async function handleResume(broadcastId: string) {
+    setResumingId(broadcastId);
+    try {
+      const res = await fetch(`/api/admin/broadcasts/${broadcastId}/resume`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && sendResult && sendResult.broadcastId === broadcastId) {
+        setSendResult({ ...sendResult, ...data });
+      }
+      await loadHistory();
+    } catch {
+      alert('Failed to resume send');
+    }
+    setResumingId(null);
+  }
+
   function resetCompose() {
     setSelectedTemplate(null);
     setSubject('');
@@ -379,20 +403,42 @@ export default function Notifications() {
       {subView === 'compose' && (
         <div className="space-y-6">
           {/* Send result */}
-          {sendResult && (
-            <div className={`border-2 p-4 ${sendResult.failedCount === 0 ? 'border-green-300 bg-green-50' : 'border-amber-300 bg-amber-50'}`}>
-              <div className="flex items-center gap-2">
-                <CheckCircle className={`w-5 h-5 ${sendResult.failedCount === 0 ? 'text-green-600' : 'text-amber-600'}`} />
-                <p className="font-mono text-sm font-bold">
-                  {sendResult.sentCount} of {sendResult.total} email{sendResult.total > 1 ? 's' : ''} sent successfully
-                  {sendResult.failedCount > 0 && ` (${sendResult.failedCount} failed)`}
-                </p>
+          {sendResult && (() => {
+            const unsent = (sendResult.failedCount || 0) + (sendResult.pending || 0);
+            const allSent = unsent === 0;
+            return (
+              <div className={`border-2 p-4 ${allSent ? 'border-green-300 bg-green-50' : 'border-amber-300 bg-amber-50'}`}>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className={`w-5 h-5 ${allSent ? 'text-green-600' : 'text-amber-600'}`} />
+                  <p className="font-mono text-sm font-bold">
+                    {sendResult.sentCount} of {sendResult.total} email{sendResult.total > 1 ? 's' : ''} sent successfully
+                    {sendResult.failedCount > 0 && ` · ${sendResult.failedCount} failed`}
+                    {sendResult.pending ? ` · ${sendResult.pending} pending` : ''}
+                  </p>
+                </div>
+                {!allSent && (
+                  <p className="font-mono text-[11px] text-amber-700 mt-1">
+                    The send stopped before reaching everyone (likely a Resend rate-limit/quota). Resume to deliver to the rest — no one already sent will get a duplicate.
+                  </p>
+                )}
+                <div className="flex items-center gap-3 mt-2">
+                  {!allSent && sendResult.broadcastId && (
+                    <button
+                      onClick={() => handleResume(sendResult.broadcastId!)}
+                      disabled={resumingId === sendResult.broadcastId}
+                      className="bg-amber-500 text-black font-mono text-xs font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-amber-600 disabled:opacity-50 inline-flex items-center gap-1.5"
+                    >
+                      <Send className="w-3 h-3" />
+                      {resumingId === sendResult.broadcastId ? 'Resending…' : `Resend to unsent (${unsent})`}
+                    </button>
+                  )}
+                  <button onClick={resetCompose} className="font-mono text-xs text-accent hover:underline">
+                    Compose another
+                  </button>
+                </div>
               </div>
-              <button onClick={resetCompose} className="font-mono text-xs text-accent hover:underline mt-2">
-                Compose another
-              </button>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Step 1: Pick template */}
           <div>
@@ -652,7 +698,10 @@ export default function Notifications() {
           {broadcasts.length === 0 ? (
             <p className="font-mono text-sm text-black/60 py-8 text-center">No broadcasts sent yet</p>
           ) : (
-            broadcasts.map(b => (
+            broadcasts.map(b => {
+              const unsent = (b.failed_count || 0) + Math.max(0, b.recipient_count - (b.sent_count || 0) - (b.failed_count || 0));
+              const hasUnsent = (b.send_status === 'partial' || b.send_status === 'sending') && unsent > 0;
+              return (
               <div key={b.id} className="border border-black/10">
                 <button
                   onClick={() => setExpandedBroadcast(expandedBroadcast === b.id ? null : b.id)}
@@ -667,10 +716,35 @@ export default function Notifications() {
                       {b.template_key && ` · ${b.template_key}`}
                     </p>
                   </div>
+                  {hasUnsent && (
+                    <span className="font-mono text-[9px] font-bold uppercase px-1.5 py-0.5 bg-amber-100 text-amber-700 shrink-0">
+                      {unsent} unsent
+                    </span>
+                  )}
                   <ChevronDown className={`w-4 h-4 text-black/30 transition-transform ${expandedBroadcast === b.id ? 'rotate-180' : ''}`} />
                 </button>
                 {expandedBroadcast === b.id && (
                   <div className="border-t border-black/10 p-4 space-y-3">
+                    {/* Delivery status + resume control */}
+                    <div>
+                      <p className="font-mono text-[10px] text-black/40 uppercase tracking-wider mb-1">Delivery</p>
+                      <p className="font-mono text-xs text-black/70">
+                        {(b.sent_count ?? b.recipient_count)} sent
+                        {(b.failed_count ?? 0) > 0 && ` · ${b.failed_count} failed`}
+                        {unsent > 0 && b.send_status !== 'complete' && ` · ${unsent} unsent`}
+                        {' · '}{b.send_status || 'complete'}
+                      </p>
+                      {hasUnsent && (
+                        <button
+                          onClick={() => handleResume(b.id)}
+                          disabled={resumingId === b.id}
+                          className="mt-2 bg-amber-500 text-black font-mono text-xs font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-amber-600 disabled:opacity-50 inline-flex items-center gap-1.5"
+                        >
+                          <Send className="w-3 h-3" />
+                          {resumingId === b.id ? 'Resending…' : `Resend to unsent (${unsent})`}
+                        </button>
+                      )}
+                    </div>
                     <div>
                       <p className="font-mono text-[10px] text-black/40 uppercase tracking-wider mb-1">Recipients</p>
                       <p className="font-mono text-xs text-black/70">{b.recipient_emails.join(', ')}</p>
@@ -684,7 +758,8 @@ export default function Notifications() {
                   </div>
                 )}
               </div>
-            ))
+              );
+            })
           )}
         </div>
       )}
