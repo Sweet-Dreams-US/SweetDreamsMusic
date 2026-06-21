@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Send, Clock, Search, X, ChevronDown, Mail, Users, Mic, Music, CheckCircle, PartyPopper } from 'lucide-react';
+import { Send, Clock, Search, X, ChevronDown, Mail, Users, Mic, Music, CheckCircle, PartyPopper, Gift } from 'lucide-react';
 import { isEventListed, type SweetEvent } from '@/lib/events';
 import { fmtStampDate, fmtStampTime, fmtStampDateTime } from '@/lib/studio-time';
 
@@ -185,6 +185,11 @@ export default function Notifications() {
   // Tracks which broadcast id is mid-resume (compose result or a history row).
   const [resumingId, setResumingId] = useState<string | null>(null);
 
+  // Rewards-progress blast state (the "send everyone their own progress" action).
+  const [rewardsSending, setRewardsSending] = useState(false);
+  const [rewardsResult, setRewardsResult] = useState<{ attempted: number; failed: number; total: number } | null>(null);
+  const [rewardsError, setRewardsError] = useState<string | null>(null);
+
   // Recipients data
   const [allRecipients, setAllRecipients] = useState<Recipient[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -361,6 +366,33 @@ export default function Notifications() {
     setResumingId(null);
   }
 
+  // One-time blast: send EVERY eligible customer their OWN personalized rewards
+  // progress (current hours + next reward). This emails real customers, so it's
+  // gated behind a confirm(). The route self-skips ineligible users, so the
+  // returned `attempted` is the set we tried (the eligible customer list).
+  async function handleSendRewardsToAll() {
+    if (!confirm(
+      'Send every eligible customer their own rewards-progress update right now? '
+      + 'Each customer gets a personalized email + in-app message with their current '
+      + 'studio hours and next reward. This is a one-time blast.',
+    )) return;
+    setRewardsSending(true);
+    setRewardsResult(null);
+    setRewardsError(null);
+    try {
+      const res = await fetch('/api/admin/rewards/notify-all', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setRewardsResult({ attempted: data.attempted, failed: data.failed, total: data.total });
+      } else {
+        setRewardsError(data.error || 'Failed to send rewards updates');
+      }
+    } catch {
+      setRewardsError('Failed to send rewards updates');
+    }
+    setRewardsSending(false);
+  }
+
   function resetCompose() {
     setSelectedTemplate(null);
     setSubject('');
@@ -439,6 +471,45 @@ export default function Notifications() {
               </div>
             );
           })()}
+
+          {/* ── Rewards-progress blast ── */}
+          <div className="border-2 border-accent/40 bg-accent/5 p-4">
+            <div className="flex items-start gap-3">
+              <Gift className="w-5 h-5 text-accent shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-black/80">
+                  Send rewards update to all customers
+                </h3>
+                <p className="font-mono text-[11px] text-black/60 mt-1 leading-relaxed">
+                  Sends each customer their OWN personalized progress — current studio hours this
+                  year and how far they are from their next reward — by email and in-app message.
+                  Going forward this auto-sends after each session; use this for a one-time catch-up blast.
+                </p>
+
+                {rewardsResult && (
+                  <div className="mt-3 flex items-center gap-2 border border-green-300 bg-green-50 px-3 py-2">
+                    <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+                    <p className="font-mono text-xs font-bold text-black/80">
+                      Sent rewards updates to {rewardsResult.attempted} customer{rewardsResult.attempted === 1 ? '' : 's'}
+                      {rewardsResult.failed > 0 && ` · ${rewardsResult.failed} failed`}
+                    </p>
+                  </div>
+                )}
+                {rewardsError && (
+                  <p className="font-mono text-xs text-red-600 font-bold mt-3">{rewardsError}</p>
+                )}
+
+                <button
+                  onClick={handleSendRewardsToAll}
+                  disabled={rewardsSending}
+                  className="mt-3 bg-accent text-black font-mono text-xs font-bold uppercase tracking-wider px-4 py-2 hover:bg-accent/90 disabled:opacity-50 inline-flex items-center gap-2"
+                >
+                  <Gift className="w-3.5 h-3.5" />
+                  {rewardsSending ? 'Sending…' : 'Send rewards update to all customers'}
+                </button>
+              </div>
+            </div>
+          </div>
 
           {/* Step 1: Pick template */}
           <div>
