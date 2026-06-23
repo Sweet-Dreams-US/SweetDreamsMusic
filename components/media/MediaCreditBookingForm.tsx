@@ -28,6 +28,7 @@ import type { Room } from '@/lib/constants';
 import type { StudioConfig } from '@/lib/studio-config';
 import { computeCreditRedemptionPricing } from '@/lib/credit-redemption-pricing';
 import { formatCents, parseTimeSlot } from '@/lib/utils';
+import { rushFeePerHourCents } from '@/lib/rush-fee';
 
 interface PoolOption {
   id: string;
@@ -104,7 +105,8 @@ export default function MediaCreditBookingForm({
   }
 
   const selectedPool = pools.find((p) => p.id === poolId);
-  const sameDay = date === todayLocal;
+  // Booking Rush Fee tier for the chosen slot (per booked hour, by hours-until-session).
+  const rushPerHourCents = date && startTime ? rushFeePerHourCents(new Date(), date, parseTimeSlot(startTime)) : 0;
 
   // Live price breakdown — the SAME pure function the API uses on submit.
   const quote = useMemo(() => {
@@ -113,12 +115,12 @@ export default function MediaCreditBookingForm({
       room,
       hours: duration,
       startHourLocal: parseTimeSlot(startTime),
-      sameDay,
+      rushPerHourCents,
       guestCount: 0,
       creditHoursRemaining: selectedPool.hoursRemaining,
       pricing: pricingByRoom[room],
     });
-  }, [selectedPool, pricingByRoom, room, duration, startTime, sameDay]);
+  }, [selectedPool, pricingByRoom, room, duration, startTime, rushPerHourCents]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -286,7 +288,7 @@ export default function MediaCreditBookingForm({
           <Row label={`Studio time (${duration} hr base)`} value={formatCents(quote.base)} />
           {quote.surcharges > 0 && (
             <Row
-              label={`Surcharges${sameDay ? ' (incl. same-day)' : ''}`}
+              label={`Surcharges${rushPerHourCents > 0 ? ' (incl. booking rush fee)' : ''}`}
               value={formatCents(quote.surcharges)}
             />
           )}

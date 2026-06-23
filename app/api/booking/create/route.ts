@@ -6,7 +6,8 @@ import { PRICING, SITE_URL, ROOM_LABELS, STUDIO_A_WEEKDAY_START, MAX_GUESTS, typ
 import { isSelfServeBandHours, parseTimeSlot, formatDuration } from '@/lib/utils';
 import { getStudioConfig } from '@/lib/studio-config-server';
 import { priceSessionFromConfig, priceBandFromConfig } from '@/lib/studio-config';
-import { FREE_HOUR_VALUE_CENTS } from '@/lib/credit-redemption-pricing';
+import { freeHourValueCents } from '@/lib/credit-redemption-pricing';
+import { rushFeePerHourCents } from '@/lib/rush-fee';
 import { memberHasFlag } from '@/lib/bands';
 import { getMembership } from '@/lib/bands-server';
 import { isEngineerBlocked } from '@/lib/engineer-blocks';
@@ -191,21 +192,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: friendlyMsg }, { status: 409 });
       }
     }
-    // Same-day check using date strings to avoid UTC timezone mismatch
-    // Vercel runs UTC, studio is in Fort Wayne (America/Indiana/Indianapolis)
-    const todayLocal = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Indiana/Indianapolis' });
-    const sameDayBooking = date === todayLocal;
-
-    // 3-hour buffer for same-day bookings
-    if (sameDayBooking) {
-      const nowFW = new Date().toLocaleString('en-US', { timeZone: 'America/Indiana/Indianapolis' });
-      const nowDate = new Date(nowFW);
-      const currentDecimal = nowDate.getHours() + nowDate.getMinutes() / 60;
-      const bufferCutoff = Math.ceil((currentDecimal + 3) * 2) / 2; // round up to next 30-min
-      if (startHour < bufferCutoff) {
-        return NextResponse.json({ error: `Same-day bookings require a 3-hour buffer. The earliest available time is ${Math.floor(bufferCutoff)}:${bufferCutoff % 1 >= 0.5 ? '30' : '00'} ${bufferCutoff >= 12 ? 'PM' : 'AM'}.` }, { status: 400 });
-      }
-    }
+    // Booking Rush Fee: tiered per-booked-hour surcharge by hours-until-session
+    // (Eastern). Last-minute booking is now allowed — no buffer reject.
+    const rushPerHourCents = rushFeePerHourCents(new Date(), date, startHour);
 
     // Check for unpaid balance from previous sessions
     const { data: unpaidBookings } = await supabase
@@ -231,7 +220,7 @@ export async function POST(request: NextRequest) {
     const studioConfig = await getStudioConfig(supabase, room as string);
     const pricing = isBandBooking
       ? priceBandFromConfig(studioConfig, Number(duration), sweetSpotAddon)
-      : priceSessionFromConfig(studioConfig, { hours: Number(duration), startHour, sameDay: sameDayBooking, guests: guestCount });
+      : priceSessionFromConfig(studioConfig, { hours: Number(duration), startHour, rushPerHourCents, guests: guestCount });
 
     // Reward discount (best-of, never stacked). Gated to the LOGGED-IN user so an
     // email can't be spoofed to grab someone's discount; solo sessions only for now
@@ -288,9 +277,10 @@ export async function POST(request: NextRequest) {
           (c) => Number(c.hours_granted) - Number(c.hours_used) >= 1,
         ) as { id: string } | undefined;
         if (eligible) {
-          // A free hour is a FLAT $50 (FREE_HOUR_VALUE_CENTS) regardless of
-          // room/duration. Never discount more than the session total.
-          freeHourDiscountCents = Math.min(FREE_HOUR_VALUE_CENTS, pricing.total);
+          // A free hour is worth $60 for a 1-hour session, $50 for 2+ hours
+          // (freeHourValueCents), regardless of room. Never discount more than
+          // the session total.
+          freeHourDiscountCents = Math.min(freeHourValueCents(Number(duration)), pricing.total);
           freeHourCreditId = eligible.id;
         }
       } catch (e) {
@@ -417,8 +407,8 @@ export async function POST(request: NextRequest) {
         // studio_credit_redemptions row by the webhook. Empty when no free hour.
         redeemed_by: freeHourApplied && sessionUser?.id ? sessionUser.id : '',
         night_fees: String(pricing.nightFees),
-        same_day: String(sameDayBooking),
-        same_day_fee: String(pricing.sameDayFee),
+        booking_rush: String(rushPerHourCents > 0),
+        booking_rush_fee: String(pricing.bookingRushFee),
         guest_count: String(guestCount),
         guest_fee: String(pricing.guestFee),
         // Free setup hour reservation. Band 4hr/8hr sessions all pad 60min

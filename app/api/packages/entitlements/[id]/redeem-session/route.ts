@@ -85,7 +85,7 @@ export async function POST(
   if (hoursFromNow < SAME_DAY_BUFFER_HOURS) {
     return NextResponse.json(
       {
-        error: 'Membership sessions must be booked 24+ hours in advance. For same-day, book through /book and pay the same-day fee.',
+        error: 'Membership sessions must be booked 24+ hours in advance. For same-day, book through /book and pay the booking rush fee.',
       },
       { status: 400 },
     );

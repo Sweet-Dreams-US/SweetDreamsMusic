@@ -41,7 +41,7 @@ export interface StudioConfig {
 
 export type HourTier = 'regular' | 'lateNight' | 'deepNight';
 export interface HourBreakdownEntry {
-  hour: number; baseRate: number; nightFee: number; sameDayFee: number; hourTotal: number; tier: HourTier;
+  hour: number; baseRate: number; nightFee: number; bookingRushFee: number; hourTotal: number; tier: HourTier;
 }
 // Mirrors lib/utils SessionPricing exactly so priceSessionFromConfig is a
 // drop-in replacement for calculateSessionTotal (incl. the per-hour breakdown).
@@ -49,7 +49,7 @@ export interface SessionPriceResult {
   subtotal: number;
   hourBreakdown: HourBreakdownEntry[];
   nightFees: number;
-  sameDayFee: number;
+  bookingRushFee: number;
   guestFee: number;
   guestCount: number;
   sweetSpot: boolean;
@@ -85,31 +85,33 @@ export function hourSurchargeFromConfig(config: StudioConfig, hour: number): { t
  */
 export function priceSessionFromConfig(
   config: StudioConfig,
-  opts: { hours: number; startHour: number; sameDay: boolean; guests: number },
+  opts: { hours: number; startHour: number; rushPerHourCents: number; guests: number },
 ): SessionPriceResult {
-  const { hours, startHour, sameDay, guests } = opts;
+  const { hours, startHour, rushPerHourCents, guests } = opts;
   const sweet4 = config.tiers.find((t) => t.kind === 'sweet_4');
   const isSweet4 = !!sweet4 && hours === sweet4.hours;
   const basePerHour = isSweet4 ? sweet4!.perHourCents : hours === 1 ? config.singleHourRateCents : config.hourlyRateCents;
-  const sameDayCents = config.surcharges.find((s) => s.kind === 'same_day')?.amountCents ?? 0;
+  // Booking Rush Fee: the tiered, per-booked-hour amount the caller computed from
+  // hours-until-session (lib/rush-fee.ts). Replaces the old flat "same day"
+  // surcharge and, like it, stacks on top of the night surcharge, per hour.
 
   const hourBreakdown: HourBreakdownEntry[] = [];
   let nightFees = 0;
-  let sameDayFee = 0;
+  let bookingRushFee = 0;
   for (let i = 0; i < hours; i++) {
     const h = (startHour + i) % 24; // decimal hour preserved (e.g. 18.5); floored only for the surcharge lookup
     const sc = hourSurchargeFromConfig(config, h);
-    const sdFee = sameDay ? sameDayCents : 0;
-    hourBreakdown.push({ hour: h, baseRate: basePerHour, nightFee: sc.amount, sameDayFee: sdFee, hourTotal: basePerHour + sc.amount + sdFee, tier: sc.tier });
+    const rushFee = rushPerHourCents;
+    hourBreakdown.push({ hour: h, baseRate: basePerHour, nightFee: sc.amount, bookingRushFee: rushFee, hourTotal: basePerHour + sc.amount + rushFee, tier: sc.tier });
     nightFees += sc.amount;
-    sameDayFee += sdFee;
+    bookingRushFee += rushFee;
   }
   const subtotal = isSweet4 ? sweet4!.priceCents : basePerHour * hours;
   const extraGuests = Math.max(0, guests - config.freeGuests);
   const guestFee = extraGuests * config.guestFeeCents * hours;
-  const total = subtotal + nightFees + sameDayFee + guestFee;
+  const total = subtotal + nightFees + bookingRushFee + guestFee;
   const deposit = Math.round(total * (config.depositPercent / 100));
-  return { subtotal, hourBreakdown, nightFees, sameDayFee, guestFee, guestCount: guests, sweetSpot: isSweet4, total, deposit };
+  return { subtotal, hourBreakdown, nightFees, bookingRushFee, guestFee, guestCount: guests, sweetSpot: isSweet4, total, deposit };
 }
 
 /** Sweet Spot filming add-on price (cents) for an 8hr / 24hr band session, from
@@ -133,7 +135,7 @@ export function priceBandFromConfig(
   if (addon?.kind === '8hr-addon' && hours === 8) total += sweetSpotAddonCents(config, 8);
   else if (addon?.kind === '3day-addon' && hours === 24) total += sweetSpotAddonCents(config, 24);
   const deposit = Math.round(total * (config.depositPercent / 100));
-  return { subtotal: total, hourBreakdown: [], nightFees: 0, sameDayFee: 0, guestFee: 0, guestCount: 1, sweetSpot: false, total, deposit };
+  return { subtotal: total, hourBreakdown: [], nightFees: 0, bookingRushFee: 0, guestFee: 0, guestCount: 1, sweetSpot: false, total, deposit };
 }
 
 /**

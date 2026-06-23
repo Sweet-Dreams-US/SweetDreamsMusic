@@ -655,7 +655,7 @@ export default function BookingManager() {
                         <p className="text-black/60 uppercase tracking-wider">Surcharges</p>
                         <p className="font-semibold">
                           {b.night_fees_amount > 0 && <span>Night: {formatCents(b.night_fees_amount)}</span>}
-                          {b.same_day_fee && <span className="block">Same-day: {formatCents(b.same_day_fee_amount)}</span>}
+                          {b.same_day_fee && <span className="block">Booking Rush: {formatCents(b.same_day_fee_amount)}</span>}
                           {(b.guest_fee_amount || 0) > 0 && <span className="block">Guests ({b.guest_count || 1} people): {formatCents(b.guest_fee_amount)}</span>}
                           {!b.night_fees_amount && !b.same_day_fee && !(b.guest_fee_amount || 0) && '—'}
                         </p>
@@ -1351,7 +1351,7 @@ export default function BookingManager() {
                           <p>Stripe PI: {b.stripe_payment_intent_id || '—'}</p>
                           {b.stripe_checkout_session_id && <p>Stripe Session: {b.stripe_checkout_session_id}</p>}
                           <p>Night Fees: {formatCents(b.night_fees_amount || 0)}</p>
-                          <p>Same Day: {b.same_day_fee ? `Yes (${formatCents(b.same_day_fee_amount || 0)})` : 'No'}</p>
+                          <p>Booking Rush: {b.same_day_fee ? `Yes (${formatCents(b.same_day_fee_amount || 0)})` : 'No'}</p>
                         </div>
                       )}
                     </div>

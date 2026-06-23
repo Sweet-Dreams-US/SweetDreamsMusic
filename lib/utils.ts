@@ -67,7 +67,7 @@ export type HourBreakdown = {
   hour: number;
   baseRate: number;
   nightFee: number;
-  sameDayFee: number;
+  bookingRushFee: number;
   hourTotal: number;
   tier: 'regular' | 'lateNight' | 'deepNight';
 };
@@ -76,7 +76,7 @@ export type SessionPricing = {
   subtotal: number;
   hourBreakdown: HourBreakdown[];
   nightFees: number;
-  sameDayFee: number;
+  bookingRushFee: number;
   guestFee: number;
   guestCount: number;
   sweetSpot: boolean;
@@ -88,7 +88,7 @@ export function calculateSessionTotal(
   room: Room,
   hours: number,
   startHour: number,
-  isSameDayBooking: boolean,
+  rushPerHourCents: number,
   guestCount: number = 1
 ): SessionPricing {
   // Check for The Sweet 4 deal (4 hours flat rate)
@@ -108,36 +108,38 @@ export function calculateSessionTotal(
   // Build per-hour breakdown (startHour can be decimal, e.g. 18.5 for 6:30 PM)
   const hourBreakdown: HourBreakdown[] = [];
   let nightFees = 0;
-  let sameDayFee = 0;
+  let bookingRushFee = 0;
 
   for (let i = 0; i < hours; i++) {
     const h = (startHour + i) % 24;
     const surcharge = getHourSurcharge(Math.floor(h));
-    const sdFee = isSameDayBooking ? PRICING.sameDaySurcharge : 0;
+    // Booking Rush Fee: tiered per-booked-hour amount (lib/rush-fee.ts), passed
+    // in by the caller. Replaces the old flat same-day surcharge; stacks on night.
+    const rushFee = rushPerHourCents;
 
     const entry: HourBreakdown = {
       hour: h,
       baseRate: basePerHour,
       nightFee: surcharge.amount,
-      sameDayFee: sdFee,
-      hourTotal: basePerHour + surcharge.amount + sdFee,
+      bookingRushFee: rushFee,
+      hourTotal: basePerHour + surcharge.amount + rushFee,
       tier: surcharge.tier,
     };
 
     hourBreakdown.push(entry);
     nightFees += surcharge.amount;
-    sameDayFee += sdFee;
+    bookingRushFee += rushFee;
   }
 
   const subtotal = isSweet4 ? sweet4.price : basePerHour * hours;
   const extraGuests = Math.max(0, guestCount - FREE_GUESTS);
   const guestFee = extraGuests * GUEST_FEE_PER_HOUR * hours;
-  const total = subtotal + nightFees + sameDayFee + guestFee;
+  const total = subtotal + nightFees + bookingRushFee + guestFee;
   const deposit = Math.round(total * (PRICING.depositPercent / 100));
 
   // NOTE: `sweetSpot` field kept as-is for backward compat with callers
   // that read the boolean flag. The user-facing product is now "The Sweet 4".
-  return { subtotal, hourBreakdown, nightFees, sameDayFee, guestFee, guestCount, sweetSpot: isSweet4, total, deposit };
+  return { subtotal, hourBreakdown, nightFees, bookingRushFee, guestFee, guestCount, sweetSpot: isSweet4, total, deposit };
 }
 
 // ============================================================
@@ -158,9 +160,9 @@ export type BandSessionPricing = {
   hours: 4 | 8 | 24;
   tier: (typeof BAND_PRICING)[number];
   subtotal: number;
-  nightFees: number;   // always 0 — flat-rate package
-  sameDayFee: number;  // always 0
-  guestFee: number;    // always 0 — band members aren't guests
+  nightFees: number;       // always 0 — flat-rate package
+  bookingRushFee: number;  // always 0 — bands are never rush-charged
+  guestFee: number;        // always 0 — band members aren't guests
   total: number;
   deposit: number;
 };
@@ -212,7 +214,7 @@ export function calculateBandSessionTotal(
     tier,
     subtotal: total,
     nightFees: 0,
-    sameDayFee: 0,
+    bookingRushFee: 0,
     guestFee: 0,
     total,
     deposit,

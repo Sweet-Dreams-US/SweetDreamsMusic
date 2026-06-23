@@ -285,10 +285,12 @@ function SurchargeRow({ s, onSave, saving }: { s: any; onSave: (s: any, amt: str
   const [start, setStart] = useState(s.start_hour == null ? '' : String(s.start_hour));
   const [end, setEnd] = useState(s.end_hour == null ? '' : String(s.end_hour));
   const hasWindow = s.kind !== 'same_day';
+  // The 'same_day' DB kind stays the same; only its user-facing label is relabeled.
+  const kindLabel = s.kind === 'same_day' ? 'Booking Rush Fee (legacy / base)' : s.kind;
   const dirty = amt !== d(s.amount_cents) || (hasWindow && (start !== (s.start_hour == null ? '' : String(s.start_hour)) || end !== (s.end_hour == null ? '' : String(s.end_hour))));
   return (
     <div className="flex items-end gap-2 border border-black/10 p-2.5 flex-wrap">
-      <span className="font-mono text-[11px] font-bold uppercase text-black/50 flex-1 min-w-[80px]">{s.kind}</span>
+      <span className="font-mono text-[11px] font-bold uppercase text-black/50 flex-1 min-w-[80px]">{kindLabel}</span>
       <LabeledMini label="Amount $/hr"><input value={amt} onChange={(e) => setAmt(e.target.value)} className={miniInp} /></LabeledMini>
       {hasWindow && <LabeledMini label="From (0-23)"><input value={start} onChange={(e) => setStart(e.target.value)} inputMode="decimal" className={miniInp} /></LabeledMini>}
       {hasWindow && <LabeledMini label="To (0-23)"><input value={end} onChange={(e) => setEnd(e.target.value)} inputMode="decimal" className={miniInp} /></LabeledMini>}

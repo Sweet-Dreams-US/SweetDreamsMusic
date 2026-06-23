@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { Copy, Check, Link as LinkIcon, Search, UserPlus, X, Video, Trash2, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 import { formatCents, formatTime, parseTimeSlot } from '@/lib/utils';
 import { priceSessionFromConfig, type StudioConfig } from '@/lib/studio-config';
+import { rushFeePerHourCents } from '@/lib/rush-fee';
 
 type EngineerOpt = { name: string; displayName: string };
 
@@ -96,12 +97,12 @@ export default function CreateInvite({ studios, engineers }: { studios: StudioCo
 
   // Current room's DB-driven config (rates / hours / surcharges / deposit %).
   const cfg = useMemo(() => studios.find((s) => s.slug === room) ?? studios[0], [studios, room]);
-  const sameDayCents = cfg.surcharges.find((s) => s.kind === 'same_day')?.amountCents ?? 0;
   const startHour = parseTimeSlot(startTime);
-  // Check if the selected date is today (Fort Wayne time) for same-day surcharge
+  // Today (Fort Wayne time) — used for the past-time guard below.
   const todayLocal = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Indiana/Indianapolis' });
-  const isSameDay = date === todayLocal;
-  const pricing = priceSessionFromConfig(cfg, { hours: duration, startHour, sameDay: isSameDay, guests: 1 });
+  // Tiered Booking Rush Fee, per booked hour, by hours-until-session (Eastern).
+  const rushPerHourCents = rushFeePerHourCents(new Date(), date, startHour);
+  const pricing = priceSessionFromConfig(cfg, { hours: duration, startHour, rushPerHourCents, guests: 1 });
   const useCustomPrice = customPrice.trim() !== '';
   const customPriceCents = useCustomPrice ? Math.round(parseFloat(customPrice) * 100) : 0;
   const finalTotal = useCustomPrice ? customPriceCents : pricing.total;
@@ -626,10 +627,10 @@ export default function CreateInvite({ studios, engineers }: { studios: StudioCo
                 <span>+{formatCents(pricing.nightFees)}</span>
               </div>
             )}
-            {pricing.sameDayFee > 0 && (
+            {pricing.bookingRushFee > 0 && (
               <div className="flex justify-between text-red-600">
-                <span>Same-day booking (+{formatCents(sameDayCents)}/hr)</span>
-                <span>+{formatCents(pricing.sameDayFee)}</span>
+                <span>Booking Rush Fee (+{formatCents(rushPerHourCents)}/hr)</span>
+                <span>+{formatCents(pricing.bookingRushFee)}</span>
               </div>
             )}
           </>

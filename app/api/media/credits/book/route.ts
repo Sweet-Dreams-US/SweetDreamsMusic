@@ -5,7 +5,7 @@
 // MONEY MODEL (reworked 2026-06 — was hard-coded $0):
 //   A free studio hour discounts ONE hour of BASE studio time (room-aware,
 //   capped at the booked hours). The customer still pays the FULL surcharge
-//   (late-night / deep-night / same-day / guests) up front by card, plus —
+//   (late-night / deep-night / rush fee / guests) up front by card, plus —
 //   for 2+ hour bookings — the discounted half of the deposit. The exact
 //   cents math lives in lib/credit-redemption-pricing.ts (pure, self-checked
 //   against four worked examples).
@@ -51,6 +51,7 @@ import { getUserBands } from '@/lib/bands-server';
 import { ENGINEERS, PRICING, SITE_URL, ROOM_LABELS, type Room } from '@/lib/constants';
 import { getStudioConfig } from '@/lib/studio-config-server';
 import { parseTimeSlot, formatDuration } from '@/lib/utils';
+import { rushFeePerHourCents } from '@/lib/rush-fee';
 import { computeCreditRedemptionPricing } from '@/lib/credit-redemption-pricing';
 import { sendEngineerNewBookingAlert } from '@/lib/email';
 
@@ -273,20 +274,17 @@ export async function POST(request: NextRequest) {
   // the correct studio-LOCAL decimal hour. (Old code used getUTCHours() on a
   // zone-naive Date, shifting the surcharge tier by the server's offset.)
   const startHourLocal = parseTimeSlot(startTime);
-  // Same-day is computed in Fort Wayne time (Vercel runs UTC), mirroring
-  // /api/booking/create so a 9pm-ET booking made the same calendar day is
-  // correctly flagged regardless of the server's clock.
-  const todayLocal = new Date().toLocaleDateString('en-CA', {
-    timeZone: 'America/Indiana/Indianapolis',
-  });
-  const sameDay = date === todayLocal;
+  // Booking Rush Fee is tiered per-booked-hour by hours-until-session in Eastern
+  // (Fort Wayne) wall-clock time — no calendar-day logic. The helper converts the
+  // absolute `now` to Eastern internally, so `new Date()` is correct on the server.
+  const rushPerHourCents = rushFeePerHourCents(new Date(), date, startHourLocal);
 
   const cfg = await getStudioConfig(service, room);
   const pricing = computeCreditRedemptionPricing({
     room,
     hours: durationHours,
     startHourLocal,
-    sameDay,
+    rushPerHourCents,
     guestCount: 0, // credit redemptions don't take a guest count today; default solo
     creditHoursRemaining: remaining,
     pricing: cfg,

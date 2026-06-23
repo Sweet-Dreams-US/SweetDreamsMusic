@@ -26,12 +26,13 @@ export default function PricingCalculator({ studios }: { studios: StudioConfig[]
   const [room, setRoom] = useState<string>(studios[0]?.slug ?? 'studio_a');
   const [hours, setHours] = useState(2);
   const [startTime, setStartTime] = useState('12:0');
-  const [isSameDay, setIsSameDay] = useState(false);
+  // Booking Rush Fee is tiered by how soon the session starts. The calculator
+  // lets you pick a lead-time tier, which maps straight to a per-booked-hour fee.
+  const [rushPerHourCents, setRushPerHourCents] = useState(0);
 
   // Current room's DB-driven config (rates / hours / surcharges / tiers).
   const cfg = useMemo(() => studios.find((s) => s.slug === room) ?? studios[0], [studios, room]);
   const hourOptions = useMemo(() => Array.from({ length: cfg.maxHours }, (_, i) => i + 1), [cfg.maxHours]);
-  const sameDayCents = cfg.surcharges.find((s) => s.kind === 'same_day')?.amountCents ?? 0;
 
   const startHour = useMemo(() => {
     const [h, m] = startTime.split(':').map(Number);
@@ -39,8 +40,8 @@ export default function PricingCalculator({ studios }: { studios: StudioConfig[]
   }, [startTime]);
 
   const pricing = useMemo(
-    () => priceSessionFromConfig(cfg, { hours, startHour, sameDay: isSameDay, guests: 1 }),
-    [cfg, hours, startHour, isSameDay]
+    () => priceSessionFromConfig(cfg, { hours, startHour, rushPerHourCents, guests: 1 }),
+    [cfg, hours, startHour, rushPerHourCents]
   );
 
   const remainder = pricing.total - pricing.deposit;
@@ -134,21 +135,25 @@ export default function PricingCalculator({ studios }: { studios: StudioConfig[]
               </select>
             </div>
 
-            {/* Same-day toggle */}
+            {/* Booking Rush Fee (tiered by how soon the session starts) */}
             <div>
               <label className="font-mono text-[11px] font-bold uppercase tracking-wider text-black/50 block mb-2">
-                Same-Day Booking?
+                Booking Rush Fee
               </label>
-              <button
-                onClick={() => setIsSameDay((s) => !s)}
-                className={`w-full font-mono text-xs font-bold uppercase tracking-wider px-3 py-2.5 border-2 transition-colors ${
-                  isSameDay
-                    ? 'border-amber-500 bg-amber-50 text-amber-700'
+              <select
+                value={rushPerHourCents}
+                onChange={(e) => setRushPerHourCents(Number(e.target.value))}
+                className={`w-full font-mono text-xs font-bold uppercase tracking-wider px-3 py-2.5 bg-white border-2 transition-colors appearance-none cursor-pointer ${
+                  rushPerHourCents > 0
+                    ? 'border-amber-500 text-amber-700'
                     : 'border-black/10 text-black/60 hover:border-black/30'
                 }`}
               >
-                {isSameDay ? `Yes (+${formatCents(sameDayCents)}/hr)` : 'No'}
-              </button>
+                <option value={0}>12h+ out — none</option>
+                <option value={1000}>4–12h out — +{formatCents(1000)}/hr</option>
+                <option value={2000}>2–4h out — +{formatCents(2000)}/hr</option>
+                <option value={3000}>Under 2h — +{formatCents(3000)}/hr</option>
+              </select>
             </div>
           </div>
 
@@ -190,9 +195,9 @@ export default function PricingCalculator({ studios }: { studios: StudioConfig[]
                           {entry.tier === 'deepNight' ? `Deep Night +${formatCents(entry.nightFee)}` : `Late Night +${formatCents(entry.nightFee)}`}
                         </span>
                       )}
-                      {entry.sameDayFee > 0 && (
+                      {entry.bookingRushFee > 0 && (
                         <span className="text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 bg-amber-50 text-amber-500">
-                          Same-Day +{formatCents(entry.sameDayFee)}
+                          Rush +{formatCents(entry.bookingRushFee)}
                         </span>
                       )}
                     </div>
@@ -215,10 +220,10 @@ export default function PricingCalculator({ studios }: { studios: StudioConfig[]
                 <span className="text-amber-600">+{formatCents(pricing.nightFees)}</span>
               </div>
             )}
-            {pricing.sameDayFee > 0 && (
+            {pricing.bookingRushFee > 0 && (
               <div className="flex justify-between font-mono text-xs">
-                <span className="text-amber-500">Same-Day Fee</span>
-                <span className="text-amber-500">+{formatCents(pricing.sameDayFee)}</span>
+                <span className="text-amber-500">Booking Rush Fee</span>
+                <span className="text-amber-500">+{formatCents(pricing.bookingRushFee)}</span>
               </div>
             )}
             <div className="flex justify-between font-mono text-sm font-bold border-t border-black/10 pt-2">

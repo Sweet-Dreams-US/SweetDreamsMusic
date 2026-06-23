@@ -39,11 +39,12 @@ export default async function PricingPage() {
   const cfgB = bySlug.get('studio_b') ?? studios[1] ?? studios[0];
   const bandCfg = bySlug.get('studio_a') ?? studios.find((s) => s.bandEnabled) ?? studios[0];
   const sweet4 = (c: StudioConfig) => c.tiers.find((t) => t.kind === 'sweet_4');
-  const surcharge = (kind: 'late_night' | 'deep_night' | 'same_day') => cfgA.surcharges.find((s) => s.kind === kind)?.amountCents ?? 0;
+  const surcharge = (kind: 'late_night' | 'deep_night') => cfgA.surcharges.find((s) => s.kind === kind)?.amountCents ?? 0;
   const bandTiers = bandCfg.tiers.filter((t) => t.kind.startsWith('band_')).sort((a, b) => a.hours - b.hours);
   // Worked "how surcharges stack" example — computed from config so the numbers
-  // can never drift from the real rates (4hr Studio A, midnight start, same-day).
-  const stackEx = priceSessionFromConfig(cfgA, { hours: 4, startHour: 0, sameDay: true, guests: 1 });
+  // can never drift from the real rates (4hr Studio A, midnight start, booked
+  // under 2 hours out → top $30/hr Booking Rush Fee tier).
+  const stackEx = priceSessionFromConfig(cfgA, { hours: 4, startHour: 0, rushPerHourCents: 3000, guests: 1 });
   const tierName = (t: string) => (t === 'deepNight' ? 'after hours' : t === 'lateNight' ? 'late night' : 'regular');
   const hourLabel = (h: number) => { const hr = Math.floor(h) % 24; const disp = hr % 12 === 0 ? 12 : hr % 12; return `${disp} ${hr < 12 ? 'AM' : 'PM'}`; };
 
@@ -164,13 +165,19 @@ export default async function PricingPage() {
             <div className="border-2 border-black p-6 sm:p-8">
               <div className="flex items-center gap-3 mb-4">
                 <AlertCircle className="w-6 h-6 text-accent" />
-                <h3 className="text-heading-sm">SAME-DAY</h3>
+                <h3 className="text-heading-sm">BOOKING RUSH FEE</h3>
               </div>
               <div className="flex items-baseline gap-1 mb-3">
-                <span className="font-heading text-display-sm">+{formatCents(surcharge('same_day'))}</span>
-                <span className="font-mono text-sm text-black/50">/hour</span>
+                <span className="font-heading text-display-sm">+{formatCents(3000)}</span>
+                <span className="font-mono text-sm text-black/50">/hour max</span>
               </div>
-              <p className="font-mono text-sm text-black/60">Booking and recording on the same day. Applies to every hour.</p>
+              <p className="font-mono text-sm text-black/60">Last-minute booking, charged per hour. The closer to your start time, the higher the tier:</p>
+              <ul className="font-mono text-xs text-black/50 mt-3 space-y-1">
+                <li>Under 2 hrs out — +{formatCents(3000)}/hr</li>
+                <li>2–4 hrs out — +{formatCents(2000)}/hr</li>
+                <li>4–12 hrs out — +{formatCents(1000)}/hr</li>
+                <li>12+ hrs out — no fee</li>
+              </ul>
             </div>
           </div>
 
@@ -179,15 +186,15 @@ export default async function PricingPage() {
             <h3 className="font-mono text-sm font-semibold uppercase tracking-wider mb-3">How Surcharges Work</h3>
             <p className="font-mono text-sm text-black/60 mb-3">
               Surcharges are calculated <strong className="text-black">per hour</strong>. If your session spans multiple time zones, each hour gets its own surcharge.
-              Surcharges stack — a same-day session starting at 1 AM would have both the late night/after hours surcharge AND the same-day surcharge.
+              Surcharges stack — a last-minute session starting at 1 AM would have both the late night/after hours surcharge AND the Booking Rush Fee.
             </p>
             <div className="font-mono text-xs text-black/40 space-y-1">
-              <p>Example: {stackEx.hourBreakdown.length}hr session starting at midnight, same-day booking</p>
+              <p>Example: {stackEx.hourBreakdown.length}hr session starting at midnight, booked under 2 hours out (+{formatCents(3000)}/hr rush)</p>
               {stackEx.hourBreakdown.map((hb, i) => (
                 <p key={i}>
                   {hourLabel(hb.hour)}: {formatCents(hb.baseRate)} base
                   {hb.nightFee > 0 && ` + ${formatCents(hb.nightFee)} ${tierName(hb.tier)}`}
-                  {hb.sameDayFee > 0 && ` + ${formatCents(hb.sameDayFee)} same-day`}
+                  {hb.bookingRushFee > 0 && ` + ${formatCents(hb.bookingRushFee)} rush fee`}
                   {' = '}<strong className="text-black">{formatCents(hb.hourTotal)}</strong>
                 </p>
               ))}
@@ -229,11 +236,11 @@ export default async function PricingPage() {
           <h2 className="text-heading-xl mb-12">EXAMPLE SESSIONS</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              { title: '2 HOURS — STUDIO B (DAYTIME)', room: 'studio_b' as const, hours: 2, startHour: 14, sameDay: false },
-              { title: 'THE SWEET 4 — STUDIO A', room: 'studio_a' as const, hours: 4, startHour: 12, sameDay: false },
-              { title: '3 HOURS — STUDIO A (11 PM START)', room: 'studio_a' as const, hours: 3, startHour: 23, sameDay: false },
+              { title: '2 HOURS — STUDIO B (DAYTIME)', room: 'studio_b' as const, hours: 2, startHour: 14, rushPerHourCents: 0 },
+              { title: 'THE SWEET 4 — STUDIO A', room: 'studio_a' as const, hours: 4, startHour: 12, rushPerHourCents: 0 },
+              { title: '3 HOURS — STUDIO A (11 PM START)', room: 'studio_a' as const, hours: 3, startHour: 23, rushPerHourCents: 0 },
             ].map((ex) => {
-              const p = priceSessionFromConfig(bySlug.get(ex.room) ?? cfgA, { hours: ex.hours, startHour: ex.startHour, sameDay: ex.sameDay, guests: 1 });
+              const p = priceSessionFromConfig(bySlug.get(ex.room) ?? cfgA, { hours: ex.hours, startHour: ex.startHour, rushPerHourCents: ex.rushPerHourCents, guests: 1 });
               return (
                 <div key={ex.title} className="border-2 border-black p-8">
                   <h3 className="text-heading-sm mb-4">{ex.title}</h3>
@@ -241,7 +248,7 @@ export default async function PricingPage() {
                     <p>Base: {formatCents(p.subtotal)}</p>
                     {p.sweetSpot && <p className="text-accent">The Sweet 4 rate applied</p>}
                     {p.nightFees > 0 && <p className="text-amber-600">Night surcharges: +{formatCents(p.nightFees)}</p>}
-                    {p.sameDayFee > 0 && <p>Same-day: +{formatCents(p.sameDayFee)}</p>}
+                    {p.bookingRushFee > 0 && <p>Booking Rush Fee: +{formatCents(p.bookingRushFee)}</p>}
                   </div>
                   <p className="font-mono text-xs text-black/40 mb-1">Total: {formatCents(p.total)}</p>
                   <p className="font-heading text-display-sm text-accent">Deposit: {formatCents(p.deposit)}</p>

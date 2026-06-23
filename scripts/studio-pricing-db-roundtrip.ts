@@ -27,8 +27,8 @@ if (!URL || !KEY) {
 const db = createClient(URL, KEY);
 const SEED = process.argv.includes('--seed');
 
-type Row = { total: number; deposit: number; subtotal: number; nightFees: number; sameDayFee: number; guestFee: number };
-const FIELDS = ['total', 'deposit', 'subtotal', 'nightFees', 'sameDayFee', 'guestFee'] as const;
+type Row = { total: number; deposit: number; subtotal: number; nightFees: number; bookingRushFee: number; guestFee: number };
+const FIELDS = ['total', 'deposit', 'subtotal', 'nightFees', 'bookingRushFee', 'guestFee'] as const;
 
 async function main() {
   if (SEED) {
@@ -58,10 +58,10 @@ async function main() {
 
   for (const key of keys) {
     if (key.startsWith('solo|')) {
-      const [, room, h, s, sd, g] = key.split('|');
+      const [, room, h, s, r, g] = key.split('|');
       const config = await cfg(room);
       const got = priceSessionFromConfig(config, {
-        hours: Number(h.slice(1)), startHour: Number(s.slice(1)), sameDay: sd === 'sd1', guests: Number(g.slice(1)),
+        hours: Number(h.slice(1)), startHour: Number(s.slice(1)), rushPerHourCents: Number(r.slice(1)), guests: Number(g.slice(1)),
       });
       cmp(key, snap[key], got);
     } else if (key.startsWith('band|')) {

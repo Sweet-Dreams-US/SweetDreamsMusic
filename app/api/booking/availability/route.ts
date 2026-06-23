@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 
-const SAME_DAY_BUFFER_HOURS = 3; // 3-hour buffer from current time for same-day bookings
-
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const date = searchParams.get('date');
@@ -86,23 +84,6 @@ export async function GET(request: NextRequest) {
     const totalSlots = Math.ceil((endSlot - startSlot) * 2);
     for (let i = 0; i < totalSlots; i++) {
       const slot = (startSlot + i * 0.5) % 24;
-      if (!bookedSlots.includes(slot)) {
-        bookedSlots.push(slot);
-      }
-    }
-  }
-
-  // Same-day buffer: block slots within 3 hours from now (Fort Wayne time)
-  const todayLocal = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Indiana/Indianapolis' });
-  if (date === todayLocal) {
-    const nowFW = new Date().toLocaleString('en-US', { timeZone: 'America/Indiana/Indianapolis' });
-    const nowDate = new Date(nowFW);
-    const currentDecimal = nowDate.getHours() + nowDate.getMinutes() / 60;
-    const bufferCutoff = currentDecimal + SAME_DAY_BUFFER_HOURS;
-    // Round up to next 30-min slot
-    const cutoffSlot = Math.ceil(bufferCutoff * 2) / 2;
-
-    for (let slot = 0; slot < cutoffSlot; slot += 0.5) {
       if (!bookedSlots.includes(slot)) {
         bookedSlots.push(slot);
       }

@@ -53,6 +53,17 @@ import type { Room } from '@/lib/constants';
  */
 export const FREE_HOUR_VALUE_CENTS = 5000;
 
+/**
+ * Cash value of ONE free studio hour, by SESSION LENGTH (Cole's rule, 2026-06-22):
+ *   $60 for a 1-hour session, $50 for any session of 2+ hours.
+ * Flat regardless of room — Studio A is allowed for a free hour but the customer
+ * pays the Studio-A base difference (any base above the credit). Booking-rush /
+ * after-hours / guest fees are NEVER covered by the free hour.
+ */
+export function freeHourValueCents(hours: number): number {
+  return hours === 1 ? 6000 : 5000;
+}
+
 export interface CreditRedemptionPricing {
   /** Full session value incl. all surcharges, before the credit discount (cents). */
   total: number;
@@ -80,7 +91,8 @@ export interface CreditRedemptionPricingInput {
   hours: number;
   /** Studio-LOCAL (Eastern) start hour, decimal allowed (e.g. 23 for 11pm, 18.5 for 6:30pm). */
   startHourLocal: number;
-  sameDay: boolean;
+  /** Per-booked-hour Booking Rush Fee in cents (0/1000/2000/3000), from lib/rush-fee.ts. */
+  rushPerHourCents: number;
   /** Number of GUESTS (artist not counted). */
   guestCount: number;
   /** Hours left on the credit being drawn from. */
@@ -98,18 +110,18 @@ export interface CreditRedemptionPricingInput {
 export function computeCreditRedemptionPricing(
   input: CreditRedemptionPricingInput,
 ): CreditRedemptionPricing {
-  const { hours, startHourLocal, sameDay, guestCount, creditHoursRemaining, pricing } = input;
+  const { hours, startHourLocal, rushPerHourCents, guestCount, creditHoursRemaining, pricing } = input;
 
   // ── Base + surcharge total — identical engine to the paid booking flow ──
   const priced = priceSessionFromConfig(pricing, {
     hours,
     startHour: startHourLocal,
-    sameDay,
+    rushPerHourCents,
     guests: guestCount,
   });
   const total = priced.total;
   const base = priced.subtotal;
-  const surcharges = priced.nightFees + priced.sameDayFee + priced.guestFee;
+  const surcharges = priced.nightFees + priced.bookingRushFee + priced.guestFee;
 
   // ── Credit discount ─────────────────────────────────────────────────────
   // creditHoursApplied is capped at the booked hours; extra hours are paid.
@@ -118,9 +130,10 @@ export function computeCreditRedemptionPricing(
     0,
     Math.min(Math.floor(creditHoursRemaining), hours),
   );
-  // A free hour is a FLAT $50 (FREE_HOUR_VALUE_CENTS) per credit hour, regardless
-  // of room or duration — NOT the booked room's hourly rate. (Cole's rule.)
-  const discount = creditHoursApplied * FREE_HOUR_VALUE_CENTS;
+  // A free hour is worth $60 on a 1-hour session, $50 on 2+ hours (freeHourValueCents)
+  // per credit hour — flat regardless of room. Booking-rush / night / guest fees
+  // are never covered by it. (Cole's rule, 2026-06-22.)
+  const discount = creditHoursApplied * freeHourValueCents(hours);
 
   const netTotal = Math.max(0, total - discount);
 

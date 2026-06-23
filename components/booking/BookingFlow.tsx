@@ -4,7 +4,8 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { Calendar, Clock, Home, User, Users, ChevronLeft, ChevronRight, AlertTriangle, Star, Music2 } from 'lucide-react';
 import { formatCents, cn, isSameDay, formatTime, parseTimeSlot, decimalToTimeStr } from '@/lib/utils';
 import { priceSessionFromConfig, priceBandFromConfig, hourSurchargeFromConfig, sweetSpotAddonCents, type StudioConfig } from '@/lib/studio-config';
-import { FREE_HOUR_VALUE_CENTS } from '@/lib/credit-redemption-pricing';
+import { freeHourValueCents } from '@/lib/credit-redemption-pricing';
+import { rushFeePerHourCents, BOOKING_RUSH_LABEL } from '@/lib/rush-fee';
 
 // Self-serve band tiers. As of 2026-04-28 the 24h ("3 Days") tier is
 // self-serve bookable — checkout creates 3 linked bookings rows and the
@@ -80,7 +81,7 @@ export default function BookingFlow({
    *   - room is locked to Studio A
    *   - duration is restricted to 4h or 8h
    *   - guest count is hidden (band members aren't guests)
-   *   - pricing is a flat-rate package (no night / same-day stacking)
+   *   - pricing is a flat-rate package (no night / rush stacking)
    *   - submit includes bandId so the server can attribute the booking
    *
    * Server re-verifies permission on submit — this prop alone doesn't
@@ -114,7 +115,9 @@ export default function BookingFlow({
   // admin's surcharge edits cascade everywhere, not just into the totals.
   const lateNightCents = cfg.surcharges.find((s) => s.kind === 'late_night')?.amountCents ?? 0;
   const deepNightCents = cfg.surcharges.find((s) => s.kind === 'deep_night')?.amountCents ?? 0;
-  const sameDayCents = cfg.surcharges.find((s) => s.kind === 'same_day')?.amountCents ?? 0;
+  // (Booking Rush Fee replaces the old flat same-day surcharge — it is computed
+  // live per booked hour from hours-until-session via rushFeePerHourCents, not
+  // read from a config row.)
 
   // ── Band-only: Sweet Spot filming add-on ──────────────────────────
   // Toggle is shown when the band picks the 8hr or 24hr tier. For 24hr
@@ -172,7 +175,14 @@ export default function BookingFlow({
   const timeSlots = useMemo(() => generateTimeSlots(), []);
 
   const startHour = selectedTime ? parseTimeSlot(selectedTime) : 0;
-  const isSameDayBooking = selectedDate ? isSameDay(selectedDate) : false;
+  // Booking Rush Fee (per booked hour, cents) — tiered by hours-until-session in
+  // Eastern, computed live from the picked date + start hour. Replaces the old
+  // flat same-day flag. `date` is the same calendar day the calendar rendered
+  // (selectedDate is local midnight of calYear/calMonth/day), expressed as the
+  // 'YYYY-MM-DD' string via en-CA. rushFeePerHourCents converts now→Eastern itself.
+  const sessionYmd = selectedDate ? selectedDate.toLocaleDateString('en-CA') : null;
+  const rushPerHourCents =
+    sessionYmd && selectedTime ? rushFeePerHourCents(new Date(), sessionYmd, startHour) : 0;
 
   // Pricing branches on mode. Band sessions use flat-rate packages, so we
   // adapt the BandSessionPricing shape into SessionPricing (same fields,
@@ -192,17 +202,18 @@ export default function BookingFlow({
         : null;
       return priceBandFromConfig(bandCfg, duration, addon);
     }
-    return priceSessionFromConfig(cfg, { hours: duration, startHour, sameDay: isSameDayBooking, guests: guestCount });
-  }, [isBandMode, cfg, bandCfg, duration, startHour, isSameDayBooking, guestCount, sweetSpotAddon, sweetSpotFilmingDay]);
+    return priceSessionFromConfig(cfg, { hours: duration, startHour, rushPerHourCents, guests: guestCount });
+  }, [isBandMode, cfg, bandCfg, duration, startHour, rushPerHourCents, guestCount, sweetSpotAddon, sweetSpotFilmingDay]);
 
   // ── Free studio hour discount (display + submit) ───────────────────────
-  // Mirrors /api/booking/create + lib/credit-redemption-pricing: a free hour is a
-  // FLAT $50 (FREE_HOUR_VALUE_CENTS) regardless of room/duration, capped at the
-  // session total so surcharges are always paid. Solo only. The SERVER re-computes
-  // + re-validates this against the live credit; this is preview math, kept
-  // identical so the displayed total/deposit match what's charged.
+  // Mirrors /api/booking/create + lib/credit-redemption-pricing: a free hour is
+  // worth $60 on a 1-hour session and $50 on 2+ hours (freeHourValueCents),
+  // regardless of room, capped at the session total so surcharges are always
+  // paid. Solo only. The SERVER re-computes + re-validates this against the live
+  // credit; this is preview math, kept identical so the displayed total/deposit
+  // match what's charged.
   const freeHourActive = freeHourEligible && applyFreeHour;
-  const freeHourApplicableRate = FREE_HOUR_VALUE_CENTS;
+  const freeHourApplicableRate = freeHourValueCents(duration);
   const freeHourDiscount = freeHourActive
     ? Math.min(freeHourApplicableRate, pricing.total)
     : 0;
@@ -514,12 +525,17 @@ export default function BookingFlow({
               Selected: <strong className="text-black">
                 {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
               </strong>
-              {isSameDay(selectedDate) && (
+              {rushPerHourCents > 0 ? (
                 <span className="block text-amber-600 text-xs mt-1">
                   <AlertTriangle className="w-3 h-3 inline mr-1" />
-                  Same-day booking: +{formatCents(sameDayCents)}/hr surcharge applies
+                  {BOOKING_RUSH_LABEL}: +{formatCents(rushPerHourCents)}/hr applies (booking close to your start time)
                 </span>
-              )}
+              ) : isSameDay(selectedDate) && !selectedTime ? (
+                <span className="block text-amber-600 text-xs mt-1">
+                  <AlertTriangle className="w-3 h-3 inline mr-1" />
+                  Booking soon? A {BOOKING_RUSH_LABEL.toLowerCase()} may apply within 12 hours of your start time. Pick a time to see the exact amount.
+                </span>
+              ) : null}
             </div>
           )}
         </div>
@@ -911,8 +927,8 @@ export default function BookingFlow({
                     {hb.nightFee > 0 && (
                       <span className={cn('text-[10px]', tierColor(hb.tier))}>+{formatCents(hb.nightFee)}</span>
                     )}
-                    {hb.sameDayFee > 0 && (
-                      <span className="text-[10px] text-amber-600">+{formatCents(hb.sameDayFee)} same-day</span>
+                    {hb.bookingRushFee > 0 && (
+                      <span className="text-[10px] text-amber-600">+{formatCents(hb.bookingRushFee)} rush</span>
                     )}
                     <span className="font-semibold w-16 text-right">{formatCents(hb.hourTotal)}</span>
                   </div>
@@ -1012,14 +1028,14 @@ export default function BookingFlow({
               </div>
             )}
 
-            {/* Same-day */}
-            {pricing.sameDayFee > 0 && (
+            {/* Booking Rush Fee — tiered per-booked-hour amount, by hours-until-session */}
+            {pricing.bookingRushFee > 0 && (
               <div className="flex justify-between text-amber-700">
                 <span className="flex items-center gap-1">
                   <AlertTriangle className="w-3 h-3" />
-                  Same-day surcharge ({duration}hr × {formatCents(sameDayCents)})
+                  {BOOKING_RUSH_LABEL} ({duration}hr × {formatCents(rushPerHourCents)})
                 </span>
-                <span>+{formatCents(pricing.sameDayFee)}</span>
+                <span>+{formatCents(pricing.bookingRushFee)}</span>
               </div>
             )}
 
@@ -1063,7 +1079,7 @@ export default function BookingFlow({
                     </p>
                     <p className="font-mono text-xs text-black/70">
                       Covers 1 hour of studio time. You still pay any surcharges
-                      (late night / same-day / guests) and the rest of your session.
+                      (late night / booking rush / guests) and the rest of your session.
                       {' '}You have <strong>{freeHourBalance} free hour{freeHourBalance > 1 ? 's' : ''}</strong> available — this uses 1.
                     </p>
                   </label>
