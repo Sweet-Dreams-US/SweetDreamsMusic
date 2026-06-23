@@ -97,6 +97,49 @@ export async function sendBookingConfirmation(to: string, details: {
   } catch (e) { console.error('Email error (booking confirmation):', e); }
 }
 
+/**
+ * Charge-on-accept "request received" email. The card was SAVED at booking but
+ * NOT charged — the deposit is charged only when an engineer accepts, and the
+ * session isn't locked in until then. If no engineer takes it, nothing is charged
+ * and any free hour stays the customer's.
+ */
+export async function sendBookingRequestReceived(to: string, details: {
+  customerName: string; date: string; startTime: string; duration: number;
+  room: string; total: number; deposit: number; bookingId?: string;
+}) {
+  await mirrorToThread({
+    userEmail: to,
+    kind: 'booking_notification',
+    subject: 'Session Request Received',
+    body: `Your request for a ${formatDuration(details.duration)} session on ${details.date} at ${details.startTime} in ${ROOM_LABELS[details.room as Room] || details.room} is in. Your card is saved — the ${formatMoney(details.deposit)} deposit is charged only when an engineer accepts. It isn't locked in until then.`,
+  });
+  try {
+    const roomLabel = ROOM_LABELS[details.room as Room] || details.room;
+    await resend.emails.send({
+      from: FROM, to, subject: 'Session Request Received — Sweet Dreams Music',
+      html: wrap(`
+        ${h1('Request Received')}
+        ${p(`Hey ${details.customerName}, we've got your session request!`)}
+        ${detailTable(`
+          ${detail('Date', details.date)}
+          ${detail('Time', details.startTime)}
+          ${detail('Duration', `${formatDuration(details.duration)}`)}
+          ${detail('Studio', roomLabel)}
+          ${detail('Deposit (on accept)', formatMoney(details.deposit))}
+          ${detail('Remainder Due', formatMoney(details.total - details.deposit))}
+          ${detail('Total', formatMoney(details.total))}
+        `)}
+        <div style="margin-top:24px;padding:20px;background:#111;border-left:3px solid #F4C430">
+          ${p('<strong style="color:#F4C430">⏳ Not locked in yet</strong>')}
+          ${p('Your card is saved, but <strong>nothing has been charged</strong>. An engineer needs to accept your session — the moment they do, your deposit is charged and your session is locked in. Until then it isn\'t confirmed, and if no engineer can take the slot you won\'t be charged at all.')}
+        </div>
+        ${p('The remaining balance is charged to your card on file after your session.')}
+        ${btn('View Dashboard', `${SITE_URL}/dashboard`)}
+      `),
+    });
+  } catch (e) { console.error('Email error (booking request received):', e); }
+}
+
 export async function sendEngineerNewBookingAlert(engineerEmails: string[], booking: {
   id: string; customerName: string; date: string; startTime: string;
   duration: number; room: string;

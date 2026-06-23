@@ -10,6 +10,7 @@ import { BEAT_EXCLUSIVE_DISCOUNT_MAX_USES } from '@/lib/rewards';
 import { paidBookingStatus } from '@/lib/booking-status';
 import {
   sendBookingConfirmation,
+  sendBookingRequestReceived,
   sendAdminBookingAlert,
   sendEngineerNewBookingAlert,
   sendEngineerPriorityAlert,
@@ -519,7 +520,10 @@ export async function POST(request: NextRequest) {
       const session = event.data.object as Stripe.Checkout.Session;
       const meta = session.metadata || {};
 
-      if (meta.type === 'booking_deposit' || meta.type === 'band_booking_deposit') {
+      if (
+        meta.type === 'booking_deposit' || meta.type === 'band_booking_deposit' ||
+        meta.type === 'booking_request' || meta.type === 'band_booking_request'
+      ) {
         // Session booking deposit paid. Two flavors share this branch:
         //   - 'booking_deposit'       → solo session
         //   - 'band_booking_deposit'  → band session (has meta.band_id)
@@ -540,8 +544,35 @@ export async function POST(request: NextRequest) {
         // duration_hours may be fractional (e.g. "1.5") once the engineer-edit
         // path lands — parseFloat keeps both integer and decimal shapes valid.
         const baseDurationHours = parseFloat(meta.duration_hours);
-        const isBandBooking = meta.type === 'band_booking_deposit';
+        const isBandBooking = meta.type === 'band_booking_deposit' || meta.type === 'band_booking_request';
         const is3DayBlock = isBandBooking && baseDurationHours === 24;
+
+        // Charge-on-accept: a *_request session SAVED a card (Stripe setup mode)
+        // but did NOT charge. Insert the booking as 'requested' (slot NOT held,
+        // first-come-first-serve), store the saved customer + payment method, and
+        // DEFER the deposit charge + free-hour/grant consumption to engineer-accept.
+        // Legacy *_deposit sessions behave exactly as before.
+        const isRequest = meta.type === 'booking_request' || meta.type === 'band_booking_request';
+        let savedPaymentMethodId: string | null = null;
+        if (isRequest && session.setup_intent) {
+          try {
+            const si = await stripe.setupIntents.retrieve(session.setup_intent as string);
+            savedPaymentMethodId = typeof si.payment_method === 'string'
+              ? si.payment_method
+              : (si.payment_method as Stripe.PaymentMethod | null)?.id ?? null;
+          } catch (e) {
+            // Without the saved PM we can't charge on accept — roll back the claim
+            // so Stripe retries rather than creating an unchargeable request.
+            console.error('[webhook] setup_intent retrieve failed — rolling back claim:', e);
+            await supabase.from('stripe_webhook_events').delete().eq('event_id', event.id);
+            return NextResponse.json({ error: 'Could not resolve saved card' }, { status: 500 });
+          }
+        }
+        // Insert values that differ between a charge-on-accept request and a
+        // legacy paid deposit. Requests: 'requested', nothing paid yet, no PI.
+        const insertStatus = isRequest ? 'requested' : 'pending';
+        const insertActualPaid = isRequest ? 0 : session.amount_total;
+        const insertPaymentIntentId = isRequest ? null : (session.payment_intent as string);
 
         // Parse Sweet Spot add-on metadata (JSON-stringified by /create).
         // Shape after parse: { kind: '8hr-addon' } or { kind: '3day-addon', filmingDayIndex: 0|1|2 }.
@@ -643,7 +674,7 @@ export async function POST(request: NextRequest) {
               total_amount: perDayTotal,
               deposit_amount: i === 0 ? depositCents : 0,
               remainder_amount: i === 0 ? day1Remainder : perDayRemainder,
-              actual_deposit_paid: i === 0 ? session.amount_total : 0,
+              actual_deposit_paid: i === 0 ? insertActualPaid : 0,
               night_fees_amount: 0,
               same_day_fee: false,
               same_day_fee_amount: 0,
@@ -651,11 +682,12 @@ export async function POST(request: NextRequest) {
               guest_fee_amount: 0,
               stripe_customer_id: session.customer as string,
               stripe_checkout_session_id: session.id,
-              // Only day 1 carries the payment_intent — the deposit hit there.
-              stripe_payment_intent_id: i === 0 ? (session.payment_intent as string) : null,
-              // Deposit paid, no engineer yet → 'pending' (Awaiting Engineer).
-              // Flips to 'confirmed' only when an engineer claims (respond/claim).
-              status: 'pending',
+              // Only day 1 carries the payment_intent / saved card — the deposit
+              // (charge-on-accept) or the paid deposit both land on day 1.
+              stripe_payment_intent_id: i === 0 ? insertPaymentIntentId : null,
+              stripe_payment_method_id: i === 0 ? savedPaymentMethodId : null,
+              // Charge-on-accept request ('requested') vs legacy paid ('pending').
+              status: insertStatus,
               priority_expires_at: dayPriority,
               reschedule_deadline: dayReschedule,
               admin_notes:
@@ -717,7 +749,7 @@ export async function POST(request: NextRequest) {
             total_amount: parseInt(meta.total_amount),
             deposit_amount: parseInt(meta.deposit_amount),
             remainder_amount: parseInt(meta.remainder_amount),
-            actual_deposit_paid: session.amount_total,
+            actual_deposit_paid: insertActualPaid,
             // Rewards banking: full session value (staff paid on this even when a
             // discount lowered total_amount) + the discount grant that funded it.
             // Fallback to total_amount keeps non-reward bookings identical.
@@ -730,10 +762,15 @@ export async function POST(request: NextRequest) {
             guest_fee_amount: parseInt(meta.guest_fee || '0'),
             stripe_customer_id: session.customer as string,
             stripe_checkout_session_id: session.id,
-            stripe_payment_intent_id: session.payment_intent as string,
-            // Deposit paid, no engineer yet → 'pending' (Awaiting Engineer);
-            // an engineer claiming (respond/claim) flips it to 'confirmed'.
-            status: 'pending',
+            stripe_payment_intent_id: insertPaymentIntentId,
+            // Charge-on-accept ('requested', card saved, nothing charged) vs a
+            // legacy paid deposit ('pending'). Either way an engineer claiming
+            // (respond/claim) flips it to 'confirmed' — and for a request that
+            // claim is what charges the saved card.
+            stripe_payment_method_id: savedPaymentMethodId,
+            pending_free_hour_credit_id: isRequest && meta.free_hour_applied === '1' ? (meta.free_hour_credit_id || null) : null,
+            pending_free_hour_redeemed_by: isRequest ? (meta.redeemed_by || null) : null,
+            status: insertStatus,
             priority_expires_at: priorityExpiry,
             reschedule_deadline: rescheduleDeadline,
             admin_notes: meta.notes || null,
@@ -753,8 +790,11 @@ export async function POST(request: NextRequest) {
             );
           }
           newBooking = row;
-          // Single-use: mark the discount grant redeemed now it's a paid booking.
-          if (meta.applied_discount_grant_id && row?.id) {
+          // Reward consumption is DEFERRED for charge-on-accept requests — the
+          // grant/free-hour are redeemed only when an engineer accepts + the card
+          // charges, so an unaccepted request never burns a reward. Legacy paid
+          // deposits redeem now.
+          if (!isRequest && meta.applied_discount_grant_id && row?.id) {
             try { await markGrantRedeemed(supabase, meta.applied_discount_grant_id, row.id); }
             catch (e) { console.error('[webhook] mark grant redeemed failed (non-fatal):', e); }
           }
@@ -762,7 +802,7 @@ export async function POST(request: NextRequest) {
           // (payment-gated + idempotent). Solo /book only — band sessions never
           // set free_hour_applied. No-op when the metadata is absent, so the
           // normal booking path is unaffected.
-          if (meta.free_hour_applied === '1' && meta.free_hour_credit_id && row?.id) {
+          if (!isRequest && meta.free_hour_applied === '1' && meta.free_hour_credit_id && row?.id) {
             await drainFreeHourForBooking(supabase, {
               bookingId: row.id,
               creditId: meta.free_hour_credit_id,
@@ -781,17 +821,32 @@ export async function POST(request: NextRequest) {
         const timeStr = fmtSessionTime(startDateTime);
         const duration = parseFloat(meta.duration_hours);
 
-        // Customer confirmation
-        await sendBookingConfirmation(meta.customer_email, {
-          customerName: meta.customer_name,
-          date: dateStr,
-          startTime: timeStr,
-          duration,
-          room: meta.room,
-          total: parseInt(meta.total_amount),
-          deposit: session.amount_total || parseInt(meta.deposit_amount),
-          bookingId: newBooking?.id,
-        });
+        // Customer: a charge-on-accept request gets "request received — you're
+        // charged only when an engineer accepts"; a legacy paid deposit gets the
+        // standard "deposit received" confirmation.
+        if (isRequest) {
+          await sendBookingRequestReceived(meta.customer_email, {
+            customerName: meta.customer_name,
+            date: dateStr,
+            startTime: timeStr,
+            duration,
+            room: meta.room,
+            total: parseInt(meta.total_amount),
+            deposit: parseInt(meta.deposit_amount),
+            bookingId: newBooking?.id,
+          });
+        } else {
+          await sendBookingConfirmation(meta.customer_email, {
+            customerName: meta.customer_name,
+            date: dateStr,
+            startTime: timeStr,
+            duration,
+            room: meta.room,
+            total: parseInt(meta.total_amount),
+            deposit: session.amount_total || parseInt(meta.deposit_amount),
+            bookingId: newBooking?.id,
+          });
+        }
 
         // Admin alert
         await sendAdminBookingAlert({
