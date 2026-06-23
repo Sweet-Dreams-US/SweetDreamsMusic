@@ -329,53 +329,29 @@ export async function POST(request: NextRequest) {
     // Cash App Pay, Venmo, etc. do NOT support saving for future off-session charges.
     // Previously this was set at the payment_intent_data level which caused Cash App Pay
     // payments to silently fail (checkout never completed, webhook never fired).
-    // Stripe Checkout line item — copy distinguishes band vs solo so the
-    // customer's receipt and Stripe dashboard read naturally. The webhook
-    // doesn't read `product_data.name`; it's pure UX.
+    // Charge-on-accept: we SAVE the customer's card now (Stripe setup mode = $0)
+    // and charge the deposit OFF-SESSION only when an engineer ACCEPTS the session.
+    // Card-only — Cash App Pay / Venmo can't be saved for off-session reuse.
     const lineItemName = isBandBooking && band
-      ? `Band Session Deposit — ${band.display_name}${sweetSpotAddon ? ' + Sweet Spot' : ''}`
-      : `Recording Session Deposit — ${roomLabel}`;
-    // Description tells the customer what they're paying for in plain
-    // language. 24hr (3-day) reads as "3-day block starting Day 1 ${date}";
-    // Sweet Spot add-on adds " + Sweet Spot filming" so the receipt is
-    // explicit about the extra deliverable.
-    const lineItemDescription = isBandBooking
-      ? `${
-          Number(duration) === 24
-            ? `3-day band block (8hr/day) starting ${date}`
-            : `${formatDuration(duration)} band session on ${date} at ${startTime}`
-        }${sweetSpotAddon ? ' + Sweet Spot filming' : ''} (50% deposit)`
-      : `${formatDuration(duration)} session on ${date} at ${startTime} (50% deposit)`;
+      ? `Band Session — ${band.display_name}${sweetSpotAddon ? ' + Sweet Spot' : ''}`
+      : `Recording Session — ${roomLabel}`;
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
-      mode: 'payment',
-      line_items: [
-        {
-          price_data: {
-            currency: PRICING.currency,
-            product_data: {
-              name: lineItemName,
-              description: lineItemDescription,
-            },
-            unit_amount: chargedDeposit,
-          },
-          quantity: 1,
-        },
-      ],
-      payment_method_options: {
-        card: {
-          setup_future_usage: 'off_session',
+      mode: 'setup',
+      payment_method_types: ['card'],
+      custom_text: {
+        submit: {
+          message: `${lineItemName}: ${formatDuration(duration)} on ${date} at ${startTime}. Your card is saved now — you're only charged the deposit when an engineer accepts your session.`,
         },
       },
       success_url: `${SITE_URL}/book/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${SITE_URL}/book`,
       metadata: {
-        // `type` is the discriminator the webhook branches on. Keeping the
-        // original `booking_deposit` value for solo sessions means zero
-        // change to existing webhook logic; band bookings get their own
-        // tag so the webhook can persist `band_id` + skip solo-only fields.
-        type: isBandBooking ? 'band_booking_deposit' : 'booking_deposit',
+        // `type` discriminates the webhook branch. Charge-on-accept: a
+        // 'booking_request' saves a card + creates a 'requested' booking (NO
+        // charge, slot NOT held); the deposit is charged when an engineer accepts.
+        type: isBandBooking ? 'band_booking_request' : 'booking_request',
         band_id: isBandBooking && band ? band.id : '',
         customer_name: customerName,
         customer_email: customerEmail,
