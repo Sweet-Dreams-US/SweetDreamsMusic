@@ -228,7 +228,7 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
           <p className="font-mono text-[10px] uppercase tracking-wider text-black/55">The fine print</p>
           <p className="font-mono text-xs text-black/70">
             • All studio session valuations are at Studio B rate. If you book Studio A, Sweet 4
-            flat-rate, or a same-day session, surcharges are paid at the time of booking.
+            flat-rate, or a last-minute session (Booking Rush Fee), surcharges are paid at the time of booking.
           </p>
           {template.is_membership && (
             <>

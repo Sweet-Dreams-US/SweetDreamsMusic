@@ -75,7 +75,7 @@ Mailing Address: **[ENGINEER_ADDRESS]**
 
 **3.1 Revenue Share.** Contractor shall receive **[X]%** of the total session revenue for each session that Contractor works (the "Engineer Share"). The Company shall retain the remaining **[100-X]%** (the "Company Share").
 
-**3.2 Session Revenue.** "Session revenue" is defined as the total amount paid by the client for the recording session, including the base hourly rate and any applicable surcharges (same-day booking surcharge, late night surcharges), but **excluding**:
+**3.2 Session Revenue.** "Session revenue" is defined as the total amount paid by the client for the recording session, including the base hourly rate and any applicable surcharges (Booking Rush Fee, late night/after-hours surcharges), but **excluding**:
 
 - **(a)** Payment processing fees charged by the payment processor.
 - **(b)** Refunds or chargebacks.

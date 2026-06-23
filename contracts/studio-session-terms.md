@@ -49,7 +49,7 @@ By booking a recording session through the Sweet Dreams Music website, dashboard
 
 **2.1 Standard Rate.** The standard hourly rate for recording sessions is as listed on the Sweet Dreams Music website or as quoted at the time of booking.
 
-**2.2 Same-Day Booking Surcharge.** Sessions booked on the **same day** as the session date are subject to a surcharge of **$10.00 per hour** in addition to the standard hourly rate.
+**2.2 Booking Rush Fee.** Sessions booked close to their start time are subject to a per-booked-hour Booking Rush Fee in addition to the standard hourly rate, tiered by how soon the session begins: under 2 hours out — $30.00/hr; 2 to 4 hours out — $20.00/hr; 4 to 12 hours out — $10.00/hr; 12 or more hours out — no fee. The Booking Rush Fee stacks with any applicable late-night/after-hours surcharges. Band sessions are exempt.
 
 **2.3 Late Night Surcharges.** Sessions that extend into or are booked during late night/early morning hours are subject to the following surcharges **in addition to** the standard hourly rate:
 

@@ -34,7 +34,7 @@ Location: Fort Wayne, Indiana, United States
 | 9 AM – 10 PM | Standard rate |
 | 10 PM – 2 AM | +$10/hr (Late Night) |
 | 2 AM – 9 AM | +$30/hr (After Hours) |
-| Same-day booking | +$10/hr |
+| Booking Rush Fee (per booked hour) | +$30/hr under 2 hrs out · +$20/hr 2-4 hrs · +$10/hr 4-12 hrs · none 12+ hrs (bands exempt) |
 | Extra guests beyond 2 | +$10/hr per extra guest |
 
 ## Band Recording Packages (Studio A only — flat-rate, no surcharges)
@@ -75,7 +75,7 @@ Online booking: https://sweetdreamsmusic.com/book
 - 50% deposit charged at booking (Stripe Checkout)
 - Remainder charged to the saved card after the session
 - Accepts credit/debit cards, Cash App Pay, and bank transfers
-- Same-day bookings require a 3-hour buffer from current time
+- Last-minute booking is allowed right up to the session start; a tiered Booking Rush Fee applies the closer you book to the start time
 - Cancellations and reschedules supported up to 8 hours before session start
 
 ## Key URLs

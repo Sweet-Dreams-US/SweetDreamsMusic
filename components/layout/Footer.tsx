@@ -60,7 +60,7 @@ export default async function Footer({
               <p className="text-white/60 text-xs mt-3">Regular: 9 AM – 10 PM</p>
               <p className="text-amber-400/70 text-xs">Late Night: 10 PM – 2 AM (+$10/hr)</p>
               <p className="text-red-400/70 text-xs">After Hours: 2 AM – 9 AM (+$30/hr)</p>
-              <p className="text-accent text-xs">Same-day booking: +$10/hr</p>
+              <p className="text-accent text-xs">Booking Rush Fee: +$10–$30/hr (last-minute, within 12 hrs of start)</p>
             </div>
           </div>
         </div>

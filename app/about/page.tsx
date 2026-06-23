@@ -159,11 +159,19 @@ export default async function AboutPage() {
               <div className="font-mono text-black/60 text-sm space-y-3">
                 <div>
                   <p className="text-black font-semibold">Regular Hours</p>
-                  <p>Monday - Sunday: 9:00 AM - 9:00 PM</p>
+                  <p>Monday - Sunday: 9:00 AM - 10:00 PM</p>
                 </div>
                 <div>
-                  <p className="text-black font-semibold">After Hours <span className="text-accent text-xs">+$10/hr</span></p>
-                  <p>Daily: 9:00 PM - 3:00 AM</p>
+                  <p className="text-black font-semibold">Late Night <span className="text-accent text-xs">+$10/hr</span></p>
+                  <p>Daily: 10:00 PM - 2:00 AM</p>
+                </div>
+                <div>
+                  <p className="text-black font-semibold">After Hours <span className="text-accent text-xs">+$30/hr</span></p>
+                  <p>Daily: 2:00 AM - 9:00 AM</p>
+                </div>
+                <div>
+                  <p className="text-black font-semibold">Booking Rush Fee <span className="text-accent text-xs">up to +$30/hr</span></p>
+                  <p>Last-minute bookings</p>
                 </div>
               </div>
             </div>

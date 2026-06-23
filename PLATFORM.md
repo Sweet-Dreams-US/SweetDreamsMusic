@@ -94,7 +94,7 @@ Sweet Dreams Music is a full-service recording studio platform in Fort Wayne, In
 **Studio Booking**
 - Browse real-time availability with color-coded calendar (green/yellow/red)
 - Select studio, date, time, and duration
-- See pricing breakdown including night fees and same-day surcharges
+- See pricing breakdown including night fees and the Booking Rush Fee
 - Pay 50% deposit via Stripe (card, Cash App Pay, bank transfer)
 - Receive confirmation email with session details
 - Prepare for sessions with the prep form (upload beats, add references, set goals)
@@ -217,7 +217,7 @@ Sweet Dreams Music is a full-service recording studio platform in Fort Wayne, In
 | 9 AM - 10 PM | Standard rate |
 | 10 PM - 2 AM | +$10/hr (Late Night) |
 | 2 AM - 9 AM | +$30/hr (Deep Night) |
-| Same-day booking | +$10/hr |
+| Booking Rush Fee (per booked hour) | +$30/hr <2 hrs out · +$20/hr 2-4 hrs · +$10/hr 4-12 hrs · none 12+ hrs (bands exempt) |
 
 ### Revenue Splits
 | Stream | Split |
