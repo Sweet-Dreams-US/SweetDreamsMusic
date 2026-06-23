@@ -38,21 +38,35 @@ function dayDiff(aYmd: string, bYmd: string): number {
 }
 
 /**
+ * The Eastern (studio-local) wall-clock components of an absolute instant, read
+ * DIRECTLY from Intl with `formatToParts` — no fragile locale-string re-parsing.
+ * This is what guarantees the rush tier is ALWAYS computed in Eastern time, never
+ * UTC, regardless of where this runs (Vercel servers run UTC; browsers vary).
+ */
+function easternWallClock(now: Date): { ymd: string; decimalHour: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: STUDIO_TZ,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '0';
+  let hour = Number(get('hour'));
+  if (hour === 24) hour = 0; // hour12:false emits '24' at midnight in some engines
+  const decimalHour = hour + Number(get('minute')) / 60 + Number(get('second')) / 3600;
+  return { ymd: `${get('year')}-${get('month')}-${get('day')}`, decimalHour };
+}
+
+/**
  * Hours between `now` and the session start, in Eastern wall-clock time.
  *  - `now`: the absolute instant (e.g. `new Date()`); converted to Eastern here,
  *    so it is correct whether this runs on the server (UTC) or in the browser.
  *  - `date`: 'YYYY-MM-DD' — the session's Eastern calendar date.
- *  - `startHour`: decimal hour (e.g. 13.5 = 1:30pm).
+ *  - `startHour`: decimal hour (e.g. 13.5 = 1:30pm), Eastern.
  * Returns a value that can be negative if the session start is already past.
  */
 export function hoursUntilSession(now: Date, date: string, startHour: number): number {
-  // `now` -> Eastern wall clock. toLocaleString gives the Eastern clock reading;
-  // re-parsing preserves the hour/minute digits regardless of the runtime tz
-  // (same pattern the availability + create routes already use).
-  const todayEastern = now.toLocaleDateString('en-CA', { timeZone: STUDIO_TZ }); // YYYY-MM-DD
-  const nowEastern = new Date(now.toLocaleString('en-US', { timeZone: STUDIO_TZ }));
-  const nowDecimal = nowEastern.getHours() + nowEastern.getMinutes() / 60 + nowEastern.getSeconds() / 3600;
-  return dayDiff(todayEastern, date) * 24 + (startHour - nowDecimal);
+  const { ymd, decimalHour } = easternWallClock(now);
+  return dayDiff(ymd, date) * 24 + (startHour - decimalHour);
 }
 
 /**

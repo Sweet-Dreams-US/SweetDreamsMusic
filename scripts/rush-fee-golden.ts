@@ -41,5 +41,16 @@ check('exactly 12h -> $0', rushFeePerHourCents(noon, '2026-06-23', 1.0), 0);
 const h = hoursUntilSession(lateNight, '2026-06-23', 1.0);
 check('hoursUntil 11:50pm->1am ~1.17', Math.round(h * 100), 117);
 
+// ── UTC-vs-Eastern proof: `now` instants where the UTC calendar day differs from
+// the Eastern day. A UTC bug would mis-tier these; Eastern gives the right answer.
+// 2026-06-23T01:00:00Z = Jun 22 9:00pm EDT (UTC says Jun 23, Eastern says Jun 22).
+const utcNextDay = new Date('2026-06-23T01:00:00Z');
+// Session Jun 22 11pm is 2h away in Eastern -> $20. (UTC math would yield -22h -> $0.)
+check('UTC=Jun23 / ET=Jun22 9pm -> 11pm same ET day = $20', rushFeePerHourCents(utcNextDay, '2026-06-22', 23.0), 2000);
+check('  hoursUntil is +2.0 (Eastern), not negative (UTC)', Math.round(hoursUntilSession(utcNextDay, '2026-06-22', 23.0) * 100), 200);
+// 2026-06-23T03:00:00Z = Jun 22 11:00pm EDT. Session Jun 23 12:30am is 1.5h away ET -> $30.
+const utcLate = new Date('2026-06-23T03:00:00Z');
+check('UTC=Jun23 3am / ET=Jun22 11pm -> Jun23 12:30am = $30', rushFeePerHourCents(utcLate, '2026-06-23', 0.5), 3000);
+
 console.log(failures === 0 ? '\nALL GOLDEN CASES PASS' : `\n${failures} GOLDEN CASE(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);
