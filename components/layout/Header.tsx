@@ -2,10 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { Menu, X, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
+
+// Brand logo shown in the nav. Transparent PNG (2151×1223) sized to the header
+// height; alt/aria-label keep the brand name available to SEO + screen readers.
+const BRAND_LOGO_URL = 'https://fweeyjnqwxywmpmnqpts.supabase.co/storage/v1/object/public/SweetDreamsMusicPictures/SDMLogoJuly26.png';
 
 // navLinks are pre-filtered by the server (HeaderSlot) per the site's feature/nav
 // flags, so disabled features/pages never render. Locked items (Book, Beats,
@@ -26,8 +31,15 @@ export default function Header({ navLinks, brandName }: { navLinks: readonly { h
     <header className="fixed top-0 left-0 right-0 z-50 bg-black/95 backdrop-blur-sm border-b border-white/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
-          <Link href="/" className="flex items-center gap-2 no-underline">
-            <span className="font-heading text-white text-xl sm:text-2xl tracking-wider">{brandName}</span>
+          <Link href="/" className="flex items-center no-underline" aria-label={brandName}>
+            <Image
+              src={BRAND_LOGO_URL}
+              alt={brandName}
+              width={2151}
+              height={1223}
+              priority
+              className="h-10 sm:h-12 w-auto"
+            />
           </Link>
 
           {/* Desktop Nav */}
