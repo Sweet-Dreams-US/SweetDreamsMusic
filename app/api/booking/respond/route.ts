@@ -4,13 +4,15 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { verifyEngineerAccess } from '@/lib/admin-auth';
 import {
   sendEngineerAssigned,
+  sendBookingPaymentFailedRepay,
   sendEngineerClaimConfirmation,
   sendEngineerPassNotification,
   sendPriorityExpiredToClient,
   sendBandSessionNeedsRescheduleAdmin,
 } from '@/lib/email';
-import { ENGINEERS, findEngineerByEmail, isSameEngineer, type Room } from '@/lib/constants';
+import { ENGINEERS, findEngineerByEmail, isSameEngineer, SITE_URL, type Room } from '@/lib/constants';
 import { fmtSessionDate, fmtSessionTime, fmtStampDateTime } from '@/lib/studio-time';
+import { isChargeOnAcceptBooking, chargeAndConfirmOnAccept } from '@/lib/booking-accept';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
