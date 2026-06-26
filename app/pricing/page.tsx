@@ -8,6 +8,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { getStudioConfigs } from '@/lib/studio-config-server';
 import { priceSessionFromConfig, type StudioConfig } from '@/lib/studio-config';
 import { STUDIO_IMAGES } from '@/lib/images';
+import MetaTrack from '@/components/analytics/MetaTrack';
 
 export const metadata: Metadata = {
   title: 'Studio Pricing — Recording Rates & Packages',
@@ -49,6 +50,7 @@ export default async function PricingPage() {
 
   return (
     <>
+      <MetaTrack event="ViewContent" params={{ content_name: 'Studio pricing', content_category: 'pricing' }} />
       {/* Hero */}
       <section className="relative bg-black text-white py-20 sm:py-28 overflow-hidden">
         <Image

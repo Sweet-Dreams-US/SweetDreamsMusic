@@ -17,6 +17,7 @@
 
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
 import { Send, MessageCircle } from 'lucide-react';
+import { trackMeta } from '@/lib/meta-pixel';
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '0x4AAAAAAC-NKDZ6-U5VzVto';
 
@@ -55,6 +56,8 @@ export default function SweetSpotInquiryForm() {
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setStatus('sending');
+
+    trackMeta('SubmitApplication', { content_name: 'Sweet Spot inquiry' });
 
     const formData = new FormData(e.currentTarget);
     const data = {

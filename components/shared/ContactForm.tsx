@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
 import { Send } from 'lucide-react';
+import { trackMeta } from '@/lib/meta-pixel';
 
 // Two layers of spam protection: Cloudflare Turnstile (CAPTCHA) + a honeypot (the
 // hidden "company" field). Turnstile is BEST EFFORT on the client — a broken or
@@ -44,6 +45,8 @@ export default function ContactForm() {
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setStatus('sending');
+
+    trackMeta('Lead', { content_name: 'Contact form' });
 
     const formData = new FormData(e.currentTarget);
     const data = {

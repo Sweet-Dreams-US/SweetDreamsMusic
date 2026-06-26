@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { trackMeta } from '@/lib/meta-pixel';
 
 type Mode = 'signin' | 'signup' | 'forgot';
 
@@ -66,6 +67,7 @@ export default function AuthForm() {
         if (error) throw error;
         // If session exists, user is auto-confirmed — redirect immediately
         if (data?.session) {
+          trackMeta('CompleteRegistration', {});
           window.location.href = redirect || '/dashboard';
           return;
         }

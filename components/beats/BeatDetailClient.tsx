@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect } from 'react';
 import { Play, Pause, Repeat } from 'lucide-react';
 import { useAudioPlayer, type AudioTrack } from '@/components/audio/AudioPlayerContext';
+import { trackMeta } from '@/lib/meta-pixel';
 
 interface BeatDetailClientProps {
   beat: {
@@ -18,6 +20,19 @@ interface BeatDetailClientProps {
 
 export default function BeatDetailClient({ beat }: BeatDetailClientProps) {
   const { currentTrack, isPlaying, isLooping, play, pause, toggleLoop } = useAudioPlayer();
+
+  // Meta Pixel: fire ViewContent once on mount for this beat-detail page view.
+  // value (beat price) is intentionally omitted — mp3_lease_price isn't passed
+  // into this client component, so we OMIT value rather than send 0.
+  useEffect(() => {
+    trackMeta('ViewContent', {
+      content_ids: [beat.id],
+      content_name: beat.title,
+      content_type: 'product',
+      currency: 'USD',
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [beat.id]);
 
   const isCurrentTrack = currentTrack?.id === beat.id;
   const isThisPlaying = isCurrentTrack && isPlaying;

@@ -15,6 +15,7 @@
 
 import { useState } from 'react';
 import { ArrowRight, Check } from 'lucide-react';
+import { trackMeta } from '@/lib/meta-pixel';
 
 interface CandidateBand {
   id: string;
@@ -65,6 +66,7 @@ export default function MediaInquiryForm({
       setError('Tell us a bit more about your project — at least a sentence or two.');
       return;
     }
+    trackMeta('Lead', { content_name: offeringTitle });
     setSubmitting(true);
     try {
       const res = await fetch('/api/media/inquiry', {

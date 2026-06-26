@@ -32,6 +32,9 @@ import {
 import { formatCents } from '@/lib/utils';
 import DashboardNav from '@/components/layout/DashboardNav';
 import MediaCatalogClient from '@/components/media/MediaCatalogClient';
+import MetaTrack from '@/components/analytics/MetaTrack';
+import { stripe } from '@/lib/stripe';
+import { centsToDollars, type MetaEventParams } from '@/lib/meta-pixel';
 
 export const metadata: Metadata = {
   title: 'Media Hub — Sweet Dreams Music',
@@ -42,9 +45,35 @@ export const metadata: Metadata = {
 // purchase. Both are cheap reads — dynamic is correct here.
 export const dynamic = 'force-dynamic';
 
-export default async function DashboardMediaPage() {
+// Reads the amount actually charged in this Stripe Checkout so the Meta Purchase
+// event carries a real dollar value. Best-effort — omits value on any failure.
+async function paidAmountUsd(sessionId: string | undefined): Promise<number | undefined> {
+  if (!sessionId) return undefined;
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (typeof session.amount_total === 'number' && session.amount_total > 0) {
+      return centsToDollars(session.amount_total);
+    }
+  } catch {
+    /* ignore — Purchase fires without value */
+  }
+  return undefined;
+}
+
+export default async function DashboardMediaPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ status?: string; session_id?: string }>;
+}) {
   const user = await getSessionUser();
   if (!user) redirect('/login?redirect=/dashboard/media');
+
+  // Meta Pixel: fire Purchase on the post-checkout success landing, carrying the
+  // real amount charged — read server-side from the Stripe session (the
+  // success_url includes session_id), so ROAS gets a true value.
+  const sp = (await searchParams) ?? {};
+  const isCheckoutSuccess = sp.status === 'success';
+  const purchaseValue = isCheckoutSuccess ? await paidAmountUsd(sp.session_id) : undefined;
 
   const bandMemberships = await getUserBands(user.id);
   const viewer = viewerEligibilityFromBands({
@@ -74,6 +103,25 @@ export default async function DashboardMediaPage() {
 
   return (
     <>
+      {/* Meta Pixel: Media Hub catalog view */}
+      <MetaTrack
+        event="ViewContent"
+        params={{ content_name: 'Media Hub', content_category: 'media_catalog' }}
+      />
+      {/* Meta Pixel: Purchase on post-checkout success landing (deposit charged).
+          Value omitted — the cart total is not available on this server page. */}
+      {isCheckoutSuccess && (
+        <MetaTrack
+          event="Purchase"
+          params={{
+            currency: 'USD',
+            content_name: 'Media services',
+            content_type: 'service',
+            ...(purchaseValue !== undefined ? { value: purchaseValue } : {}),
+          } as MetaEventParams}
+        />
+      )}
+
       <DashboardNav
         role={user.role}
         isProducer={user.is_producer}

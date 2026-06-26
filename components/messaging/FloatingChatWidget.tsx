@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { MessageSquare, X, Loader2, ArrowRight } from 'lucide-react';
 import MessageThreadView from './MessageThreadView';
+import { trackMeta } from '@/lib/meta-pixel';
 
 interface Props {
   /** Whether the user is signed in. The widget hides for anonymous visitors. */
@@ -79,7 +80,7 @@ export default function FloatingChatWidget({ authenticated }: Props) {
       {/* Floating button — bottom-right corner, always visible while logged in */}
       {!open && (
         <button
-          onClick={() => setOpen(true)}
+          onClick={() => { trackMeta('Contact'); setOpen(true); }}
           aria-label="Open Sweet Dreams chat"
           className="fixed bottom-6 right-6 z-40 bg-black text-white shadow-lg hover:bg-accent hover:text-black transition-colors w-14 h-14 rounded-full flex items-center justify-center"
         >

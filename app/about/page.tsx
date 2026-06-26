@@ -8,6 +8,7 @@ import { requireHref } from '@/lib/site-settings-server';
 import { getSiteContent } from '@/lib/site-content-server';
 import { content } from '@/lib/site-content';
 import { getBrand } from '@/lib/brand-server';
+import MetaTrack from '@/components/analytics/MetaTrack';
 
 // Reads the site's nav flags at request time so the page can 404 when disabled.
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,7 @@ export default async function AboutPage() {
   const brand = await getBrand();
   return (
     <>
+      <MetaTrack event="ViewContent" params={{ content_name: 'About', content_category: 'marketing' }} />
       {/* Hero */}
       <section className="relative bg-black text-white py-20 sm:py-28 overflow-hidden">
         <Image

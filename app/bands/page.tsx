@@ -18,6 +18,7 @@ import { formatCents } from '@/lib/utils';
 import { createServiceClient } from '@/lib/supabase/server';
 import { getStudioConfigs } from '@/lib/studio-config-server';
 import { requireHref } from '@/lib/site-settings-server';
+import MetaTrack from '@/components/analytics/MetaTrack';
 
 export const metadata: Metadata = {
   title: 'The Sweet Spot & Band Recording — Sweet Dreams Music',
@@ -143,6 +144,7 @@ export default async function BandsPage() {
   const bandPrice = (hours: number) => formatCents(bandCfg?.tiers.find((t) => t.kind === `band_${hours}h`)?.priceCents ?? 0);
   return (
     <>
+      <MetaTrack event="ViewContent" params={{ content_name: 'Bands', content_category: 'marketing' }} />
       {/* ═══════════════════════════════════════════════════════════════
           HERO — slim. Heavy paragraphs were dropped per Cole's feedback;
           the page no longer leads with Sweet Spot copy. The four-feature

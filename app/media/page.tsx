@@ -10,6 +10,7 @@ import { groupOfferings, isOfferingVisibleTo } from '@/lib/media';
 import { getSessionUser } from '@/lib/auth';
 import { getUserBands } from '@/lib/bands-server';
 import MediaShowcaseCard from '@/components/media/MediaShowcaseCard';
+import MetaTrack from '@/components/analytics/MetaTrack';
 
 export const metadata: Metadata = {
   title: 'Record, Rollout, Grow — Sweet Dreams Music',
@@ -95,6 +96,10 @@ export default async function MediaPage() {
 
   return (
     <>
+      <MetaTrack
+        event="ViewContent"
+        params={{ content_name: 'Media packages', content_category: 'packages' }}
+      />
       {/* ──────────────────── HERO ──────────────────── */}
       <section className="relative bg-black text-white py-20 sm:py-28 overflow-hidden">
         <Image

@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation';
 import { Menu, X, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
+import { trackMeta } from '@/lib/meta-pixel';
 
 // Brand logo shown in the nav. Transparent PNG (2151×1223) sized to the header
 // height; alt/aria-label keep the brand name available to SEO + screen readers.
@@ -71,6 +72,7 @@ export default function Header({ navLinks, brandName }: { navLinks: readonly { h
                   Sign In
                 </Link>
                 <Link href="/book"
+                  onClick={() => trackMeta('ViewContent', { content_name: 'Header nav - Book now', content_category: 'Studio session booking' })}
                   className="ml-2 bg-accent text-black font-mono text-sm font-bold tracking-wider uppercase px-6 py-3 hover:bg-accent/90 transition-colors no-underline">
                   BOOK NOW
                 </Link>
@@ -117,7 +119,7 @@ export default function Header({ navLinks, brandName }: { navLinks: readonly { h
                   className="mt-2 text-white/70 font-mono text-base font-medium tracking-wider uppercase px-4 py-3 text-center no-underline">
                   Sign In
                 </Link>
-                <Link href="/book" onClick={() => setMobileOpen(false)}
+                <Link href="/book" onClick={() => { trackMeta('ViewContent', { content_name: 'Header nav - Book now', content_category: 'Studio session booking' }); setMobileOpen(false); }}
                   className="bg-accent text-black font-mono text-base font-bold tracking-wider uppercase px-4 py-4 text-center hover:bg-accent/90 transition-colors no-underline">
                   BOOK NOW
                 </Link>

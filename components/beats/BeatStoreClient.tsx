@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Search, SlidersHorizontal, Music, X } from 'lucide-react';
 import BeatCard, { type BeatData } from './BeatCard';
 import { BEAT_GENRES } from '@/lib/constants';
+import { trackMeta } from '@/lib/meta-pixel';
 
 interface BeatStoreClientProps {
   initialBeats: BeatData[];
@@ -45,6 +46,20 @@ export default function BeatStoreClient({ initialBeats }: BeatStoreClientProps) 
   useEffect(() => {
     syncUrl(search, genre, sort, sampleFilter);
   }, [search, genre, sort, sampleFilter, syncUrl]);
+
+  // ViewContent: beats list is the key page view (fire once on mount)
+  useEffect(() => {
+    trackMeta('ViewContent', { content_name: 'Beat Store', content_category: 'beats' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Search: fire when the search string changes to a non-empty value
+  useEffect(() => {
+    if (search.trim()) {
+      trackMeta('Search', { search_string: search });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   // Fetch saved beats for logged-in users
   useEffect(() => {

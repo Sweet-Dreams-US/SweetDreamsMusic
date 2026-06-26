@@ -22,6 +22,7 @@ import { useState } from 'react';
 import { ShoppingCart, X, Trash2, ArrowRight, Phone } from 'lucide-react';
 import { useMediaCart } from './MediaCartContext';
 import { toCheckoutPayload, type MediaCartItem } from '@/lib/media-cart';
+import { trackMeta } from '@/lib/meta-pixel';
 
 function fmt(cents: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -63,6 +64,15 @@ export default function MediaCartSidebar({
     }
     setSubmitting(true);
     setError(null);
+    // Meta Pixel: user is starting a paid checkout. Fire-and-forget before
+    // the fetch/redirect so the conversion signal is captured even though
+    // navigation may follow. value is in DOLLARS (cart stores cents).
+    trackMeta('InitiateCheckout', {
+      value: cart.totalCents / 100,
+      currency: 'USD',
+      content_name: 'Media packages and services',
+      content_category: 'media',
+    });
     try {
       // Test-mode admins go to the bypass endpoint that writes rows
       // with is_test=true; everyone else hits Stripe.

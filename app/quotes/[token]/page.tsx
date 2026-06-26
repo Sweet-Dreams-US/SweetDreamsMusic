@@ -14,6 +14,8 @@ import { notFound } from 'next/navigation';
 import { headers } from 'next/headers';
 import { Crown, Users, Clock, Film, Music, Package, Calendar, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import QuoteActions from '@/components/packages/QuoteActions';
+import MetaTrack from '@/components/analytics/MetaTrack';
+import { centsToDollars } from '@/lib/meta-pixel';
 import { fmtStampDate } from '@/lib/studio-time';
 
 interface QuoteLine {
@@ -94,12 +96,28 @@ async function fetchQuote(token: string): Promise<{ quote: Quote; template: Temp
   return res.json();
 }
 
-export default async function QuotePage({ params }: { params: Promise<{ token: string }> }) {
+export default async function QuotePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const { token } = await params;
   const data = await fetchQuote(token);
   if (!data) notFound();
 
   const { quote, template, lines } = data;
+
+  // Meta Pixel — derive conversion params from server-loaded data.
+  const sp = (await searchParams) ?? {};
+  const isSuccess = sp.status === 'success';
+  const membershipTotalCents = template.is_membership
+    ? template.price_cents * (template.membership_months ?? 0)
+    : quote.total_price_cents;
+  const purchaseValue = template.is_membership
+    ? centsToDollars(membershipTotalCents)
+    : centsToDollars(quote.total_price_cents);
   const isExpired = quote.status === 'expired'
     || (quote.expires_at && new Date(quote.expires_at) < new Date());
   const grossRevenue = template.is_membership
@@ -111,6 +129,39 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
 
   return (
     <section className="bg-white text-black min-h-[80vh]">
+      {/* Meta Pixel — quote viewed (page mount). */}
+      <MetaTrack
+        event="ViewContent"
+        params={{
+          content_name: template.name,
+          content_category: template.is_membership ? 'membership_package' : 'package',
+          value: centsToDollars(quote.total_price_cents),
+          currency: 'USD',
+        }}
+      />
+      {/* Meta Pixel — membership subscription started (success + membership). */}
+      {isSuccess && template.is_membership && (
+        <MetaTrack
+          event="Subscribe"
+          params={{
+            value: purchaseValue,
+            currency: 'USD',
+            predicted_ltv: purchaseValue,
+          }}
+        />
+      )}
+      {/* Meta Pixel — quote purchased (success; one-off or membership). */}
+      {isSuccess && (
+        <MetaTrack
+          event="Purchase"
+          params={{
+            value: purchaseValue,
+            currency: 'USD',
+            content_name: template.name,
+            content_type: template.is_membership ? 'membership' : 'package',
+          }}
+        />
+      )}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
         {/* Status banner — only when accepted/declined/expired */}
         {quote.status === 'accepted' && (

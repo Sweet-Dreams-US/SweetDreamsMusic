@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { formatCents } from '@/lib/utils';
 import { useAudioPlayer, type AudioTrack } from '@/components/audio/AudioPlayerContext';
+import { trackMeta, centsToDollars } from '@/lib/meta-pixel';
 
 export interface BeatData {
   id: string;
@@ -155,7 +156,15 @@ export default function BeatCard({ beat, isSaved, onToggleSave, showWriteButton 
           <div className="flex gap-1 flex-shrink-0">
             {onToggleSave && (
               <button
-                onClick={() => onToggleSave(beat.id)}
+                onClick={() => {
+                  trackMeta('AddToWishlist', {
+                    content_ids: [beat.id],
+                    content_name: beat.title,
+                    value: centsToDollars(beat.mp3_lease_price ?? 0),
+                    currency: 'USD',
+                  });
+                  onToggleSave(beat.id);
+                }}
                 className={`p-2 transition-colors ${
                   isSaved ? 'text-red-500' : 'text-black/20 hover:text-red-400'
                 }`}

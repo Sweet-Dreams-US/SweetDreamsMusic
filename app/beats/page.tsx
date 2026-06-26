@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { SITE_URL, BEAT_LICENSES } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/server';
 import BeatStoreClient from '@/components/beats/BeatStoreClient';
+import MetaTrack from '@/components/analytics/MetaTrack';
 
 export const metadata: Metadata = {
   title: 'Beat Store — Buy Beats Online | MP3 Leases, Trackouts & Exclusives',
@@ -28,6 +29,8 @@ export default async function BeatsPage() {
 
   return (
     <>
+      <MetaTrack event="ViewContent" params={{ content_name: 'Beat Store', content_category: 'beats' }} />
+
       {/* Hero */}
       <section className="bg-black text-white py-20 sm:py-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
