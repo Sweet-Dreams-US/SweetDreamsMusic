@@ -32,14 +32,18 @@ export default function Header({ navLinks, brandName }: { navLinks: readonly { h
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
           <Link href="/" className="flex items-center no-underline" aria-label={brandName}>
-            <Image
-              src={BRAND_LOGO_URL}
-              alt={brandName}
-              width={2151}
-              height={1223}
-              priority
-              className="h-10 sm:h-12 w-auto"
-            />
+            {/* Fixed-size box the logo fills via object-contain — guarantees it
+                fits the nav height (it can never overflow to its intrinsic size). */}
+            <span className="relative block h-10 sm:h-12 w-[72px] sm:w-[88px] shrink-0">
+              <Image
+                src={BRAND_LOGO_URL}
+                alt={brandName}
+                fill
+                priority
+                sizes="88px"
+                className="object-contain object-left"
+              />
+            </span>
           </Link>
 
           {/* Desktop Nav */}
