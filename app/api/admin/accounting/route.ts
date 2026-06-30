@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
   // Fetch cancelled bookings with deposits (kept revenue)
   let cancelledQuery = supabase
     .from('bookings')
-    .select('id, customer_name, start_time, total_amount, deposit_amount, actual_deposit_paid, status, created_at')
+    .select('id, customer_name, start_time, total_amount, deposit_amount, actual_deposit_paid, deposit_kept, status, created_at')
     .eq('status', 'cancelled')
     .order('created_at', { ascending: false });
 

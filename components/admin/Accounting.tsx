@@ -150,7 +150,7 @@ export default function Accounting() {
   // Round 7c: band display_names so the band-revenue panel renders
   // human-readable band names without a separate fetch.
   const [bandMap, setBandMap] = useState<Record<string, string>>({});
-  const [cancelledBookings, setCancelledBookings] = useState<{ id: string; customer_name: string; start_time: string; total_amount: number; deposit_amount: number; actual_deposit_paid: number | null }[]>([]);
+  const [cancelledBookings, setCancelledBookings] = useState<{ id: string; customer_name: string; start_time: string; total_amount: number; deposit_amount: number; actual_deposit_paid: number | null; deposit_kept: boolean }[]>([]);
   const [cashLedger, setCashLedger] = useState<{ id: string; engineer_name: string; amount: number; client_name: string; note: string | null; status: string; created_at: string; booking_id: string | null; deposit_event_id?: string | null; deposited_at?: string | null; collection_event_id?: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>('overview');
@@ -331,6 +331,19 @@ export default function Accounting() {
       alert(`Failed: ${data.error}`);
     }
     setRecordingPayout(false);
+  }
+
+  // Mark a cancelled booking's deposit as kept (vs refunded), or undo it. Only
+  // kept deposits count toward the accounting "Kept Deposits" figure.
+  async function toggleKeepDeposit(bookingId: string, kept: boolean) {
+    const res = await fetch('/api/admin/bookings/keep-deposit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bookingId, kept }),
+    });
+    const data = await res.json();
+    if (!data.success) { alert(`Failed: ${data.error || 'could not update'}`); return; }
+    await fetchData();
   }
 
   /**
@@ -868,7 +881,7 @@ export default function Accounting() {
     const allTimeBeatRevenue = allTimeBeatPurchases.reduce((s, p) => s + p.amount_paid, 0);
     const totalGrossRevenue = allTimeSessionRevenue + allTimeMediaRevenue + allTimeBeatRevenue;
     const businessKeeps = totalGrossRevenue - totalPayroll;
-    const keptDeposits = allTimeCancelledBookings.reduce((s, b) => s + (b.actual_deposit_paid || 0), 0);
+    const keptDeposits = allTimeCancelledBookings.filter((b) => b.deposit_kept).reduce((s, b) => s + (b.actual_deposit_paid || 0), 0);
 
     return {
       people: activeEntries,
@@ -903,7 +916,7 @@ export default function Accounting() {
     );
     const totalPayroll = Object.values(earnings).reduce((s, p) => s + p.totalPay, 0);
     const businessKeeps = totalGross - totalPayroll;
-    const keptDeposits = cancelledBookings.reduce((s, b) => s + (b.actual_deposit_paid || 0), 0);
+    const keptDeposits = cancelledBookings.filter((b) => b.deposit_kept).reduce((s, b) => s + (b.actual_deposit_paid || 0), 0);
 
     return { totalGrossRevenue: totalGross, totalPayroll, businessKeeps, keptDeposits, mediaBookingsCollected };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1105,10 +1118,48 @@ export default function Accounting() {
               </div>
 
               {cancelledBookings.length > 0 && (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <StatCard icon={Calendar} label="Cancelled Sessions" value={String(cancelledBookings.length)} />
-                  <StatCard icon={DollarSign} label="Deposits Kept (Card)" value={formatCents(cancelledBookings.reduce((s, b) => s + (b.actual_deposit_paid || 0), 0))} />
-                  <StatCard icon={DollarSign} label="Total Kept from Cancelled" value={formatCents(cancelledBookings.reduce((s, b) => s + (b.actual_deposit_paid || 0), 0))} accent />
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <StatCard icon={Calendar} label="Cancelled Sessions" value={String(cancelledBookings.length)} />
+                    <StatCard icon={DollarSign} label="Deposits on Cancellations (collected)" value={formatCents(cancelledBookings.reduce((s, b) => s + (b.actual_deposit_paid || 0), 0))} />
+                    <StatCard icon={DollarSign} label="Total Kept from Cancelled" value={formatCents(cancelledBookings.filter((b) => b.deposit_kept).reduce((s, b) => s + (b.actual_deposit_paid || 0), 0))} accent />
+                  </div>
+
+                  {/* Per-booking Keep Deposit control. A cancelled deposit only counts
+                      as kept revenue once an admin explicitly marks it here — the rest
+                      are treated as refunded. */}
+                  {cancelledBookings.some((b) => (b.actual_deposit_paid || 0) > 0) && (
+                    <div className="border border-black/10 p-4">
+                      <h3 className="font-mono text-sm font-bold uppercase tracking-wider mb-1">Cancelled Deposits — Kept or Refunded?</h3>
+                      <p className="font-mono text-xs text-black/50 mb-3">
+                        Only deposits you mark <span className="font-bold">Kept</span> count toward revenue. Everything else is treated as refunded.
+                      </p>
+                      <div className="divide-y divide-black/5">
+                        {cancelledBookings
+                          .filter((b) => (b.actual_deposit_paid || 0) > 0)
+                          .map((b) => (
+                            <div key={b.id} className="flex items-center justify-between gap-3 py-2">
+                              <div className="min-w-0">
+                                <p className="font-mono text-sm truncate">{b.customer_name || 'Unknown'}</p>
+                                <p className="font-mono text-xs text-black/50">
+                                  {fmtSessionDate(b.start_time)} · deposit {formatCents(b.actual_deposit_paid || 0)}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => toggleKeepDeposit(b.id, !b.deposit_kept)}
+                                className={`font-mono text-xs font-bold uppercase tracking-wider px-3 py-2 border transition-colors whitespace-nowrap ${
+                                  b.deposit_kept
+                                    ? 'bg-accent text-black border-accent hover:bg-accent/90'
+                                    : 'border-black/20 text-black/70 hover:border-black hover:text-black'
+                                }`}
+                              >
+                                {b.deposit_kept ? 'Kept ✓ (undo)' : 'Keep Deposit'}
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
