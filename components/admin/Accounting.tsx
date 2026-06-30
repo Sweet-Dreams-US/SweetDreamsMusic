@@ -140,6 +140,12 @@ export default function Accounting() {
       created_at: string;
     }>
   >([]);
+  // Paid installments for the period's media bookings. This ledger — not
+  // media_bookings.actual_deposit_paid (untouched by installment payments) — is
+  // the real "collected" source for installment-plan contracts.
+  const [mediaInstallments, setMediaInstallments] = useState<
+    Array<{ booking_id: string; amount_cents: number; status: string; paid_at: string | null }>
+  >([]);
   const [mediaOfferingMap, setMediaOfferingMap] = useState<Record<string, string>>({});
   // Round 7c: band display_names so the band-revenue panel renders
   // human-readable band names without a separate fetch.
@@ -283,6 +289,7 @@ export default function Accounting() {
     setMediaSales(data.mediaSales || []);
     setCancelledBookings(data.cancelledBookings || []);
     setMediaBookings(data.mediaBookings || []);
+    setMediaInstallments(data.mediaInstallments || []);
     setMediaOfferingMap(data.mediaOfferingMap || {});
     setBandMap(data.bandMap || {});
     // Period-filtered pay rows — the route already returns these; the Overview
@@ -566,6 +573,15 @@ export default function Accounting() {
   //
   // is_test rows are already excluded server-side; cancelled rows too.
   const mediaBookingStats = useMemo(() => {
+    // Sum PAID installments per booking. This ledger — NOT
+    // media_bookings.actual_deposit_paid, which stays 0 for installment-plan
+    // contracts — is where contract payments actually land.
+    const paidByBooking: Record<string, number> = {};
+    for (const inst of mediaInstallments) {
+      if (inst.status !== 'paid') continue;
+      paidByBooking[inst.booking_id] = (paidByBooking[inst.booking_id] || 0) + (inst.amount_cents || 0);
+    }
+
     const total = mediaBookings.length;
     let revenue = 0;
     let collected = 0;
@@ -577,12 +593,17 @@ export default function Accounting() {
 
     for (const b of mediaBookings) {
       const price = b.final_price_cents ?? 0;
-      const paid = b.actual_deposit_paid ?? 0;
+      // Collected = paid installments when the booking has an installment plan;
+      // otherwise the legacy actual_deposit_paid field. A booking uses one path
+      // or the other, so this never double-counts.
+      const paid = paidByBooking[b.id] !== undefined
+        ? paidByBooking[b.id]
+        : (b.actual_deposit_paid ?? 0);
       revenue += price;
       collected += paid;
       const owed = Math.max(0, price - paid);
       if (!b.final_paid_at) outstanding += owed;
-      if (b.deposit_paid_at) depositsCount += 1;
+      if (b.deposit_paid_at || paid > 0) depositsCount += 1;
       if (b.final_paid_at) fullyPaidCount += 1;
       const offeringTitle = mediaOfferingMap[b.offering_id] || 'Unknown offering';
       if (!byOffering[offeringTitle]) byOffering[offeringTitle] = { count: 0, revenue: 0, collected: 0 };
@@ -598,7 +619,7 @@ export default function Accounting() {
       byOffering: Object.entries(byOffering).sort((a, b) => b[1].revenue - a[1].revenue),
       byStatus,
     };
-  }, [mediaBookings, mediaOfferingMap]);
+  }, [mediaBookings, mediaInstallments, mediaOfferingMap]);
 
   // Round 7c: Band-session revenue slice.
   //

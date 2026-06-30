@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifyAdminAccess } from '@/lib/admin-auth';
 
 export async function GET(request: NextRequest) {
@@ -83,7 +83,15 @@ export async function GET(request: NextRequest) {
   // payouts). Returned as its own array because the accounting semantics
   // are package-level: deposits paid, remainder owed, fully-paid stamp.
   // is_test rows are excluded — they're QA bookings with no real money.
-  let mediaBookingsQuery = supabase
+  //
+  // NOTE: media_bookings + media_payment_installments have OWNER-ONLY RLS (no
+  // admin-read policy), so the user-scoped `supabase` client would only return
+  // the admin's OWN media orders — not customers'. This is an admin financial
+  // aggregate (the route is verifyAdminAccess-gated), so read them via the
+  // service client, the same way the admin media-management UI does. Without
+  // this, every customer's media booking is invisible here.
+  const admin = createServiceClient();
+  let mediaBookingsQuery = admin
     .from('media_bookings')
     .select(`
       id, offering_id, user_id, status,
@@ -99,6 +107,21 @@ export async function GET(request: NextRequest) {
   if (to) mediaBookingsQuery = mediaBookingsQuery.lte('created_at', `${to}T23:59:59`);
 
   const { data: mediaBookings } = await mediaBookingsQuery;
+
+  // Paid installments for those bookings. The installment ledger — NOT
+  // media_bookings.actual_deposit_paid (which stays 0 for installment-plan
+  // contracts) — is where contract payments actually land. The UI sums these
+  // per booking to compute the real "collected" / "outstanding" figures.
+  const mediaBookingIds = (mediaBookings || []).map((b: { id: string }) => b.id);
+  let mediaInstallments: Array<{ booking_id: string; amount_cents: number; status: string; paid_at: string | null }> = [];
+  if (mediaBookingIds.length > 0) {
+    const { data: insts } = await admin
+      .from('media_payment_installments')
+      .select('booking_id, amount_cents, status, paid_at')
+      .in('booking_id', mediaBookingIds)
+      .eq('status', 'paid');
+    mediaInstallments = (insts as typeof mediaInstallments) || [];
+  }
 
   // Package salesperson commissions. When an admin attributes a
   // salesperson to a package quote, the commission is snapshotted onto
@@ -213,6 +236,7 @@ export async function GET(request: NextRequest) {
     mediaSales: mediaSales || [],
     mediaSessions: mediaSessions || [],
     mediaBookings: mediaBookings || [],
+    mediaInstallments,
     packageCommissions: packageCommissions || [],
     rewardBonuses,
     mediaOfferingMap,
