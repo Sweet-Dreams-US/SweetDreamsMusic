@@ -274,6 +274,19 @@ export async function GET(request: NextRequest) {
     redeemed_at: g.redeemed_at,
   }));
 
+  // Active staff roster (engineers + media managers) so the payroll tab can show
+  // EVERY staffer — not only those with earnings this period — and pay any of
+  // them. Engineers from the constant roster; media managers from
+  // profiles.role='media_manager'. Payroll buckets by name.
+  const { ENGINEERS: ROSTER } = await import('@/lib/constants');
+  const { getMediaManagers } = await import('@/lib/media-team-server');
+  let mediaManagerNames: string[] = [];
+  try {
+    const mm = await getMediaManagers(admin);
+    mediaManagerNames = mm.map((m) => (m.display_name || '').trim()).filter(Boolean);
+  } catch { /* roster is best-effort — payroll still works from earnings */ }
+  const payableStaff = Array.from(new Set([...ROSTER.map((e) => e.name), ...mediaManagerNames]));
+
   return NextResponse.json({
     bookings: bookings || [],
     cancelledBookings: cancelledBookings || [],
@@ -285,6 +298,7 @@ export async function GET(request: NextRequest) {
     mediaManagerJobs,
     packageCommissions: packageCommissions || [],
     rewardBonuses,
+    payableStaff,
     mediaOfferingMap,
     bandMap,
     engineerNameMap,

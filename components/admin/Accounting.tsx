@@ -151,6 +151,9 @@ export default function Accounting() {
   const [mediaManagerJobs, setMediaManagerJobs] = useState<
     Array<{ manager_name: string | null; amount_cents: number; paid_at: string | null }>
   >([]);
+  // Active staff roster (engineers + media managers) so the payroll tab lists
+  // every staffer — and lets you pay them — even with no earnings this period.
+  const [payableStaff, setPayableStaff] = useState<string[]>([]);
   const [mediaOfferingMap, setMediaOfferingMap] = useState<Record<string, string>>({});
   // Round 7c: band display_names so the band-revenue panel renders
   // human-readable band names without a separate fetch.
@@ -296,6 +299,7 @@ export default function Accounting() {
     setMediaBookings(data.mediaBookings || []);
     setMediaInstallments(data.mediaInstallments || []);
     setMediaManagerJobs(data.mediaManagerJobs || []);
+    setPayableStaff(data.payableStaff || []);
     setMediaOfferingMap(data.mediaOfferingMap || {});
     setBandMap(data.bandMap || {});
     // Period-filtered pay rows — the route already returns these; the Overview
@@ -850,6 +854,9 @@ export default function Accounting() {
       ...Object.keys(allTimePeople),
       ...Object.keys(periodPeople),
       ...Object.keys(pendingByEngineer),
+      // Seed the full active staff roster (engineers + media managers) so every
+      // staffer shows and is payable even with no earnings this period.
+      ...payableStaff.map((n) => normalizeName(n)).filter((x): x is string => !!x),
     ]);
     const initEmpty = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, mediaManagerPay: 0, mediaManagedCount: 0, rewardsCost: 0, bonusPay: 0, bonusCount: 0, totalPay: 0 });
     type PeriodPending = { count: number; potentialPay: number; hours: number };
@@ -903,7 +910,7 @@ export default function Accounting() {
       periodLabel, periodStart: periodStartStr, periodEnd: periodEndStr,
       periodPayoutTotal,
     };
-  }, [allTimeBookings, allTimeMediaSales, allTimeBeatPurchases, allTimeCancelledBookings, allTimeMediaSessions, allTimePackageCommissions, allTimeRewardBonuses, engineerNameMap, payouts, payPeriods, payrollPeriodIndex, mediaManagerJobs]);
+  }, [allTimeBookings, allTimeMediaSales, allTimeBeatPurchases, allTimeCancelledBookings, allTimeMediaSessions, allTimePackageCommissions, allTimeRewardBonuses, engineerNameMap, payouts, payPeriods, payrollPeriodIndex, mediaManagerJobs, payableStaff]);
 
   // Payroll figure for the Overview — EXACT, not an estimate. Runs the same
   // earnings engine the Payroll tab pays from (per-row snapshot splits, the
