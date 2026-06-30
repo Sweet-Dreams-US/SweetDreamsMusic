@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/server';
 import { formatCents } from '@/lib/utils';
 import { BEAT_LICENSES, SITE_URL } from '@/lib/constants';
+import { looksLikeUuid, beatHref } from '@/lib/slug';
 import BeatDetailClient from '@/components/beats/BeatDetailClient';
 import BuyButton from '@/components/beats/BuyButton';
 import MessageButton from '@/components/messaging/MessageButton';
@@ -17,34 +18,39 @@ interface Props {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: beat } = await supabase
-    .from('beats')
-    .select('title, producer, genre')
-    .eq('id', id)
-    .single();
+  const byUuid = looksLikeUuid(id);
+  const { data: beat } = await (byUuid
+    ? supabase.from('beats').select('title, producer, genre, slug').eq('id', id)
+    : supabase.from('beats').select('title, producer, genre, slug').eq('slug', id)
+  ).maybeSingle();
 
   if (!beat) return { title: 'Beat Not Found' };
 
   return {
     title: `${beat.title} by ${beat.producer}`,
     description: `Buy "${beat.title}" by ${beat.producer}. ${beat.genre || 'Beat'} available for lease or exclusive purchase on Sweet Dreams Music.`,
-    alternates: { canonical: `${SITE_URL}/beats/${id}` },
+    alternates: { canonical: `${SITE_URL}/beats/${beat.slug || id}` },
   };
 }
 
 export default async function BeatDetailPage({ params }: Props) {
   const { id } = await params;
   const supabase = await createClient();
+  const byUuid = looksLikeUuid(id);
 
-  // user_id is needed for the "Message Producer" DM button (Round 9d).
-  // It's the FK to auth.users — distinct from profiles.id (the row's PK).
-  const { data: beat, error } = await supabase
-    .from('beats')
-    .select('*, profiles!producer_id(id, user_id, display_name, producer_name, public_profile_slug, profile_picture_url, bio)')
-    .eq('id', id)
-    .single();
+  // Resolve by slug (readable URL) or UUID (legacy/back-compat). user_id is
+  // needed for the "Message Producer" DM button (Round 9d) — the FK to
+  // auth.users, distinct from profiles.id (the row's PK).
+  const sel = '*, profiles!producer_id(id, user_id, display_name, producer_name, public_profile_slug, profile_picture_url, bio)';
+  const { data: beat, error } = await (byUuid
+    ? supabase.from('beats').select(sel).eq('id', id)
+    : supabase.from('beats').select(sel).eq('slug', id)
+  ).maybeSingle();
 
   if (error || !beat) notFound();
+
+  // Canonicalize: a hit via the legacy UUID 308-redirects to the readable slug.
+  if (byUuid && beat.slug) permanentRedirect(`/beats/${beat.slug}`);
 
   // Round 9d: only show "Message Producer" to logged-in users who aren't
   // the producer themselves. Anonymous viewers get a sign-in prompt
@@ -198,7 +204,7 @@ export default async function BeatDetailPage({ params }: Props) {
               </div>
 
               <Link
-                href={`/beats/${beat.id}/write`}
+                href={`${beatHref(beat)}/write`}
                 className="mt-6 w-full border border-white/20 text-white font-mono text-sm font-bold uppercase tracking-wider px-6 py-3 hover:border-accent hover:text-accent transition-colors no-underline flex items-center justify-center"
               >
                 Write to This Beat

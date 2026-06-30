@@ -105,11 +105,11 @@ export default async function PublicProfilePage({ params }: Props) {
     .order('display_order', { ascending: true });
 
   // Fetch producer beats if user is a producer
-  let producerBeats: { id: string; title: string; genre: string | null; bpm: number | null; musical_key: string | null; preview_url: string | null; cover_image_url: string | null; mp3_lease_price: number | null; trackout_lease_price: number | null; exclusive_price: number | null; has_exclusive: boolean; lease_count: number }[] = [];
+  let producerBeats: { id: string; slug: string | null; title: string; genre: string | null; bpm: number | null; musical_key: string | null; preview_url: string | null; cover_image_url: string | null; mp3_lease_price: number | null; trackout_lease_price: number | null; exclusive_price: number | null; has_exclusive: boolean; lease_count: number }[] = [];
   if (profile.is_producer) {
     const { data: beats } = await supabase
       .from('beats')
-      .select('id, title, genre, bpm, musical_key, preview_url, cover_image_url, mp3_lease_price, trackout_lease_price, exclusive_price, has_exclusive, lease_count')
+      .select('id, slug, title, genre, bpm, musical_key, preview_url, cover_image_url, mp3_lease_price, trackout_lease_price, exclusive_price, has_exclusive, lease_count')
       .eq('producer_id', profile.id)
       .eq('status', 'active')
       .order('created_at', { ascending: false });

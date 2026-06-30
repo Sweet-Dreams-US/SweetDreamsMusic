@@ -23,7 +23,7 @@ export default async function BeatsPage() {
 
   const { data: beats } = await supabase
     .from('beats')
-    .select('id, title, producer, producer_id, genre, bpm, musical_key, tags, preview_url, cover_image_url, mp3_lease_price, trackout_lease_price, exclusive_price, has_exclusive, contains_samples, lease_count, status, created_at, profiles!producer_id(display_name, producer_name, public_profile_slug)')
+    .select('id, slug, title, producer, producer_id, genre, bpm, musical_key, tags, preview_url, cover_image_url, mp3_lease_price, trackout_lease_price, exclusive_price, has_exclusive, contains_samples, lease_count, status, created_at, profiles!producer_id(display_name, producer_name, public_profile_slug)')
     .eq('status', 'active')
     .order('created_at', { ascending: false });
 

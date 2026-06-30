@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifyProducerAccess } from '@/lib/admin-auth';
 import { sendAdminBeatApprovalNotification } from '@/lib/email';
 import { SUPER_ADMINS } from '@/lib/constants';
+import { generateUniqueBeatSlug } from '@/lib/slug';
 
 export async function GET() {
   const supabase = await createClient();
@@ -79,11 +80,15 @@ export async function POST(request: NextRequest) {
     }
   } catch (e) { console.error('Cover art generation error:', e); }
 
+  // Readable URL slug (unique). Old UUID links still resolve + redirect to it.
+  const slug = await generateUniqueBeatSlug(serviceClient, title);
+
   // Insert beat record
   const { data: beat, error: dbError } = await serviceClient
     .from('beats')
     .insert({
       title,
+      slug,
       producer: producerName,
       producer_id: profileId,
       genre: genre || null,

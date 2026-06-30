@@ -69,7 +69,7 @@ export default async function DashboardPage() {
   // Fetch saved beats
   const { data: savedBeats } = await supabase
     .from('user_saved_beats')
-    .select('beat_id, beats(id, title, producer, genre, bpm, musical_key, preview_url, cover_image_url, mp3_lease_price, trackout_lease_price, exclusive_price, has_exclusive, lease_count)')
+    .select('beat_id, beats(id, slug, title, producer, genre, bpm, musical_key, preview_url, cover_image_url, mp3_lease_price, trackout_lease_price, exclusive_price, has_exclusive, lease_count)')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(6);
@@ -77,7 +77,7 @@ export default async function DashboardPage() {
   // Fetch user lyrics
   const { data: userLyrics } = await supabase
     .from('user_lyrics')
-    .select('beat_id, updated_at, beats(id, title, producer)')
+    .select('beat_id, updated_at, beats(id, slug, title, producer)')
     .eq('user_id', user.id)
     .order('updated_at', { ascending: false })
     .limit(6);
@@ -386,7 +386,7 @@ export default async function DashboardPage() {
                   return (
                     <Link
                       key={lyric.beat_id}
-                      href={`/beats/${beat.id}/write`}
+                      href={`/beats/${beat.slug || beat.id}/write`}
                       className="border-2 border-black/10 p-4 hover:border-accent transition-colors no-underline"
                     >
                       <p className="font-mono text-sm font-bold truncate">{beat.title}</p>

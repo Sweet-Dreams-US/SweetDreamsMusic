@@ -5,9 +5,11 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { formatCents } from '@/lib/utils';
 import { useAudioPlayer, type AudioTrack } from '@/components/audio/AudioPlayerContext';
+import { beatHref } from '@/lib/slug';
 
 interface ProfileBeat {
   id: string;
+  slug?: string | null;
   title: string;
   genre: string | null;
   bpm: number | null;
@@ -86,7 +88,7 @@ export default function ProfileBeatGrid({ beats, producerName, producerSlug }: {
               </button>
 
               {/* Info */}
-              <Link href={`/beats/${beat.id}`} className="flex-1 p-4 no-underline min-w-0">
+              <Link href={beatHref(beat)} className="flex-1 p-4 no-underline min-w-0">
                 <p className="font-mono text-sm font-bold truncate">{beat.title}</p>
                 <p className="font-mono text-xs text-black/60 mt-0.5">
                   {beat.genre}{beat.bpm ? ` · ${beat.bpm} BPM` : ''}{beat.musical_key ? ` · ${beat.musical_key}` : ''}
