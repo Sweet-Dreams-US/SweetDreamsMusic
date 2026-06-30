@@ -11,6 +11,15 @@ export async function GET(request: NextRequest) {
   const from = searchParams.get('from');
   const to = searchParams.get('to');
 
+  // Admin financial aggregate — this route is verifyAdminAccess-gated, so it must
+  // see EVERY customer's money. Several financial tables (beat_purchases,
+  // media_bookings, media_payment_installments, package_entitlements) have
+  // OWNER-ONLY RLS with no admin-read policy, so the user-scoped `supabase`
+  // client silently returns only the admin's own rows. Read those via the
+  // service client. (bookings / media_sales / media_session_bookings already
+  // have admin-read policies, so they stay on the user client.)
+  const admin = createServiceClient();
+
   // Fetch all bookings (with optional date range)
   // Round 7c: extends select with band_id + booking_group_id + sweet_spot_addon
   // so the accounting panel can break out band-session revenue separately
@@ -38,8 +47,9 @@ export async function GET(request: NextRequest) {
 
   const { data: cancelledBookings } = await cancelledQuery;
 
-  // Fetch all beat purchases (with optional date range)
-  let purchasesQuery = supabase
+  // Fetch all beat purchases (admin client — beat_purchases is owner-only RLS,
+  // so the user client would show the admin only their OWN beat purchases).
+  let purchasesQuery = admin
     .from('beat_purchases')
     .select('id, beat_id, buyer_email, license_type, amount_paid, created_at, beats(title, producer)')
     .order('created_at', { ascending: false });
@@ -84,13 +94,9 @@ export async function GET(request: NextRequest) {
   // are package-level: deposits paid, remainder owed, fully-paid stamp.
   // is_test rows are excluded — they're QA bookings with no real money.
   //
-  // NOTE: media_bookings + media_payment_installments have OWNER-ONLY RLS (no
-  // admin-read policy), so the user-scoped `supabase` client would only return
-  // the admin's OWN media orders — not customers'. This is an admin financial
-  // aggregate (the route is verifyAdminAccess-gated), so read them via the
-  // service client, the same way the admin media-management UI does. Without
-  // this, every customer's media booking is invisible here.
-  const admin = createServiceClient();
+  // media_bookings + media_payment_installments use `admin` (service client) —
+  // their owner-only RLS would hide customers' rows from the user client (see
+  // the note at the top of this handler).
   let mediaBookingsQuery = admin
     .from('media_bookings')
     .select(`
@@ -129,7 +135,7 @@ export async function GET(request: NextRequest) {
   // is earned ON PAYMENT — so we date-filter by created_at (the mint
   // timestamp = when the customer paid). Only rows with a salesperson
   // and a positive commission matter to payroll.
-  let packageCommissionsQuery = supabase
+  let packageCommissionsQuery = admin
     .from('package_entitlements')
     .select('id, salesperson_name, sales_commission_cents, created_at, quote_id, template_id')
     .not('salesperson_name', 'is', null)
