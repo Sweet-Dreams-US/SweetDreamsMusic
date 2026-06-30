@@ -891,7 +891,11 @@ export default function Accounting() {
     const totalBooked = filteredBookings.reduce((s, b) => s + b.total_amount, 0);
     const mediaRev = mediaSales.reduce((s, m) => s + m.amount, 0);
     const beatRev = filteredPurchases.reduce((s, p) => s + p.amount_paid, 0);
-    const totalGross = totalBooked + mediaRev + beatRev;
+    // Cash actually collected on media-booking contracts (paid installments).
+    // Folded into gross alongside the legacy media_sales line so contract money
+    // (e.g. a $1,000 music video, $330 paid so far) shows up as real revenue.
+    const mediaBookingsCollected = mediaBookingStats.collected;
+    const totalGross = totalBooked + mediaRev + beatRev + mediaBookingsCollected;
 
     const earnings = computeEarnings(
       filteredBookings, mediaSales, filteredPurchases,
@@ -901,9 +905,9 @@ export default function Accounting() {
     const businessKeeps = totalGross - totalPayroll;
     const keptDeposits = cancelledBookings.reduce((s, b) => s + (b.actual_deposit_paid || 0), 0);
 
-    return { totalGrossRevenue: totalGross, totalPayroll, businessKeeps, keptDeposits };
+    return { totalGrossRevenue: totalGross, totalPayroll, businessKeeps, keptDeposits, mediaBookingsCollected };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredBookings, mediaSales, filteredPurchases, cancelledBookings, periodMediaSessions, engineerNameMap, periodPackageCommissions, periodRewardBonuses]);
+  }, [filteredBookings, mediaSales, filteredPurchases, cancelledBookings, periodMediaSessions, engineerNameMap, periodPackageCommissions, periodRewardBonuses, mediaBookingStats]);
 
   const SALE_TYPE_LABELS: Record<string, string> = {
     video: 'Music Video',
@@ -1073,6 +1077,12 @@ export default function Accounting() {
                     <span className="text-black/60">Media Sales — Business {Math.round(MEDIA_BUSINESS_CUT * 100)}%</span>
                     <span className="font-bold">{formatCents(mediaStats.businessRevenue)}</span>
                   </div>
+                  {filteredPayrollData.mediaBookingsCollected > 0 && (
+                    <div className="flex justify-between py-1 border-b border-black/5">
+                      <span className="text-black/60">Media Bookings — Collected (contracts)</span>
+                      <span className="font-bold">{formatCents(filteredPayrollData.mediaBookingsCollected)}</span>
+                    </div>
+                  )}
                   {filteredPayrollData.keptDeposits > 0 && (
                     <div className="flex justify-between py-1 border-b border-black/5">
                       <span className="text-black/60">Kept Deposits (Cancelled Sessions)</span>
