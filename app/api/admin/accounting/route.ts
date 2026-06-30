@@ -129,6 +129,45 @@ export async function GET(request: NextRequest) {
     mediaInstallments = (insts as typeof mediaInstallments) || [];
   }
 
+  // Media MANAGER pay: the person who runs a media contract
+  // (media_session_bookings.media_manager_id) earns a % of what's COLLECTED on it.
+  // Resolve each booking's manager, then emit one entry per PAID installment
+  // (carrying paid_at) so payroll can slice it by pay period like every other
+  // earning. Studio keeps the rest.
+  const managerByBooking: Record<string, string> = {};
+  if (mediaBookingIds.length > 0) {
+    const { data: msessions } = await admin
+      .from('media_session_bookings')
+      .select('parent_booking_id, media_manager_id, confirmed_at')
+      .in('parent_booking_id', mediaBookingIds)
+      .not('media_manager_id', 'is', null);
+    for (const s of (msessions || []) as Array<{ parent_booking_id: string; media_manager_id: string }>) {
+      if (s.parent_booking_id && !managerByBooking[s.parent_booking_id]) {
+        managerByBooking[s.parent_booking_id] = s.media_manager_id;
+      }
+    }
+  }
+  const managerUserIds = Array.from(new Set(Object.values(managerByBooking)));
+  const managerNameMap: Record<string, string> = {};
+  if (managerUserIds.length > 0) {
+    const { data: mprofiles } = await admin
+      .from('profiles')
+      .select('user_id, display_name, email')
+      .in('user_id', managerUserIds);
+    const { ENGINEERS } = await import('@/lib/constants');
+    for (const p of (mprofiles || []) as Array<{ user_id: string; display_name: string | null; email: string | null }>) {
+      const roster = p.email ? ENGINEERS.find((e) => e.email.toLowerCase() === p.email!.toLowerCase()) : null;
+      managerNameMap[p.user_id] = roster?.name || p.display_name || 'Unknown';
+    }
+  }
+  const mediaManagerJobs = mediaInstallments
+    .map((i) => {
+      const mgrId = managerByBooking[i.booking_id];
+      if (!mgrId) return null;
+      return { manager_name: managerNameMap[mgrId] || null, amount_cents: i.amount_cents, paid_at: i.paid_at };
+    })
+    .filter((x): x is { manager_name: string | null; amount_cents: number; paid_at: string | null } => x !== null);
+
   // Package salesperson commissions. When an admin attributes a
   // salesperson to a package quote, the commission is snapshotted onto
   // the entitlement at mint time (sales_commission_cents). Commission
@@ -243,6 +282,7 @@ export async function GET(request: NextRequest) {
     mediaSessions: mediaSessions || [],
     mediaBookings: mediaBookings || [],
     mediaInstallments,
+    mediaManagerJobs,
     packageCommissions: packageCommissions || [],
     rewardBonuses,
     mediaOfferingMap,

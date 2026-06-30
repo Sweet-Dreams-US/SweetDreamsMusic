@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { DollarSign, TrendingUp, Calendar, Music, Users, Filter, ChevronDown } from 'lucide-react';
 import { formatCents, formatDuration } from '@/lib/utils';
 import { fmtSessionDate, fmtStampDate } from '@/lib/studio-time';
-import { PRODUCER_COMMISSION, PLATFORM_COMMISSION, ENGINEER_SESSION_SPLIT, BUSINESS_SESSION_SPLIT, MEDIA_SELLER_COMMISSION, MEDIA_BUSINESS_CUT, MEDIA_WORKER_TOTAL } from '@/lib/constants';
+import { PRODUCER_COMMISSION, PLATFORM_COMMISSION, ENGINEER_SESSION_SPLIT, BUSINESS_SESSION_SPLIT, MEDIA_SELLER_COMMISSION, MEDIA_BUSINESS_CUT, MEDIA_WORKER_TOTAL, MEDIA_MANAGER_PCT } from '@/lib/constants';
 import { computeEarningsCore, normalizeName, revenueConfigFromConstants, type PersonEarnings } from '@/lib/earnings-core';
 import CreditsLiabilityPanel from './CreditsLiabilityPanel';
 import PackageAccounting from './PackageAccounting';
@@ -145,6 +145,11 @@ export default function Accounting() {
   // the real "collected" source for installment-plan contracts.
   const [mediaInstallments, setMediaInstallments] = useState<
     Array<{ booking_id: string; amount_cents: number; status: string; paid_at: string | null }>
+  >([]);
+  // Media-manager pay: one entry per PAID media-booking installment, carrying the
+  // assigned manager + paid_at so payroll can slice it by pay period.
+  const [mediaManagerJobs, setMediaManagerJobs] = useState<
+    Array<{ manager_name: string | null; amount_cents: number; paid_at: string | null }>
   >([]);
   const [mediaOfferingMap, setMediaOfferingMap] = useState<Record<string, string>>({});
   // Round 7c: band display_names so the band-revenue panel renders
@@ -290,6 +295,7 @@ export default function Accounting() {
     setCancelledBookings(data.cancelledBookings || []);
     setMediaBookings(data.mediaBookings || []);
     setMediaInstallments(data.mediaInstallments || []);
+    setMediaManagerJobs(data.mediaManagerJobs || []);
     setMediaOfferingMap(data.mediaOfferingMap || {});
     setBandMap(data.bandMap || {});
     // Period-filtered pay rows — the route already returns these; the Overview
@@ -710,9 +716,13 @@ export default function Accounting() {
     engineerNames: Record<string, string> = {},
     packageCommissions: typeof allTimePackageCommissions = [],
     bonuses: typeof allTimeRewardBonuses = [],
+    managerJobs: typeof mediaManagerJobs = [],
   ): Record<string, PersonEarnings> {
     return computeEarningsCore(
-      { bookings: bks, media, beats, mediaSessions, engineerNames, packageCommissions, bonuses },
+      {
+        bookings: bks, media, beats, mediaSessions, engineerNames, packageCommissions, bonuses,
+        mediaManagerJobs: managerJobs.map((j) => ({ manager_name: j.manager_name, collected_cents: j.amount_cents })),
+      },
       revenueConfigFromConstants(),
     );
   }
@@ -765,6 +775,7 @@ export default function Accounting() {
       engineerNameMap,
       allTimePackageCommissions,
       allTimeRewardBonuses,
+      mediaManagerJobs,
     );
 
     // All-time payouts by person (normalized)
@@ -807,6 +818,7 @@ export default function Accounting() {
       engineerNameMap,
       periodPackageCommissions,
       periodRewardBonuses,
+      mediaManagerJobs.filter((j) => j.paid_at && j.paid_at >= periodStartStr && j.paid_at <= periodEndStr),
     );
 
     // Pending sessions this period — bookings scheduled within the period that
@@ -839,7 +851,7 @@ export default function Accounting() {
       ...Object.keys(periodPeople),
       ...Object.keys(pendingByEngineer),
     ]);
-    const initEmpty = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, rewardsCost: 0, bonusPay: 0, bonusCount: 0, totalPay: 0 });
+    const initEmpty = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, mediaManagerPay: 0, mediaManagedCount: 0, rewardsCost: 0, bonusPay: 0, bonusCount: 0, totalPay: 0 });
     type PeriodPending = { count: number; potentialPay: number; hours: number };
     const entries: [string, PersonEarnings & { allTimeTotal: number; allTimePaid: number; balance: number; periodTotal: number; allTimeData: PersonEarnings; periodPending: PeriodPending }][] = [];
 
@@ -891,7 +903,7 @@ export default function Accounting() {
       periodLabel, periodStart: periodStartStr, periodEnd: periodEndStr,
       periodPayoutTotal,
     };
-  }, [allTimeBookings, allTimeMediaSales, allTimeBeatPurchases, allTimeCancelledBookings, allTimeMediaSessions, allTimePackageCommissions, allTimeRewardBonuses, engineerNameMap, payouts, payPeriods, payrollPeriodIndex]);
+  }, [allTimeBookings, allTimeMediaSales, allTimeBeatPurchases, allTimeCancelledBookings, allTimeMediaSessions, allTimePackageCommissions, allTimeRewardBonuses, engineerNameMap, payouts, payPeriods, payrollPeriodIndex, mediaManagerJobs]);
 
   // Payroll figure for the Overview — EXACT, not an estimate. Runs the same
   // earnings engine the Payroll tab pays from (per-row snapshot splits, the
@@ -913,6 +925,7 @@ export default function Accounting() {
     const earnings = computeEarnings(
       filteredBookings, mediaSales, filteredPurchases,
       periodMediaSessions, engineerNameMap, periodPackageCommissions, periodRewardBonuses,
+      mediaManagerJobs,
     );
     const totalPayroll = Object.values(earnings).reduce((s, p) => s + p.totalPay, 0);
     const businessKeeps = totalGross - totalPayroll;
@@ -920,7 +933,7 @@ export default function Accounting() {
 
     return { totalGrossRevenue: totalGross, totalPayroll, businessKeeps, keptDeposits, mediaBookingsCollected };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredBookings, mediaSales, filteredPurchases, cancelledBookings, periodMediaSessions, engineerNameMap, periodPackageCommissions, periodRewardBonuses, mediaBookingStats]);
+  }, [filteredBookings, mediaSales, filteredPurchases, cancelledBookings, periodMediaSessions, engineerNameMap, periodPackageCommissions, periodRewardBonuses, mediaBookingStats, mediaManagerJobs]);
 
   const SALE_TYPE_LABELS: Record<string, string> = {
     video: 'Music Video',
@@ -1568,6 +1581,12 @@ export default function Accounting() {
                           .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
                         const bonusTotal = personBonuses.reduce((s, bn) => s + (bn.value_cents || 0), 0);
 
+                        // Media-manager pay this period — the assigned manager's % of
+                        // collected media-booking installments (sliced by paid_at).
+                        const personManagerJobs = mediaManagerJobs
+                          .filter((j) => normalizeName(j.manager_name) === name && j.paid_at && j.paid_at >= ps && j.paid_at <= pe);
+                        const managerTotal = personManagerJobs.reduce((s, j) => s + Math.round(j.amount_cents * MEDIA_MANAGER_PCT), 0);
+
                         // Pending (not-yet-completed) sessions in this period.
                         // Shown separately so admins can see upcoming work and
                         // know they need to mark sessions complete to move them
@@ -1585,7 +1604,7 @@ export default function Accounting() {
                         const pendingPotentialPay = Math.round(pendingGross * ENGINEER_SESSION_SPLIT);
                         const pendingHours = personPendingSessions.reduce((s, b) => s + (b.duration || 0), 0);
 
-                        const hasActivity = personSessions.length > 0 || personMedia.length > 0 || personPackages.length > 0;
+                        const hasActivity = personSessions.length > 0 || personMedia.length > 0 || personPackages.length > 0 || personManagerJobs.length > 0;
                         const hasAnything = hasActivity || personPendingSessions.length > 0;
 
                         return (
@@ -1631,6 +1650,17 @@ export default function Accounting() {
                                 <div className="flex justify-between font-mono text-xs font-bold mt-1 pt-1 border-t border-black/10">
                                   <span>Media ({personMedia.length} sale{personMedia.length !== 1 ? 's' : ''})</span>
                                   <span>{formatCents(mediaTotal)}</span>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Media Manager — the assigned manager's % of collected
+                                media-contract revenue (its own payroll category). */}
+                            {personManagerJobs.length > 0 && (
+                              <div>
+                                <div className="flex justify-between font-mono text-xs font-bold mt-1 pt-1 border-t border-black/10">
+                                  <span>Media Manager ({personManagerJobs.length} payment{personManagerJobs.length !== 1 ? 's' : ''} · {Math.round(MEDIA_MANAGER_PCT * 100)}% of collected)</span>
+                                  <span>{formatCents(managerTotal)}</span>
                                 </div>
                               </div>
                             )}

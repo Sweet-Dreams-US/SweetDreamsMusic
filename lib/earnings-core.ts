@@ -10,7 +10,7 @@
 
 import {
   ENGINEER_SESSION_SPLIT, ENGINEER_BAND_SESSION_SPLIT, PRODUCER_COMMISSION, MEDIA_SELLER_COMMISSION,
-  MEDIA_WORKER_TOTAL, ENGINEERS,
+  MEDIA_WORKER_TOTAL, MEDIA_MANAGER_PCT, ENGINEERS,
 } from '@/lib/constants';
 
 /** Studio-level splits as fractions (0..1) to match every existing call site. */
@@ -23,6 +23,7 @@ export interface RevenueConfig {
   producerCommission: number;       // 0.60
   mediaSellerPct: number;           // 0.15
   mediaWorkerTotal: number;         // 0.50
+  mediaManagerPct: number;          // 0.65 (media manager cut of COLLECTED media-booking revenue; business keeps the rest)
 }
 
 /** Seed source AND safe fallback — byte-identical to the current constants. */
@@ -33,6 +34,7 @@ export function revenueConfigFromConstants(): RevenueConfig {
     producerCommission: PRODUCER_COMMISSION,
     mediaSellerPct: MEDIA_SELLER_COMMISSION,
     mediaWorkerTotal: MEDIA_WORKER_TOTAL,
+    mediaManagerPct: MEDIA_MANAGER_PCT,
   };
 }
 
@@ -65,6 +67,7 @@ export interface PersonEarnings {
   mediaCommission: number; mediaSoldCount: number; mediaWorkerPay: number; mediaFilmedCount: number; mediaEditedCount: number;
   beatSales: number; beatProducerPay: number; beatCount: number;
   packageCommission: number; packageSoldCount: number;
+  mediaManagerPay: number; mediaManagedCount: number;
   rewardsCost: number;
   bonusPay: number; bonusCount: number;
   totalPay: number;
@@ -81,6 +84,9 @@ export interface EarningsInput {
   engineerNames?: Record<string, string>;
   packageCommissions?: Array<{ salesperson_name: string | null; sales_commission_cents?: number | null }>;
   bonuses?: Array<{ status: string; person_name: string | null; value_cents?: number | null }>;
+  // Media-booking (contract) jobs: the assigned manager earns mediaManagerPct of
+  // the COLLECTED amount. One entry per booking with a manager + collected money.
+  mediaManagerJobs?: Array<{ manager_name: string | null; collected_cents: number; manager_pct?: number | null }>;
 }
 
 export interface Overrides {
@@ -100,12 +106,12 @@ export function computeEarningsCore(
   cfg: RevenueConfig = revenueConfigFromConstants(),
   opts: EarningsOpts = {},
 ): Record<string, PersonEarnings> {
-  const { bookings, media, beats, mediaSessions = [], engineerNames = {}, packageCommissions = [], bonuses = [] } = input;
+  const { bookings, media, beats, mediaSessions = [], engineerNames = {}, packageCommissions = [], bonuses = [], mediaManagerJobs = [] } = input;
   const ov = opts.overrides ?? {};
   const snap = (v: number | null | undefined) => (opts.ignoreSnapshot ? null : pctToFrac(v));
 
   const people: Record<string, PersonEarnings> = {};
-  const init = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, rewardsCost: 0, bonusPay: 0, bonusCount: 0, totalPay: 0 });
+  const init = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, mediaManagerPay: 0, mediaManagedCount: 0, rewardsCost: 0, bonusPay: 0, bonusCount: 0, totalPay: 0 });
 
   bookings.forEach((b) => {
     if (b.status !== 'completed') return;
@@ -174,6 +180,21 @@ export function computeEarningsCore(
     people[eng].mediaFilmedCount++;
   });
 
+  // Media MANAGER cut of COLLECTED media-booking (contract) revenue. The assigned
+  // manager earns mediaManagerPct (65%) of what's been collected so far; the
+  // business keeps the rest. Snapshot pct ?? config. Distinct from the per-shoot
+  // worker payout above — this is the manager's share of the contract.
+  mediaManagerJobs.forEach((j) => {
+    const mgr = normalizeName(j.manager_name);
+    if (!mgr) return;
+    const collected = j.collected_cents || 0;
+    if (collected <= 0) return;
+    if (!people[mgr]) people[mgr] = init();
+    const frac = snap(j.manager_pct) ?? cfg.mediaManagerPct;
+    people[mgr].mediaManagerPay += Math.round(collected * frac);
+    people[mgr].mediaManagedCount++;
+  });
+
   // Package salesperson commissions — snapshotted cents (already frozen).
   packageCommissions.forEach((pc) => {
     const sp = normalizeName(pc.salesperson_name);
@@ -196,7 +217,7 @@ export function computeEarningsCore(
   });
 
   Object.values(people).forEach((p) => {
-    p.totalPay = p.sessionPay + p.mediaCommission + p.mediaWorkerPay + p.beatProducerPay + p.packageCommission + p.bonusPay;
+    p.totalPay = p.sessionPay + p.mediaCommission + p.mediaWorkerPay + p.beatProducerPay + p.packageCommission + p.mediaManagerPay + p.bonusPay;
   });
   return people;
 }

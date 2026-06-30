@@ -26,6 +26,11 @@ export async function getRevenueConfig(db: Client, studioId: string | null = nul
       producerCommission: Number((data as any).producer_commission_pct) / 100,
       mediaSellerPct: Number((data as any).media_seller_pct) / 100,
       mediaWorkerTotal: Number((data as any).media_worker_pct) / 100,
+      // No revenue_settings column yet — fall back to the constant (65% to the
+      // media manager on collected media-contract revenue).
+      mediaManagerPct: (data as any).media_manager_pct != null
+        ? Number((data as any).media_manager_pct) / 100
+        : revenueConfigFromConstants().mediaManagerPct,
     };
   } catch {
     return revenueConfigFromConstants();
