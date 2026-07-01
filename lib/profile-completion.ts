@@ -26,8 +26,12 @@ export interface ProfileCompletionItemDef {
  * The canonical, ordered list of REQUIRED profile-completion items.
  *
  * Order here is the order the Hub checklist renders. All six must be done for a
- * profile to count as complete. Genres requires >=1; social links requires >=3
+ * profile to count as complete. Genres requires >=1; social links requires >=4
  * connected platforms; the rest require a non-empty value.
+ *
+ * NOTE: "social links" and the metrics-tracker "connected platforms" are the SAME
+ * thing — both are rows in platform_connections (see lib/social-links-server).
+ * The label reflects that; the requirement is >=4 platforms in the metrics tracker.
  */
 export const PROFILE_COMPLETION_ITEMS: readonly ProfileCompletionItemDef[] = [
   { key: 'display_name', label: 'Display name' },
@@ -35,13 +39,16 @@ export const PROFILE_COMPLETION_ITEMS: readonly ProfileCompletionItemDef[] = [
   { key: 'cover_photo_url', label: 'Cover photo' },
   { key: 'bio', label: 'Bio' },
   { key: 'genres', label: 'Genres' },
-  { key: 'social_links', label: 'Social links' },
+  // key stays 'social_links' (stable, never rename); label makes the unification
+  // with the metrics tracker explicit.
+  { key: 'social_links', label: 'Connected platforms' },
 ] as const;
 
 /** Minimum number of genres for the `genres` item to be done. */
 export const MIN_GENRES = 1;
-/** Minimum number of connected social platforms for `social_links` to be done. */
-export const MIN_SOCIAL_LINKS = 3;
+/** Minimum number of connected platforms (social links == metrics-tracker
+ *  platforms, both rows in platform_connections) for `social_links` to be done. */
+export const MIN_SOCIAL_LINKS = 4;
 
 /**
  * Input to {@link computeProfileCompletion}. Every field is optional /
@@ -98,7 +105,7 @@ const REQUIREMENT_TEXT: Record<string, string> = {
   cover_photo_url: 'Upload a cover photo',
   bio: 'Write a short bio',
   genres: `Pick at least ${MIN_GENRES} genre`,
-  social_links: `Connect ${MIN_SOCIAL_LINKS}+ platforms`,
+  social_links: `Connect ${MIN_SOCIAL_LINKS}+ platforms in your metrics tracker`,
 };
 
 /**
@@ -112,7 +119,7 @@ const REQUIREMENT_TEXT: Record<string, string> = {
  *   - display_name / profile_picture_url / cover_photo_url / bio: non-empty
  *     (whitespace-only does not count)
  *   - genres: at least MIN_GENRES (default 1)
- *   - social_links: socialLinkCount >= MIN_SOCIAL_LINKS (default 3)
+ *   - social_links: socialLinkCount >= MIN_SOCIAL_LINKS (default 4)
  */
 export function computeProfileCompletion(
   input: ProfileCompletionInput,
