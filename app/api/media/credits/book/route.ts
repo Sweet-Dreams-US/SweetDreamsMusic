@@ -52,7 +52,7 @@ import { ENGINEERS, PRICING, SITE_URL, ROOM_LABELS, type Room } from '@/lib/cons
 import { getStudioConfig } from '@/lib/studio-config-server';
 import { parseTimeSlot, formatDuration } from '@/lib/utils';
 import { computeCreditRedemptionPricing } from '@/lib/credit-redemption-pricing';
-import { sendEngineerNewBookingAlert } from '@/lib/email';
+import { sendEngineerNewBookingAlert, sendBookingConfirmation, sendAdminBookingAlert } from '@/lib/email';
 
 const VALID_ROOMS: Room[] = ['studio_a', 'studio_b'];
 
@@ -519,20 +519,55 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ── Engineer alert (fire-and-forget) ───────────────────────────────
-  // Reusing sendEngineerNewBookingAlert keeps the engineer's inbox uniform
-  // — they see studio bookings the same way regardless of payment source.
+  // ── Notifications (fire-and-forget) ─────────────────────────────────
+  // Notify the ENGINEER, the CUSTOMER, and the STUDIO OWNER (admin) — the same
+  // three the paid-booking webhook sends. The customer + admin sends were
+  // previously MISSING on this fully-credit-covered path, so a free booking
+  // reached the studio with zero email. Compute the display date/time once so
+  // all three emails agree.
+  const dateStr = new Date(startISO).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const timeStr = new Date(startISO).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   try {
     await sendEngineerNewBookingAlert([engineerEntry.email], {
       id: bookingId,
       customerName: buyerName,
-      date: new Date(startISO).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
-      startTime: new Date(startISO).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+      date: dateStr,
+      startTime: timeStr,
       duration: durationHours,
       room,
     });
   } catch (e) {
     console.error('[media/credits/book] engineer alert error:', e);
+  }
+  try {
+    if (user.email) {
+      await sendBookingConfirmation(user.email, {
+        customerName: buyerName,
+        date: dateStr,
+        startTime: timeStr,
+        duration: durationHours,
+        room,
+        total: pricing.netTotal, // 0 when fully credit-covered
+        deposit: 0,              // nothing charged on this path
+        bookingId,
+      });
+    }
+  } catch (e) {
+    console.error('[media/credits/book] customer confirmation error:', e);
+  }
+  try {
+    await sendAdminBookingAlert({
+      id: bookingId,
+      customerName: buyerName,
+      customerEmail: user.email || '',
+      date: dateStr,
+      startTime: timeStr,
+      duration: durationHours,
+      room,
+      total: pricing.netTotal,
+    });
+  } catch (e) {
+    console.error('[media/credits/book] admin alert error:', e);
   }
 
   return NextResponse.json({

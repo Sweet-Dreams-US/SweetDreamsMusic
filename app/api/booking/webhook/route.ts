@@ -265,7 +265,7 @@ async function completeCreditRedemption(
 
   const { data: pendingRow } = await supabase
     .from('bookings')
-    .select('id, requested_engineer, engineer_name, room, customer_name, customer_email, start_time, duration, status, actual_deposit_paid')
+    .select('id, requested_engineer, engineer_name, room, customer_name, customer_email, start_time, duration, status, actual_deposit_paid, total_amount')
     .eq('id', bookingId)
     .maybeSingle();
   type CRBooking = {
@@ -279,6 +279,7 @@ async function completeCreditRedemption(
     duration: number;
     status: string;
     actual_deposit_paid: number | null;
+    total_amount: number | null;
   };
   const crBooking = pendingRow as CRBooking | null;
 
@@ -353,17 +354,64 @@ async function completeCreditRedemption(
     }
   }
 
-  // 4. Engineer alert (fire-and-forget).
+  // 4. Notifications (fire-and-forget). Mirror the normal booking_deposit
+  //    branch: notify the CUSTOMER, the STUDIO OWNER (admin), AND the engineer.
+  //    The customer + admin sends were previously MISSING here — so a free-hour
+  //    redemption (which lands on this path) sent no confirmation to the customer
+  //    and no "new booking" alert to the studio. Compute the display date/time +
+  //    total once and reuse across all three, exactly like the booking_deposit branch.
+  const crDate = fmtSessionDate(crBooking.start_time, { weekday: 'long', month: 'long', day: 'numeric' });
+  const crTime = fmtSessionTime(crBooking.start_time);
+  const crRoom = crBooking.room || meta.room || '';
+  // Net cost of THIS booking (free hour already deducted). Fall back to the amount
+  // just charged if the row somehow lacks a total.
+  const crTotal = crBooking.total_amount ?? session.amount_total ?? 0;
+
+  // Customer confirmation
+  try {
+    if (crBooking.customer_email) {
+      await sendBookingConfirmation(crBooking.customer_email, {
+        customerName: crBooking.customer_name || 'Customer',
+        date: crDate,
+        startTime: crTime,
+        duration: crBooking.duration,
+        room: crRoom,
+        total: crTotal,
+        deposit: session.amount_total ?? crTotal,
+        bookingId,
+      });
+    }
+  } catch (e) {
+    console.error('[webhook][credit_redemption] customer confirmation error:', e);
+  }
+
+  // Admin alert (studio owner) — so a free-hour booking is never silent.
+  try {
+    await sendAdminBookingAlert({
+      id: bookingId,
+      customerName: crBooking.customer_name || 'Customer',
+      customerEmail: crBooking.customer_email || '',
+      date: crDate,
+      startTime: crTime,
+      duration: crBooking.duration,
+      room: crRoom,
+      total: crTotal,
+    });
+  } catch (e) {
+    console.error('[webhook][credit_redemption] admin alert error:', e);
+  }
+
+  // Engineer alert (fire-and-forget).
   try {
     const eng = ENGINEERS.find((e) => e.name === engineerName || e.displayName === engineerName);
     if (eng) {
       await sendEngineerNewBookingAlert([eng.email], {
         id: bookingId,
         customerName: crBooking.customer_name || 'Customer',
-        date: fmtSessionDate(crBooking.start_time, { weekday: 'long', month: 'long', day: 'numeric' }),
-        startTime: fmtSessionTime(crBooking.start_time),
+        date: crDate,
+        startTime: crTime,
         duration: crBooking.duration,
-        room: crBooking.room || meta.room || '',
+        room: crRoom,
       });
     }
   } catch (e) {
