@@ -171,7 +171,7 @@ export default function InvitePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="min-h-screen bg-white text-black flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-accent" />
           <p className="font-mono text-sm text-black/60">Loading session details...</p>
@@ -182,7 +182,7 @@ export default function InvitePage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center px-4">
+      <div className="min-h-screen bg-white text-black flex items-center justify-center px-4">
         <div className="max-w-md text-center">
           <h1 className="text-heading-sm mb-4">INVITE NOT FOUND</h1>
           <p className="font-mono text-sm text-black/60 mb-6">{error}</p>
@@ -204,7 +204,7 @@ export default function InvitePage() {
   // Show processing state while waiting for Stripe webhook
   if (waitingForConfirmation) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center px-4">
+      <div className="min-h-screen bg-white text-black flex items-center justify-center px-4">
         <div className="max-w-lg w-full">
           <div className="border-2 border-accent p-8 text-center">
             <Loader2 className="w-10 h-10 animate-spin text-accent mx-auto mb-4" />
@@ -220,7 +220,7 @@ export default function InvitePage() {
 
   if (confirmed) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center px-4">
+      <div className="min-h-screen bg-white text-black flex items-center justify-center px-4">
         <div className="max-w-lg w-full">
           <div className="border-2 border-accent p-8 text-center">
             <CheckCircle className="w-12 h-12 text-accent mx-auto mb-4" />
@@ -268,7 +268,7 @@ export default function InvitePage() {
   // Cash chosen — slot is NOT held until the engineer records the cash.
   if ((cashChosen || isCash) && !confirmed) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center px-4">
+      <div className="min-h-screen bg-white text-black flex items-center justify-center px-4">
         <div className="max-w-lg w-full">
           <div className="border-2 border-black p-8 text-center">
             <DollarSign className="w-12 h-12 text-accent mx-auto mb-4" />
@@ -306,7 +306,7 @@ export default function InvitePage() {
 
   // Pending online payment — show details + pay button
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-white text-black flex items-center justify-center px-4">
       <div className="max-w-lg w-full">
         <div className="border-2 border-black p-8">
           <h1 className="text-heading-sm mb-2">YOU&apos;RE INVITED</h1>
