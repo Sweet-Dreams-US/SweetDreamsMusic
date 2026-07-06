@@ -6,6 +6,7 @@ import { formatCents, cn, isSameDay, formatTime, parseTimeSlot, decimalToTimeStr
 import { priceSessionFromConfig, priceBandFromConfig, hourSurchargeFromConfig, sweetSpotAddonCents, type StudioConfig } from '@/lib/studio-config';
 import { freeHourValueCents } from '@/lib/credit-redemption-pricing';
 import { rushFeePerHourCents, BOOKING_RUSH_LABEL } from '@/lib/rush-fee';
+import { trackMeta, centsToDollars } from '@/lib/meta-pixel';
 
 // Self-serve band tiers. As of 2026-04-28 the 24h ("3 Days") tier is
 // self-serve bookable — checkout creates 3 linked bookings rows and the
@@ -335,6 +336,16 @@ export default function BookingFlow({
     if (!selectedDate || !selectedTime || !customerName.trim()) return;
     setCheckoutError('');
 
+    // Meta Pixel: user started a paid checkout (Book a session).
+    trackMeta('InitiateCheckout', {
+      value: centsToDollars(pricing.total),
+      currency: 'USD',
+      content_name: isBandMode
+        ? `Band session — ${duration}hr`
+        : `Studio session — ${duration}hr`,
+      content_category: 'Studio session booking',
+    });
+
     // Client-side overlap check
     if (wouldOverlap(startHour, duration)) {
       setCheckoutError('Your session overlaps with an existing booking. Please adjust your time or duration.');
@@ -382,6 +393,13 @@ export default function BookingFlow({
 
       const data = await res.json();
       if (data.url) {
+        // Meta Pixel: proceeding to the Stripe-hosted payment page. Fire the
+        // deposit (the amount actually charged now), mode-aware like the pay
+        // button label, immediately before the redirect.
+        trackMeta('AddPaymentInfo', {
+          value: centsToDollars(isBandMode ? pricing.deposit : effectiveDeposit),
+          currency: 'USD',
+        });
         window.location.href = data.url;
       } else {
         setCheckoutError(data.error || 'Failed to create checkout session');

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifyAdminAccess } from '@/lib/admin-auth';
 
 export async function GET(request: NextRequest) {
@@ -10,6 +10,15 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const from = searchParams.get('from');
   const to = searchParams.get('to');
+
+  // Admin financial aggregate — this route is verifyAdminAccess-gated, so it must
+  // see EVERY customer's money. Several financial tables (beat_purchases,
+  // media_bookings, media_payment_installments, package_entitlements) have
+  // OWNER-ONLY RLS with no admin-read policy, so the user-scoped `supabase`
+  // client silently returns only the admin's own rows. Read those via the
+  // service client. (bookings / media_sales / media_session_bookings already
+  // have admin-read policies, so they stay on the user client.)
+  const admin = createServiceClient();
 
   // Fetch all bookings (with optional date range)
   // Round 7c: extends select with band_id + booking_group_id + sweet_spot_addon
@@ -29,7 +38,7 @@ export async function GET(request: NextRequest) {
   // Fetch cancelled bookings with deposits (kept revenue)
   let cancelledQuery = supabase
     .from('bookings')
-    .select('id, customer_name, start_time, total_amount, deposit_amount, actual_deposit_paid, status, created_at')
+    .select('id, customer_name, start_time, total_amount, deposit_amount, actual_deposit_paid, deposit_kept, status, created_at')
     .eq('status', 'cancelled')
     .order('created_at', { ascending: false });
 
@@ -38,8 +47,9 @@ export async function GET(request: NextRequest) {
 
   const { data: cancelledBookings } = await cancelledQuery;
 
-  // Fetch all beat purchases (with optional date range)
-  let purchasesQuery = supabase
+  // Fetch all beat purchases (admin client — beat_purchases is owner-only RLS,
+  // so the user client would show the admin only their OWN beat purchases).
+  let purchasesQuery = admin
     .from('beat_purchases')
     .select('id, beat_id, buyer_email, license_type, amount_paid, created_at, beats(title, producer)')
     .order('created_at', { ascending: false });
@@ -83,7 +93,11 @@ export async function GET(request: NextRequest) {
   // payouts). Returned as its own array because the accounting semantics
   // are package-level: deposits paid, remainder owed, fully-paid stamp.
   // is_test rows are excluded — they're QA bookings with no real money.
-  let mediaBookingsQuery = supabase
+  //
+  // media_bookings + media_payment_installments use `admin` (service client) —
+  // their owner-only RLS would hide customers' rows from the user client (see
+  // the note at the top of this handler).
+  let mediaBookingsQuery = admin
     .from('media_bookings')
     .select(`
       id, offering_id, user_id, status,
@@ -100,13 +114,67 @@ export async function GET(request: NextRequest) {
 
   const { data: mediaBookings } = await mediaBookingsQuery;
 
+  // Paid installments for those bookings. The installment ledger — NOT
+  // media_bookings.actual_deposit_paid (which stays 0 for installment-plan
+  // contracts) — is where contract payments actually land. The UI sums these
+  // per booking to compute the real "collected" / "outstanding" figures.
+  const mediaBookingIds = (mediaBookings || []).map((b: { id: string }) => b.id);
+  let mediaInstallments: Array<{ booking_id: string; amount_cents: number; status: string; paid_at: string | null }> = [];
+  if (mediaBookingIds.length > 0) {
+    const { data: insts } = await admin
+      .from('media_payment_installments')
+      .select('booking_id, amount_cents, status, paid_at')
+      .in('booking_id', mediaBookingIds)
+      .eq('status', 'paid');
+    mediaInstallments = (insts as typeof mediaInstallments) || [];
+  }
+
+  // Media MANAGER pay: the person who runs a media contract
+  // (media_session_bookings.media_manager_id) earns a % of what's COLLECTED on it.
+  // Resolve each booking's manager, then emit one entry per PAID installment
+  // (carrying paid_at) so payroll can slice it by pay period like every other
+  // earning. Studio keeps the rest.
+  const managerByBooking: Record<string, string> = {};
+  if (mediaBookingIds.length > 0) {
+    const { data: msessions } = await admin
+      .from('media_session_bookings')
+      .select('parent_booking_id, media_manager_id, confirmed_at')
+      .in('parent_booking_id', mediaBookingIds)
+      .not('media_manager_id', 'is', null);
+    for (const s of (msessions || []) as Array<{ parent_booking_id: string; media_manager_id: string }>) {
+      if (s.parent_booking_id && !managerByBooking[s.parent_booking_id]) {
+        managerByBooking[s.parent_booking_id] = s.media_manager_id;
+      }
+    }
+  }
+  const managerUserIds = Array.from(new Set(Object.values(managerByBooking)));
+  const managerNameMap: Record<string, string> = {};
+  if (managerUserIds.length > 0) {
+    const { data: mprofiles } = await admin
+      .from('profiles')
+      .select('user_id, display_name, email')
+      .in('user_id', managerUserIds);
+    const { ENGINEERS } = await import('@/lib/constants');
+    for (const p of (mprofiles || []) as Array<{ user_id: string; display_name: string | null; email: string | null }>) {
+      const roster = p.email ? ENGINEERS.find((e) => e.email.toLowerCase() === p.email!.toLowerCase()) : null;
+      managerNameMap[p.user_id] = roster?.name || p.display_name || 'Unknown';
+    }
+  }
+  const mediaManagerJobs = mediaInstallments
+    .map((i) => {
+      const mgrId = managerByBooking[i.booking_id];
+      if (!mgrId) return null;
+      return { manager_name: managerNameMap[mgrId] || null, amount_cents: i.amount_cents, paid_at: i.paid_at };
+    })
+    .filter((x): x is { manager_name: string | null; amount_cents: number; paid_at: string | null } => x !== null);
+
   // Package salesperson commissions. When an admin attributes a
   // salesperson to a package quote, the commission is snapshotted onto
   // the entitlement at mint time (sales_commission_cents). Commission
   // is earned ON PAYMENT — so we date-filter by created_at (the mint
   // timestamp = when the customer paid). Only rows with a salesperson
   // and a positive commission matter to payroll.
-  let packageCommissionsQuery = supabase
+  let packageCommissionsQuery = admin
     .from('package_entitlements')
     .select('id, salesperson_name, sales_commission_cents, created_at, quote_id, template_id')
     .not('salesperson_name', 'is', null)
@@ -179,11 +247,17 @@ export async function GET(request: NextRequest) {
   // other earnings, funded from the studio's cut. 'approved'/'issued' = owed (not
   // yet paid); 'redeemed' = already paid out. We resolve owner_user_id → the
   // canonical roster name so it lands in the SAME per-person bucket as sessions.
-  const { data: bonusGrants } = await supabase
+  // Pay-period slicing: a staff bonus belongs to the pay period in which it was
+  // APPROVED. Approval is gated until the earn-period ends (see approveGrant),
+  // so an approved bonus always lands in the NEXT pay period — Cole's policy.
+  let bonusQuery = supabase
     .from('reward_grants')
-    .select('id, owner_user_id, value_cents, status, period_key, rule_key, created_at, redeemed_at')
+    .select('id, owner_user_id, value_cents, status, period_key, rule_key, created_at, approved_at, redeemed_at')
     .eq('reward_type', 'cash_bonus')
     .in('status', ['approved', 'issued', 'redeemed']);
+  if (from) bonusQuery = bonusQuery.gte('approved_at', from);
+  if (to) bonusQuery = bonusQuery.lte('approved_at', `${to}T23:59:59`);
+  const { data: bonusGrants } = await bonusQuery;
 
   const bonusOwnerIds = Array.from(new Set((bonusGrants || []).map((g: { owner_user_id: string | null }) => g.owner_user_id).filter((x): x is string => !!x)));
   const bonusNameMap: Record<string, string> = {};
@@ -206,6 +280,19 @@ export async function GET(request: NextRequest) {
     redeemed_at: g.redeemed_at,
   }));
 
+  // Active staff roster (engineers + media managers) so the payroll tab can show
+  // EVERY staffer — not only those with earnings this period — and pay any of
+  // them. Engineers from the constant roster; media managers from
+  // profiles.role='media_manager'. Payroll buckets by name.
+  const { ENGINEERS: ROSTER } = await import('@/lib/constants');
+  const { getMediaManagers } = await import('@/lib/media-team-server');
+  let mediaManagerNames: string[] = [];
+  try {
+    const mm = await getMediaManagers(admin);
+    mediaManagerNames = mm.map((m) => (m.display_name || '').trim()).filter(Boolean);
+  } catch { /* roster is best-effort — payroll still works from earnings */ }
+  const payableStaff = Array.from(new Set([...ROSTER.map((e) => e.name), ...mediaManagerNames]));
+
   return NextResponse.json({
     bookings: bookings || [],
     cancelledBookings: cancelledBookings || [],
@@ -213,8 +300,11 @@ export async function GET(request: NextRequest) {
     mediaSales: mediaSales || [],
     mediaSessions: mediaSessions || [],
     mediaBookings: mediaBookings || [],
+    mediaInstallments,
+    mediaManagerJobs,
     packageCommissions: packageCommissions || [],
     rewardBonuses,
+    payableStaff,
     mediaOfferingMap,
     bandMap,
     engineerNameMap,

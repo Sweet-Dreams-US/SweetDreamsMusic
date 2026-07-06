@@ -10,6 +10,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MessageSquare, Loader2 } from 'lucide-react';
+import { trackMeta } from '@/lib/meta-pixel';
 
 interface Props {
   targetUserId: string;
@@ -36,6 +37,7 @@ export default function MessageButton({
   const buttonText = label ?? (targetLabel ? `Message ${targetLabel}` : 'Message');
 
   async function startDm() {
+    trackMeta('Contact');
     setError(null);
     setLoading(true);
     try {

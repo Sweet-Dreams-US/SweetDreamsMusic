@@ -73,6 +73,7 @@ export async function GET() {
         id: g.id, ownerName: nm, ownerKind: isBand ? 'band' : 'user', track: g.track,
         rewardLabel: g.metadata?.label ? rewardOf(g.metadata.label) : g.reward_type,
         reward_type: g.reward_type, reward_value: g.reward_value, value_cents: g.value_cents,
+        period_key: g.period_key,
         counter: g.counter, counter_value: g.counter_value, threshold: g.threshold,
         source: g.metadata?.source || null,
       });

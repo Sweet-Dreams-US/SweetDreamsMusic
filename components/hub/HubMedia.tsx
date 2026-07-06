@@ -59,6 +59,38 @@ export default function HubMedia({
         </p>
       </div>
 
+      {/* DEALS & SPECIALS — data-driven from admin-managed media_deals. The
+          offerings arriving here are ALREADY deal-priced by the loader, so an
+          offering carrying `.deal` gets a red banner; its CTA opens the
+          configure form directly (form → add to cart — no scroll hop). */}
+      {[...services, ...packages].filter((o) => o.deal).map((o) => (
+        <div key={o.deal!.id} className="border-2 border-red-600 bg-red-600 text-white p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-white/80 mb-1">
+              Limited-time special · platform exclusive
+            </p>
+            <p className="font-heading text-2xl leading-tight">
+              {o.deal!.title.toUpperCase()} —{' '}
+              <span className="text-yellow-300">${(o.deal!.deal_price_cents / 100).toFixed(0)}</span>
+              {o.deal!.original_price_cents != null && o.deal!.original_price_cents !== o.deal!.deal_price_cents && (
+                <span className="text-white/50 line-through text-lg ml-2">
+                  ${(o.deal!.original_price_cents / 100).toFixed(0)}
+                </span>
+              )}
+            </p>
+            {o.deal!.tagline && (
+              <p className="font-mono text-xs text-white/85 mt-1">{o.deal!.tagline}</p>
+            )}
+          </div>
+          <Link
+            href={`/dashboard/media/${o.slug}/configure`}
+            className="bg-white text-red-600 font-mono text-xs font-bold uppercase tracking-wider px-5 py-3 hover:bg-yellow-300 hover:text-black transition-colors no-underline inline-flex items-center gap-2 shrink-0 self-start sm:self-center"
+          >
+            Book the special <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+      ))}
+
       {/* Balance + orders */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Media credits (deliverables) */}
@@ -178,9 +210,10 @@ export default function HubMedia({
         />
       )}
 
-      {/* Catalog — the existing cart-pattern client component, inline. */}
+      {/* Catalog — the existing cart-pattern client component, inline. The id
+          is the special banner's scroll target. */}
       {packages.length > 0 || services.length > 0 ? (
-        <div className="-mx-4 sm:-mx-6 lg:-mx-8">
+        <div id="hub-media-catalog" className="-mx-4 sm:-mx-6 lg:-mx-8 scroll-mt-24">
           <MediaCatalogClient
             packages={packages}
             services={services}

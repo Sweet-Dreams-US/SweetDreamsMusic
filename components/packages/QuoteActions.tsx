@@ -12,12 +12,22 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, CheckCircle2, X, AlertCircle } from 'lucide-react';
+import { trackMeta, centsToDollars } from '@/lib/meta-pixel';
 
 interface Props {
   token: string;
+  /** Optional quote/template data for Meta Pixel InitiateCheckout (fire-and-forget). */
+  totalPriceCents?: number;
+  templateName?: string;
+  isMembership?: boolean;
 }
 
-export default function QuoteActions({ token }: Props) {
+export default function QuoteActions({
+  token,
+  totalPriceCents,
+  templateName,
+  isMembership,
+}: Props) {
   const router = useRouter();
   const [accepting, setAccepting] = useState(false);
   const [declining, setDeclining] = useState(false);
@@ -47,6 +57,14 @@ export default function QuoteActions({ token }: Props) {
       // /quotes/[token]?status=success, the page reloads and shows
       // the "accepted" banner.
       if (body?.checkout_url) {
+        // Meta Pixel: starting a paid package/membership checkout. Fire-and-forget
+        // immediately before the redirect; never await, never block navigation.
+        trackMeta('InitiateCheckout', {
+          value: centsToDollars(totalPriceCents),
+          currency: 'USD',
+          content_name: templateName,
+          content_category: isMembership ? 'membership_subscription' : 'package',
+        });
         window.location.href = body.checkout_url as string;
         return;
       }

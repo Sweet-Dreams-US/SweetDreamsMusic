@@ -434,13 +434,36 @@ export async function persistGrants(db: Client, grants: DesiredGrant[], source =
     const rid = ruleId.get(g.rule_key);
     if (!rid || (!g.owner_user_id && !g.owner_band_id)) { skipped++; continue; }
 
-    // Dedup: existing grant for (rule, owner, period)?
-    const existing = await db.from('reward_grants').select('id')
-      .eq('rule_id', rid).eq('period_key', g.period_key)
-      .eq('owner_user_id', g.owner_user_id ?? ZERO_UUID)
-      .eq('owner_band_id', g.owner_band_id ?? ZERO_UUID)
-      .maybeSingle();
-    if (existing.data) { skipped++; continue; }
+    // Dedup: existing grant for (rule, owner, period)? NULL owner columns must
+    // be matched with IS NULL — the old `.eq(col, ZERO_UUID)` NEVER matched a
+    // NULL, so this lookup was dead for user-owned grants (idempotency was
+    // silently riding on the DB unique constraint, and the accrual refresh
+    // below could never run).
+    let existingQ = db.from('reward_grants').select('id,status,counter_value,value_cents')
+      .eq('rule_id', rid).eq('period_key', g.period_key);
+    existingQ = g.owner_user_id ? existingQ.eq('owner_user_id', g.owner_user_id) : existingQ.is('owner_user_id', null);
+    existingQ = g.owner_band_id ? existingQ.eq('owner_band_id', g.owner_band_id) : existingQ.is('owner_band_id', null);
+    const existing = await existingQ.maybeSingle();
+    if (existing.data) {
+      // ACCRUAL REFRESH: a still-pending windowed grant tracks its counter as
+      // the period progresses (a re-sweep updates counter_value + value_cents).
+      // Without this, a quarterly $1/hr kicker created on day 3 froze at that
+      // day's hours forever (the Iszac "1 hour earned" bug). Approved/issued/
+      // baseline grants are never touched — their value is final.
+      const ex = existing.data as { id: string; status: string; counter_value: number | string; value_cents: number };
+      if (
+        ex.status === 'pending_approval' &&
+        (Number(ex.counter_value) !== Number(g.counter_value) || Number(ex.value_cents) !== Number(g.value_cents))
+      ) {
+        const { error: refreshErr } = await db.from('reward_grants').update({
+          counter_value: g.counter_value,
+          value_cents: g.value_cents,
+          updated_at: new Date().toISOString(),
+        }).eq('id', ex.id);
+        if (refreshErr) console.error('[rewards] accrual refresh failed:', ex.id, refreshErr.message);
+      }
+      skipped++; continue;
+    }
 
     const { error } = await db.from('reward_grants').insert({
       studio_id: null, rule_id: rid, rule_key: g.rule_key,

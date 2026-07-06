@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { SITE_URL, BEAT_LICENSES } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/server';
 import BeatStoreClient from '@/components/beats/BeatStoreClient';
+import MetaTrack from '@/components/analytics/MetaTrack';
 
 export const metadata: Metadata = {
   title: 'Beat Store — Buy Beats Online | MP3 Leases, Trackouts & Exclusives',
@@ -22,12 +23,14 @@ export default async function BeatsPage() {
 
   const { data: beats } = await supabase
     .from('beats')
-    .select('id, title, producer, producer_id, genre, bpm, musical_key, tags, preview_url, cover_image_url, mp3_lease_price, trackout_lease_price, exclusive_price, has_exclusive, contains_samples, lease_count, status, created_at, profiles!producer_id(display_name, producer_name, public_profile_slug)')
+    .select('id, slug, title, producer, producer_id, genre, bpm, musical_key, tags, preview_url, cover_image_url, mp3_lease_price, trackout_lease_price, exclusive_price, has_exclusive, contains_samples, lease_count, status, created_at, profiles!producer_id(display_name, producer_name, public_profile_slug)')
     .eq('status', 'active')
     .order('created_at', { ascending: false });
 
   return (
     <>
+      <MetaTrack event="ViewContent" params={{ content_name: 'Beat Store', content_category: 'beats' }} />
+
       {/* Hero */}
       <section className="bg-black text-white py-20 sm:py-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

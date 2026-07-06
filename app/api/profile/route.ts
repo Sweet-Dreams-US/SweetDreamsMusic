@@ -27,7 +27,8 @@ export async function GET() {
     const unified = await getUnifiedSocialLinks(supabase, user.id);
     socialLinksUnified = unified.byPlatform;
   } catch {
-    // Non-fatal — fall back to the legacy social_links blob client-side.
+    // Non-fatal — on a read error the editor just shows no prefilled links.
+    // platform_connections is the single source; there is no legacy-blob fallback.
     socialLinksUnified = {};
   }
 

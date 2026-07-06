@@ -12,6 +12,7 @@ import { content } from '@/lib/site-content';
 import { STUDIO_IMAGES } from '@/lib/images';
 import HeroTitle from '@/components/home/HeroTitle';
 import BuiltForBands from '@/components/marketing/BuiltForBands';
+import MetaTrack from '@/components/analytics/MetaTrack';
 
 export const metadata: Metadata = {
   title: 'Sweet Dreams Music — Fort Wayne Recording Studio & Beat Store | Book Sessions Online',
@@ -76,6 +77,7 @@ export default async function HomePage() {
 
   return (
     <>
+      <MetaTrack event="ViewContent" params={{ content_name: 'Home', content_category: 'marketing' }} />
       {/* Hero */}
       <section className="relative bg-black text-white min-h-[90vh] flex items-center justify-center overflow-hidden">
         <Image

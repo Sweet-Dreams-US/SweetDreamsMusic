@@ -18,6 +18,7 @@ import {
   TrendingDown,
   PiggyBank,
 } from 'lucide-react';
+import { staffApprovalUnlockAt } from '@/lib/rewards';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Rewards admin control surface. Self-contained — no props. Talks to the
@@ -142,7 +143,7 @@ interface StandingRow {
 }
 interface StandingsResponse {
   summary: { owners: number; pending: number; issued: number; baseline: number; pendingValueCents: number };
-  pendingQueue: Array<{ id: string; ownerName: string; track: string; rewardLabel: string; counter: string; counter_value: number; threshold: number; value_cents: number }>;
+  pendingQueue: Array<{ id: string; ownerName: string; track: string; rewardLabel: string; counter: string; counter_value: number; threshold: number; value_cents: number; period_key?: string | null }>;
   tracks: Array<{ key: string; label: string; rows: StandingRow[] }>;
 }
 
@@ -181,9 +182,19 @@ function StandingsTab() {
   }
 
   async function approveAll() {
-    const queue = data?.pendingQueue ?? [];
-    if (!queue.length) return;
-    if (!confirm(`Approve all ${queue.length} pending reward${queue.length === 1 ? '' : 's'}? Each one is issued to its owner.`)) return;
+    // Staff rewards still inside their pay period are LOCKED (they keep
+    // accruing) — bulk-approve only what's actually approvable.
+    const all = data?.pendingQueue ?? [];
+    const queue = all.filter((g) => {
+      const unlockAt = staffApprovalUnlockAt(g.track, g.period_key);
+      return !unlockAt || Date.now() >= unlockAt.getTime();
+    });
+    if (!queue.length) {
+      if (all.length) alert('Everything pending is a staff reward still accruing — approvals open when each pay period ends.');
+      return;
+    }
+    const lockedNote = all.length - queue.length > 0 ? ` (${all.length - queue.length} still-accruing staff reward${all.length - queue.length === 1 ? '' : 's'} skipped)` : '';
+    if (!confirm(`Approve all ${queue.length} pending reward${queue.length === 1 ? '' : 's'}${lockedNote}? Each one is issued to its owner.`)) return;
     setBulkRunning(true);
     for (const g of queue) {
       try {
@@ -254,23 +265,38 @@ function StandingsTab() {
           </p>
         ) : (
           <div className="space-y-2">
-            {queue.map((g) => (
+            {queue.map((g) => {
+              // Staff pay-period gate: still-accruing staff rewards can't be
+              // approved until their period ends (server enforces this too).
+              const unlockAt = staffApprovalUnlockAt(g.track, g.period_key);
+              const locked = !!unlockAt && Date.now() < unlockAt.getTime();
+              const unlockLabel = unlockAt?.toLocaleDateString('en-US', {
+                timeZone: 'America/New_York', month: 'short', day: 'numeric',
+              });
+              return (
               <div key={g.id} className="border-2 border-amber-300 bg-amber-50/30 p-3 flex items-start gap-3 flex-wrap">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-sm font-bold truncate">{g.ownerName}</span>
                     <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-black/5 text-black/60">{g.track}</span>
+                    {locked && (
+                      <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-200/70 text-amber-900">
+                        Accruing · opens {unlockLabel}
+                      </span>
+                    )}
                   </div>
                   <p className="font-mono text-xs mt-1">🎁 {g.rewardLabel}</p>
                   <p className="font-mono text-[10px] text-black/50 mt-0.5">
                     {g.counter?.replace(/_/g, ' ')}: {g.counter_value} / {g.threshold}
-                    {g.value_cents > 0 ? ` · worth ${formatCents(g.value_cents)}` : ''}
+                    {g.value_cents > 0 ? ` · worth ${formatCents(g.value_cents)} so far` : ''}
+                    {locked ? ` · updates daily until ${g.period_key} ends, then pays in the next pay period` : ''}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <button onClick={() => actOnGrant(g.id, 'approve')} disabled={busyGrant === g.id}
-                    className="bg-green-600 text-white font-mono text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-green-700 disabled:opacity-50 inline-flex items-center gap-1">
-                    <Check className="w-3 h-3" /> Approve
+                  <button onClick={() => actOnGrant(g.id, 'approve')} disabled={busyGrant === g.id || locked}
+                    title={locked ? `Staff rewards approve after the pay period ends (${unlockLabel})` : undefined}
+                    className="bg-green-600 text-white font-mono text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1">
+                    <Check className="w-3 h-3" /> {locked ? `Opens ${unlockLabel}` : 'Approve'}
                   </button>
                   <button onClick={() => actOnGrant(g.id, 'deny')} disabled={busyGrant === g.id}
                     className="border border-red-300 text-red-600 font-mono text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-red-50 disabled:opacity-50 inline-flex items-center gap-1">
@@ -278,7 +304,8 @@ function StandingsTab() {
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

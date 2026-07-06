@@ -255,6 +255,7 @@ export const BUSINESS_SESSION_SPLIT = 0.40; // 40% to business for sessions
 export const MEDIA_SELLER_COMMISSION = 0.15; // 15% to seller for media sales
 export const MEDIA_BUSINESS_CUT = 0.35; // 35% to business for media sales
 export const MEDIA_WORKER_TOTAL = 0.50; // 50% total to workers (split if both filmed_by and edited_by)
+export const MEDIA_MANAGER_PCT = 0.65; // media manager keeps 65% of COLLECTED media-booking (contract) revenue; business keeps 35%
 export const EXCLUSIVE_PRICE_FLOOR = 40000; // $400 minimum exclusive price in cents
 
 // Beat store genres with cover art colors

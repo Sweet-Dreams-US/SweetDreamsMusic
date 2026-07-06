@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Save, ExternalLink, Upload, X, Plus, GripVertical } from 'lucide-react';
 import { BEAT_GENRES } from '@/lib/constants';
+import { MIN_SOCIAL_LINKS } from '@/lib/profile-completion';
 
 interface Profile {
   display_name: string;
@@ -53,8 +54,6 @@ const SOCIAL_FIELDS = [
   { key: 'twitter', label: 'Twitter / X', placeholder: 'https://x.com/...' },
 ];
 
-const MIN_SOCIAL_LINKS = 3;
-
 export default function ProfileEditor({ userId, profileSlug }: { userId: string; profileSlug: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -85,9 +84,10 @@ export default function ProfileEditor({ userId, profileSlug }: { userId: string;
           setProfilePicUrl(p.profile_picture_url || '');
           setCoverPhotoUrl(p.cover_photo_url || '');
           // Prefill social links from the UNIFIED source (platform_connections),
-          // which the GET route assembles via getUnifiedSocialLinks. Fall back to
-          // the legacy social_links blob if the unified map is absent.
-          setSocialLinks(p.social_links_unified || p.social_links || {});
+          // which the GET route assembles via getUnifiedSocialLinks. This is the
+          // single source of truth — no legacy social_links blob fallback, so a
+          // link deleted in the metrics tracker never resurfaces here.
+          setSocialLinks(p.social_links_unified || {});
           // genres is the multi-select source; fall back to the legacy single
           // `genre` so profiles saved before the migration still prefill.
           setGenres(

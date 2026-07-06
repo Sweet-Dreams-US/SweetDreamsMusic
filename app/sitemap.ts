@@ -69,7 +69,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const [beats, posts, events, bands, profiles] = await Promise.all([
       supabase
         .from('beats')
-        .select('id, updated_at, created_at')
+        .select('id, slug, updated_at, created_at')
         .eq('status', 'active')
         .order('updated_at', { ascending: false })
         .limit(5000),
@@ -103,7 +103,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     dynamicEntries = [
       ...(beats.data ?? []).map((b) => ({
-        url: abs(`/beats/${b.id}`),
+        url: abs(`/beats/${b.slug || b.id}`),
         lastModified: new Date(b.updated_at || b.created_at || now),
         changeFrequency: 'weekly' as const,
         priority: 0.6,

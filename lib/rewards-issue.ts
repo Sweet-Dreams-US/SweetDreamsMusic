@@ -15,7 +15,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { MEDIA_WORKER_TOTAL } from '@/lib/constants';
-import { rewardLabel } from '@/lib/rewards';
+import { rewardLabel, staffApprovalUnlockAt } from '@/lib/rewards';
 import { customerNextReward } from '@/lib/rewards-server';
 import { mirrorToThread } from '@/lib/messaging-mirror';
 import { sendRewardReadyEmail, sendRewardsProgressEmail } from '@/lib/email';
@@ -337,10 +337,26 @@ export async function notifyRewardsProgress(db: Client, userId: string): Promise
 /** Approve a pending grant (and, by default, issue it immediately). */
 export async function approveGrant(db: Client, grantId: string, adminUserId: string, opts: { autoIssue?: boolean } = {}): Promise<IssueResult> {
   const autoIssue = opts.autoIssue ?? true;
-  const { data: g } = await db.from('reward_grants').select('id,status').eq('id', grantId).maybeSingle();
+  const { data: g } = await db.from('reward_grants').select('id,status,track,period_key').eq('id', grantId).maybeSingle();
   if (!g) return { ok: false, reason: 'grant not found' };
   if (!['pending_approval', 'earned', 'approved'].includes((g as any).status)) {
     return { ok: false, reason: `grant is ${(g as any).status}` };
+  }
+
+  // STAFF pay-period gate: windowed staff rewards keep ACCRUING (the sweep
+  // refreshes their value) until the period ends — approving early would lock
+  // a partial payout (e.g. a quarterly $1/hr kicker frozen at day-3 hours).
+  // Once the period is over, approval adds it to the NEXT pay period (payroll
+  // slots bonuses by approved_at).
+  const unlockAt = staffApprovalUnlockAt((g as any).track, (g as any).period_key);
+  if (unlockAt && Date.now() < unlockAt.getTime()) {
+    const when = unlockAt.toLocaleDateString('en-US', {
+      timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric',
+    });
+    return {
+      ok: false,
+      reason: `Still accruing — this staff reward (period ${(g as any).period_key}) can be approved starting ${when}, after the pay period ends. It then pays out in the next pay period.`,
+    };
   }
   await db.from('reward_grants').update({
     status: 'approved', approved_by: adminUserId, approved_at: new Date().toISOString(),

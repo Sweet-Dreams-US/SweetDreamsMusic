@@ -20,6 +20,7 @@ import { getMediaBookingsForOwner, getContractsAwaitingSignature } from '@/lib/m
 import { formatCents } from '@/lib/utils';
 import { fmtStampDate } from '@/lib/studio-time';
 import DashboardNav from '@/components/layout/DashboardNav';
+import MetaTrack from '@/components/analytics/MetaTrack';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +80,10 @@ export default async function MediaOrdersPage() {
 
   return (
     <>
+      <MetaTrack
+        event="ViewContent"
+        params={{ content_name: 'Your media orders', content_category: 'orders' }}
+      />
       <DashboardNav
         role={user.role}
         isProducer={user.is_producer}

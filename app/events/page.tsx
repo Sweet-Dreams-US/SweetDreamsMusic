@@ -8,6 +8,7 @@ import { getUpcomingListedEvents } from '@/lib/events-server';
 import { requireHref } from '@/lib/site-settings-server';
 import { allowsDirectRsvp } from '@/lib/events';
 import { fmtStampDate, fmtStampTime } from '@/lib/studio-time';
+import MetaTrack from '@/components/analytics/MetaTrack';
 
 export const metadata: Metadata = {
   title: 'Events — Sweet Dreams Music',
@@ -42,6 +43,7 @@ export default async function EventsPage() {
 
   return (
     <>
+      <MetaTrack event="ViewContent" params={{ content_name: 'Events', content_category: 'marketing' }} />
       {/* Hero */}
       <section className="relative bg-black text-white py-20 sm:py-28 overflow-hidden">
         <Image

@@ -101,6 +101,14 @@ export function normalizeSocialUrl(
 /**
  * Read the artist's unified social links from platform_connections.
  *
+ * platform_connections is the SINGLE source of truth: social links and the
+ * metrics-tracker "connected platforms" are the same rows. There is deliberately
+ * NO legacy profiles.social_links read-fallback — that fallback used to resurface
+ * a link the artist had deleted in the metrics tracker (it re-appeared from the
+ * old blob), which broke reversibility. The legacy blob was backfilled into
+ * platform_connections (scripts/backfill-social-links-to-connections.ts), so
+ * reading connections alone loses nothing and makes deletes stick.
+ *
  * Only rows that actually carry a URL count — a connection row with a null/empty
  * platform_url is ignored (it contributes nothing the profile can link to).
  *
@@ -122,32 +130,6 @@ export async function getUnifiedSocialLinks(
   for (const row of (data ?? []) as Array<{ platform: string; platform_url: string | null }>) {
     const link = (row.platform_url ?? '').trim();
     if (row.platform && link) byPlatform[row.platform] = link;
-  }
-
-  // Legacy fallback (transition): merge in profiles.social_links entries for any
-  // platform NOT yet migrated into platform_connections, so existing artists'
-  // links still show on their public profile + count toward completion until
-  // their next profile save (or a backfill) writes them through. Real
-  // platform_connections rows always win; platform_connections stays the
-  // canonical WRITE target. The metrics pipeline reads platform_connections
-  // directly (not this helper), so it is unaffected by this read-side merge.
-  try {
-    const { data: prof } = await db
-      .from('profiles')
-      .select('social_links')
-      .eq('user_id', userId)
-      .maybeSingle();
-    const legacy = (prof?.social_links ?? {}) as Record<string, unknown>;
-    if (legacy && typeof legacy === 'object') {
-      for (const [legacyKey, rawVal] of Object.entries(legacy)) {
-        const platform = LEGACY_KEY_MAP[legacyKey];
-        if (!platform || byPlatform[platform]) continue;
-        const link = typeof rawVal === 'string' ? rawVal.trim() : '';
-        if (link) byPlatform[platform] = link;
-      }
-    }
-  } catch {
-    // Best-effort: a profiles read failure must not break link display/count.
   }
 
   return { byPlatform, count: Object.keys(byPlatform).length };

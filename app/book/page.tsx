@@ -11,6 +11,7 @@ import { getStudioConfigs } from '@/lib/studio-config-server';
 import { getEngineers } from '@/lib/engineers-server';
 import BookingFlow from '@/components/booking/BookingFlow';
 import MediaAddOnsSection from '@/components/booking/MediaAddOnsSection';
+import MetaTrack from '@/components/analytics/MetaTrack';
 
 export const metadata: Metadata = {
   title: 'Book a Recording Session — Schedule Online',
@@ -97,6 +98,10 @@ export default async function BookPage({
 
   return (
     <>
+      <MetaTrack
+        event="ViewContent"
+        params={{ content_name: 'Book page landing', content_category: 'Studio session booking' }}
+      />
       {/* Hero */}
       <section className="relative bg-black text-white py-16 sm:py-20 overflow-hidden">
         <Image

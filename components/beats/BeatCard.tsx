@@ -5,9 +5,12 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { formatCents } from '@/lib/utils';
 import { useAudioPlayer, type AudioTrack } from '@/components/audio/AudioPlayerContext';
+import { trackMeta, centsToDollars } from '@/lib/meta-pixel';
+import { beatHref } from '@/lib/slug';
 
 export interface BeatData {
   id: string;
+  slug?: string | null;
   title: string;
   producer: string;
   producer_id: string | null;
@@ -108,7 +111,7 @@ export default function BeatCard({ beat, isSaved, onToggleSave, showWriteButton 
           {/* Track info */}
           <div className="flex-1 min-w-0">
             <Link
-              href={`/beats/${beat.id}`}
+              href={beatHref(beat)}
               className="font-mono text-sm font-bold truncate block hover:text-accent transition-colors no-underline"
             >
               {beat.title}
@@ -155,7 +158,15 @@ export default function BeatCard({ beat, isSaved, onToggleSave, showWriteButton 
           <div className="flex gap-1 flex-shrink-0">
             {onToggleSave && (
               <button
-                onClick={() => onToggleSave(beat.id)}
+                onClick={() => {
+                  trackMeta('AddToWishlist', {
+                    content_ids: [beat.id],
+                    content_name: beat.title,
+                    value: centsToDollars(beat.mp3_lease_price ?? 0),
+                    currency: 'USD',
+                  });
+                  onToggleSave(beat.id);
+                }}
                 className={`p-2 transition-colors ${
                   isSaved ? 'text-red-500' : 'text-black/20 hover:text-red-400'
                 }`}
@@ -166,7 +177,7 @@ export default function BeatCard({ beat, isSaved, onToggleSave, showWriteButton 
             )}
             {showWriteButton && (
               <Link
-                href={`/beats/${beat.id}/write`}
+                href={`${beatHref(beat)}/write`}
                 className="p-2 text-black/20 hover:text-accent transition-colors"
                 title="Write to this beat"
               >
@@ -182,7 +193,7 @@ export default function BeatCard({ beat, isSaved, onToggleSave, showWriteButton 
         <div className="flex flex-wrap gap-3">
           {beat.mp3_lease_price && (
             <Link
-              href={`/beats/${beat.id}?license=mp3_lease`}
+              href={`${beatHref(beat)}?license=mp3_lease`}
               className="font-mono text-xs text-black/60 hover:text-accent no-underline transition-colors"
             >
               MP3 {formatCents(beat.mp3_lease_price)}
@@ -190,7 +201,7 @@ export default function BeatCard({ beat, isSaved, onToggleSave, showWriteButton 
           )}
           {beat.trackout_lease_price && (
             <Link
-              href={`/beats/${beat.id}?license=trackout_lease`}
+              href={`${beatHref(beat)}?license=trackout_lease`}
               className="font-mono text-xs text-black/60 hover:text-accent no-underline transition-colors"
             >
               Trackout {formatCents(beat.trackout_lease_price)}
@@ -198,7 +209,7 @@ export default function BeatCard({ beat, isSaved, onToggleSave, showWriteButton 
           )}
           {beat.exclusive_price && beat.has_exclusive && (
             <Link
-              href={`/beats/${beat.id}?license=exclusive`}
+              href={`${beatHref(beat)}?license=exclusive`}
               className="font-mono text-xs text-accent font-bold hover:text-accent/80 no-underline transition-colors"
             >
               Exclusive {formatCents(beat.exclusive_price)}
