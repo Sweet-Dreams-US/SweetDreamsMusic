@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Calendar, Music, Users, DollarSign, Clock, Video, Mic, FileText, LayoutDashboard, BarChart3, Bell, PartyPopper, Film, ClipboardList, Package, Gift, SlidersHorizontal, Calculator, Megaphone } from 'lucide-react';
+import { Calendar, Music, Users, DollarSign, Clock, Video, Mic, FileText, LayoutDashboard, BarChart3, Bell, PartyPopper, Film, ClipboardList, Package, Gift, SlidersHorizontal, Calculator, Megaphone, Instagram } from 'lucide-react';
 import type { SessionUser } from '@/lib/auth';
 import AdminOverview from './AdminOverview';
 import BookingManager from './BookingManager';
@@ -21,8 +21,9 @@ import RewardsManager from './RewardsManager';
 import StudioControlPanel from './StudioControlPanel';
 import TaxCenter from './TaxCenter';
 import MarketingDashboard from './MarketingDashboard';
+import SocialManager from './SocialManager';
 
-type Tab = 'overview' | 'control' | 'clients' | 'accounting' | 'tax' | 'marketing' | 'bookings' | 'events' | 'media-catalog' | 'packages' | 'blocks' | 'beats' | 'producers' | 'contracts' | 'users' | 'rewards' | 'analytics' | 'notifications';
+type Tab = 'overview' | 'control' | 'clients' | 'accounting' | 'tax' | 'marketing' | 'social' | 'bookings' | 'events' | 'media-catalog' | 'packages' | 'blocks' | 'beats' | 'producers' | 'contracts' | 'users' | 'rewards' | 'analytics' | 'notifications';
 
 export default function AdminDashboard({ user }: { user: SessionUser }) {
   const [tab, setTab] = useState<Tab>('overview');
@@ -34,6 +35,7 @@ export default function AdminDashboard({ user }: { user: SessionUser }) {
     { key: 'accounting', label: 'Accounting', icon: DollarSign },
     { key: 'tax', label: 'Tax Center', icon: Calculator },
     { key: 'marketing', label: 'Marketing', icon: Megaphone },
+    { key: 'social', label: 'Social', icon: Instagram },
     { key: 'bookings', label: 'Bookings', icon: Calendar },
     { key: 'events', label: 'Events', icon: PartyPopper },
     { key: 'media-catalog', label: 'Media Catalog', icon: Film },
@@ -104,6 +106,7 @@ export default function AdminDashboard({ user }: { user: SessionUser }) {
           {tab === 'accounting' && <Accounting />}
           {tab === 'tax' && <TaxCenter />}
           {tab === 'marketing' && <MarketingDashboard />}
+          {tab === 'social' && <SocialManager />}
           {tab === 'bookings' && <BookingManager />}
           {tab === 'events' && <AdminEvents />}
           {tab === 'media-catalog' && <MediaCatalog />}

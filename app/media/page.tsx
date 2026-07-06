@@ -10,6 +10,7 @@ import { groupOfferings, isOfferingVisibleTo } from '@/lib/media';
 import { getSessionUser } from '@/lib/auth';
 import { getUserBands } from '@/lib/bands-server';
 import MediaShowcaseCard from '@/components/media/MediaShowcaseCard';
+import InstagramFeedSection from '@/components/media/InstagramFeedSection';
 import MetaTrack from '@/components/analytics/MetaTrack';
 
 export const metadata: Metadata = {
@@ -307,6 +308,11 @@ export default async function MediaPage() {
           </div>
         </div>
       </section>
+
+      {/* ──────────────── ON INSTAGRAM (Phase 5 — live IG feed) ──────────────── */}
+      {/* Server-rendered from the IG API (15-min cache); renders nothing if the
+          API is unavailable, so it can never break this page. */}
+      <InstagramFeedSection />
     </>
   );
 }
