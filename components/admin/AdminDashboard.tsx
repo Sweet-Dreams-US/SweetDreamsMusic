@@ -22,6 +22,7 @@ import StudioControlPanel from './StudioControlPanel';
 import TaxCenter from './TaxCenter';
 import MarketingDashboard from './MarketingDashboard';
 import SocialManager from './SocialManager';
+import MobileTabPicker from '@/components/shared/MobileTabPicker';
 
 type Tab = 'overview' | 'control' | 'clients' | 'accounting' | 'tax' | 'marketing' | 'social' | 'bookings' | 'events' | 'media-catalog' | 'packages' | 'blocks' | 'beats' | 'producers' | 'contracts' | 'users' | 'rewards' | 'analytics' | 'notifications';
 
@@ -57,24 +58,14 @@ export default function AdminDashboard({ user }: { user: SessionUser }) {
     <>
       <section className="bg-white text-black min-h-[60vh]">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          {/* Mobile Tabs — above everything */}
+          {/* Mobile Tabs — ONE collapsed row (tap to open the full grid),
+              replacing the old half-screen wrap of 19 chips. */}
           <div className="lg:hidden mb-6">
-            <div className="flex flex-wrap gap-1.5">
-              {tabs.map((t) => (
-                <button
-                  key={t.key}
-                  onClick={() => setTab(t.key)}
-                  className={`font-mono text-[10px] font-bold uppercase tracking-wider px-3 py-2 transition-colors inline-flex items-center gap-1.5 rounded ${
-                    tab === t.key
-                      ? 'bg-black text-white'
-                      : 'bg-black/5 text-black/50 hover:bg-black/10'
-                  }`}
-                >
-                  <t.icon className="w-3 h-3" />
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            <MobileTabPicker
+              tabs={tabs.map((t) => ({ key: t.key, label: t.label, icon: t.icon }))}
+              value={tab}
+              onChange={(k) => setTab(k as Tab)}
+            />
           </div>
 
           <div className="flex gap-8">

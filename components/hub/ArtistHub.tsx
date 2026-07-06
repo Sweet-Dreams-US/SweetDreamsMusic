@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { LayoutDashboard, Folder, Target, BarChart3, CalendarDays, Award, BookOpen, FileText, Film, PartyPopper, Users, Gift } from 'lucide-react';
 import { HUB_TABS, type HubTab } from '@/lib/hub-constants';
+import MobileTabPicker from '@/components/shared/MobileTabPicker';
 import { calculateLevel, getLevelTitle, getLevelColor } from '@/lib/xp-system';
 import XPBar from './XPBar';
 import HubOverview from './HubOverview';
@@ -186,25 +187,14 @@ export default function ArtistHub({ userId, relocated, initialTab }: { userId: s
       {/* Hub content with sidebar */}
       <section className="bg-white text-black min-h-[60vh]">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          {/* Mobile Tabs — above everything */}
+          {/* Mobile Tabs — ONE collapsed row (tap to open the full grid),
+              replacing the old half-screen wrap of chips. */}
           <div className="lg:hidden mb-6">
-            <div className="flex flex-wrap gap-1.5">
-              {EXTENDED_TABS.map((t) => {
-                const Icon = TAB_ICONS[t.key] || LayoutDashboard;
-                return (
-                  <button
-                    key={t.key}
-                    onClick={() => setTab(t.key as ExtendedTab)}
-                    className={`font-mono text-[10px] font-bold uppercase tracking-wider px-3 py-2 transition-colors inline-flex items-center gap-1.5 rounded ${
-                      tab === t.key ? 'bg-black text-white' : 'bg-black/5 text-black/50 hover:bg-black/10'
-                    }`}
-                  >
-                    <Icon className="w-3 h-3" />
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
+            <MobileTabPicker
+              tabs={EXTENDED_TABS.map((t) => ({ key: t.key, label: t.label, icon: TAB_ICONS[t.key] || LayoutDashboard }))}
+              value={tab}
+              onChange={(k) => setTab(k as ExtendedTab)}
+            />
           </div>
 
           <div className="flex gap-8">

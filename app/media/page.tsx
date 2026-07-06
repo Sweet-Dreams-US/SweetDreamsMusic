@@ -145,6 +145,32 @@ export default async function MediaPage() {
         </div>
       </section>
 
+      {/* ──────────────── MUSIC VIDEO SPECIAL (red banner) ──────────────── */}
+      {/* Platform-exclusive deal: only bookable through the artist account's
+          Media Hub — drives sign-ups AND keeps the special on-platform. */}
+      <section className="bg-red-600 text-white py-10 sm:py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+          <div>
+            <p className="font-mono text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-2 text-white/80">
+              Limited-time special
+            </p>
+            <h2 className="text-heading-xl">
+              MUSIC VIDEO SPECIAL — <span className="text-yellow-300">$400</span>
+            </h2>
+            <p className="font-mono text-sm text-white/85 mt-2 max-w-xl">
+              Full music video production at a special rate. Only bookable through your
+              artist account&apos;s Media Hub — sign in, hit Media, and lock it in.
+            </p>
+          </div>
+          <Link
+            href={user ? '/dashboard/hub?tab=media' : '/login?redirect=/dashboard/hub?tab=media'}
+            className="bg-white text-red-600 font-mono text-base font-bold tracking-wider uppercase px-8 py-4 hover:bg-yellow-300 hover:text-black transition-colors no-underline inline-flex items-center justify-center gap-2 shrink-0"
+          >
+            Book the special <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+      </section>
+
       {/* ──────────────────── STUDIO PACKAGES ──────────────────── */}
       {packages.length > 0 && (
         <section className="bg-black text-white py-16 sm:py-24 border-t border-white/10">

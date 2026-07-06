@@ -93,15 +93,27 @@ export default function Header({ navLinks, brandName }: { navLinks: readonly { h
         </div>
       </div>
 
-      {/* Mobile Nav */}
+      {/* Mobile Nav — right-side drawer only as wide as its content (the
+          longest item, "Dashboard" + icon, sets the width) over a dimmed
+          backdrop, instead of the old full-page takeover. */}
       {mobileOpen && (
-        <nav id="mobile-nav" aria-label="Mobile" className="lg:hidden bg-black border-t border-white/10">
-          <div className="px-4 py-4 flex flex-col gap-1">
+        <div className="lg:hidden fixed inset-x-0 top-16 sm:top-20 bottom-0 z-40">
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={() => setMobileOpen(false)}
+            className="absolute inset-0 w-full h-full bg-black/60 cursor-default"
+          />
+          <nav
+            id="mobile-nav"
+            aria-label="Mobile"
+            className="absolute right-0 top-0 h-full w-fit min-w-[13.5rem] bg-black border-l border-white/10 px-5 py-5 flex flex-col gap-1 overflow-y-auto"
+          >
             {navLinks.map((link) => (
               <Link key={link.href} href={link.href} onClick={() => setMobileOpen(false)}
                 aria-current={pathname === link.href ? 'page' : undefined}
                 className={cn(
-                  'font-mono text-base font-medium tracking-wider uppercase px-4 py-3 transition-colors no-underline',
+                  'font-mono text-base font-medium tracking-wider uppercase px-3 py-3 transition-colors no-underline whitespace-nowrap',
                   pathname === link.href ? 'text-accent' : 'text-white/70 hover:text-white'
                 )}>
                 {link.label}
@@ -110,23 +122,23 @@ export default function Header({ navLinks, brandName }: { navLinks: readonly { h
 
             {user ? (
               <Link href="/dashboard" onClick={() => setMobileOpen(false)}
-                className="mt-2 border border-accent text-accent font-mono text-base font-bold tracking-wider uppercase px-4 py-4 text-center hover:bg-accent hover:text-black transition-colors no-underline inline-flex items-center justify-center gap-2">
+                className="mt-2 border border-accent text-accent font-mono text-base font-bold tracking-wider uppercase px-4 py-3.5 text-center hover:bg-accent hover:text-black transition-colors no-underline inline-flex items-center justify-center gap-2 whitespace-nowrap">
                 <User className="w-4 h-4" /> Dashboard
               </Link>
             ) : (
               <>
                 <Link href="/login" onClick={() => setMobileOpen(false)}
-                  className="mt-2 text-white/70 font-mono text-base font-medium tracking-wider uppercase px-4 py-3 text-center no-underline">
+                  className="mt-2 text-white/70 font-mono text-base font-medium tracking-wider uppercase px-3 py-3 no-underline whitespace-nowrap">
                   Sign In
                 </Link>
                 <Link href="/book" onClick={() => { trackMeta('ViewContent', { content_name: 'Header nav - Book now', content_category: 'Studio session booking' }); setMobileOpen(false); }}
-                  className="bg-accent text-black font-mono text-base font-bold tracking-wider uppercase px-4 py-4 text-center hover:bg-accent/90 transition-colors no-underline">
+                  className="bg-accent text-black font-mono text-base font-bold tracking-wider uppercase px-4 py-3.5 text-center hover:bg-accent/90 transition-colors no-underline whitespace-nowrap">
                   BOOK NOW
                 </Link>
               </>
             )}
-          </div>
-        </nav>
+          </nav>
+        </div>
       )}
     </header>
   );

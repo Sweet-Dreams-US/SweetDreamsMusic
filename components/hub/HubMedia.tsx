@@ -59,6 +59,28 @@ export default function HubMedia({
         </p>
       </div>
 
+      {/* MUSIC VIDEO SPECIAL — platform-exclusive deal, kept loud so artists
+          can't miss it. Booked right here via the Music Video offering below. */}
+      <div className="border-2 border-red-600 bg-red-600 text-white p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-white/80 mb-1">
+            Limited-time special · platform exclusive
+          </p>
+          <p className="font-heading text-2xl leading-tight">
+            MUSIC VIDEO SPECIAL — <span className="text-yellow-300">$400</span>
+          </p>
+          <p className="font-mono text-xs text-white/85 mt-1">
+            Full music video production at a special rate — book the Music Video service below to claim it.
+          </p>
+        </div>
+        <a
+          href="#hub-media-catalog"
+          className="bg-white text-red-600 font-mono text-xs font-bold uppercase tracking-wider px-5 py-3 hover:bg-yellow-300 hover:text-black transition-colors no-underline inline-flex items-center gap-2 shrink-0 self-start sm:self-center"
+        >
+          Book it below <ArrowRight className="w-4 h-4" />
+        </a>
+      </div>
+
       {/* Balance + orders */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Media credits (deliverables) */}
@@ -178,9 +200,10 @@ export default function HubMedia({
         />
       )}
 
-      {/* Catalog — the existing cart-pattern client component, inline. */}
+      {/* Catalog — the existing cart-pattern client component, inline. The id
+          is the special banner's scroll target. */}
       {packages.length > 0 || services.length > 0 ? (
-        <div className="-mx-4 sm:-mx-6 lg:-mx-8">
+        <div id="hub-media-catalog" className="-mx-4 sm:-mx-6 lg:-mx-8 scroll-mt-24">
           <MediaCatalogClient
             packages={packages}
             services={services}
