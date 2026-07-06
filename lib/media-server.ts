@@ -13,6 +13,7 @@ import type { MediaOffering, ViewerEligibility } from './media';
 import { isOfferingVisibleTo } from './media';
 import type { CreditKind, MediaCreditBalance } from './media-credits';
 import { CREDIT_KIND_LABELS, SCHEDULABLE_CREDIT_KINDS } from './media-credits';
+import { getActiveDeals, applyDealsToOfferings } from './media-deals-server';
 
 // ============================================================
 // Catalog reads
@@ -41,7 +42,11 @@ export async function getActiveOfferings(
     console.error('[media] getActiveOfferings error:', error);
     return [];
   }
-  return (data || []) as MediaOffering[];
+  // Overlay live promotional deals — the SINGLE chokepoint that makes catalog
+  // cards, the configure form, the cart, AND checkout all show/charge the
+  // deal price (the offering row's real price is never edited).
+  const deals = await getActiveDeals(supabase);
+  return applyDealsToOfferings((data || []) as MediaOffering[], deals);
 }
 
 /**
@@ -79,7 +84,11 @@ export async function getOfferingBySlug(
     .select('*')
     .eq('slug', slug)
     .maybeSingle();
-  return (data as MediaOffering | null) ?? null;
+  if (!data) return null;
+  // Same deal overlay as getActiveOfferings — this is what makes the CHECKOUT
+  // charge the deal price (it prices from this loader's price_cents).
+  const deals = await getActiveDeals(supabase);
+  return applyDealsToOfferings([data as MediaOffering], deals)[0];
 }
 
 /**

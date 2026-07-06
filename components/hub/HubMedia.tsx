@@ -59,42 +59,37 @@ export default function HubMedia({
         </p>
       </div>
 
-      {/* MUSIC VIDEO SPECIAL — platform-exclusive deal, kept loud so artists
-          can't miss it. The CTA opens the Music Video configure form directly
-          (form → add to cart), not a scroll — Cole: no "book it below" hop. */}
-      <div className="border-2 border-red-600 bg-red-600 text-white p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-white/80 mb-1">
-            Limited-time special · platform exclusive
-          </p>
-          <p className="font-heading text-2xl leading-tight">
-            MUSIC VIDEO SPECIAL — <span className="text-yellow-300">$400</span>
-          </p>
-          <p className="font-mono text-xs text-white/85 mt-1">
-            Full music video production at a special rate.
-          </p>
+      {/* DEALS & SPECIALS — data-driven from admin-managed media_deals. The
+          offerings arriving here are ALREADY deal-priced by the loader, so an
+          offering carrying `.deal` gets a red banner; its CTA opens the
+          configure form directly (form → add to cart — no scroll hop). */}
+      {[...services, ...packages].filter((o) => o.deal).map((o) => (
+        <div key={o.deal!.id} className="border-2 border-red-600 bg-red-600 text-white p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-white/80 mb-1">
+              Limited-time special · platform exclusive
+            </p>
+            <p className="font-heading text-2xl leading-tight">
+              {o.deal!.title.toUpperCase()} —{' '}
+              <span className="text-yellow-300">${(o.deal!.deal_price_cents / 100).toFixed(0)}</span>
+              {o.deal!.original_price_cents != null && o.deal!.original_price_cents !== o.deal!.deal_price_cents && (
+                <span className="text-white/50 line-through text-lg ml-2">
+                  ${(o.deal!.original_price_cents / 100).toFixed(0)}
+                </span>
+              )}
+            </p>
+            {o.deal!.tagline && (
+              <p className="font-mono text-xs text-white/85 mt-1">{o.deal!.tagline}</p>
+            )}
+          </div>
+          <Link
+            href={`/dashboard/media/${o.slug}/configure`}
+            className="bg-white text-red-600 font-mono text-xs font-bold uppercase tracking-wider px-5 py-3 hover:bg-yellow-300 hover:text-black transition-colors no-underline inline-flex items-center gap-2 shrink-0 self-start sm:self-center"
+          >
+            Book the special <ArrowRight className="w-4 h-4" />
+          </Link>
         </div>
-        {(() => {
-          const musicVideo =
-            services.find((s) => /music\s*video/i.test(s.title)) ??
-            packages.find((p) => /music\s*video/i.test(p.title));
-          return musicVideo ? (
-            <Link
-              href={`/dashboard/media/${musicVideo.slug}/configure`}
-              className="bg-white text-red-600 font-mono text-xs font-bold uppercase tracking-wider px-5 py-3 hover:bg-yellow-300 hover:text-black transition-colors no-underline inline-flex items-center gap-2 shrink-0 self-start sm:self-center"
-            >
-              Book the special <ArrowRight className="w-4 h-4" />
-            </Link>
-          ) : (
-            <a
-              href="#hub-media-catalog"
-              className="bg-white text-red-600 font-mono text-xs font-bold uppercase tracking-wider px-5 py-3 hover:bg-yellow-300 hover:text-black transition-colors no-underline inline-flex items-center gap-2 shrink-0 self-start sm:self-center"
-            >
-              See the catalog <ArrowRight className="w-4 h-4" />
-            </a>
-          );
-        })()}
-      </div>
+      ))}
 
       {/* Balance + orders */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

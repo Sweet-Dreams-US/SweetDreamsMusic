@@ -145,31 +145,35 @@ export default async function MediaPage() {
         </div>
       </section>
 
-      {/* ──────────────── MUSIC VIDEO SPECIAL (red banner) ──────────────── */}
-      {/* Platform-exclusive deal: only bookable through the artist account's
-          Media Hub — drives sign-ups AND keeps the special on-platform. */}
-      <section className="bg-red-600 text-white py-10 sm:py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-          <div>
-            <p className="font-mono text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-2 text-white/80">
-              Limited-time special
-            </p>
-            <h2 className="text-heading-xl">
-              MUSIC VIDEO SPECIAL — <span className="text-yellow-300">$400</span>
-            </h2>
-            <p className="font-mono text-sm text-white/85 mt-2 max-w-xl">
-              Full music video production at a special rate. Only bookable through your
-              artist account&apos;s Media Hub — sign in, hit Media, and lock it in.
-            </p>
+      {/* ──────────────── DEALS & SPECIALS (red banners) ──────────────── */}
+      {/* Data-driven from admin-managed media_deals (Deals panel in the Media
+          Catalog tab): the loader already priced the offerings, so any
+          offering carrying `.deal` gets a red promo section here. Bookable
+          only through the artist account's Media Hub — drives sign-ups. */}
+      {offerings.filter((o) => o.deal).map((o) => (
+        <section key={o.deal!.id} className="bg-red-600 text-white py-10 sm:py-12">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+            <div>
+              <p className="font-mono text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-2 text-white/80">
+                Limited-time special
+              </p>
+              <h2 className="text-heading-xl">
+                {o.deal!.title.toUpperCase()} —{' '}
+                <span className="text-yellow-300">${(o.deal!.deal_price_cents / 100).toFixed(0)}</span>
+              </h2>
+              <p className="font-mono text-sm text-white/85 mt-2 max-w-xl">
+                {o.deal!.tagline || 'Only bookable through your artist account’s Media Hub — sign in, hit Media, and lock it in.'}
+              </p>
+            </div>
+            <Link
+              href={user ? `/dashboard/media/${o.slug}/configure` : `/login?redirect=/dashboard/media/${o.slug}/configure`}
+              className="bg-white text-red-600 font-mono text-base font-bold tracking-wider uppercase px-8 py-4 hover:bg-yellow-300 hover:text-black transition-colors no-underline inline-flex items-center justify-center gap-2 shrink-0"
+            >
+              Book the special <ArrowRight className="w-4 h-4" />
+            </Link>
           </div>
-          <Link
-            href={user ? '/dashboard/hub?tab=media' : '/login?redirect=/dashboard/hub?tab=media'}
-            className="bg-white text-red-600 font-mono text-base font-bold tracking-wider uppercase px-8 py-4 hover:bg-yellow-300 hover:text-black transition-colors no-underline inline-flex items-center justify-center gap-2 shrink-0"
-          >
-            Book the special <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-      </section>
+        </section>
+      ))}
 
       {/* ──────────────────── STUDIO PACKAGES ──────────────────── */}
       {packages.length > 0 && (

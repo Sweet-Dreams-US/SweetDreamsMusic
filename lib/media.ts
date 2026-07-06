@@ -86,6 +86,19 @@ export interface MediaOffering {
   sort_order: number;
   created_at: string;
   updated_at: string;
+  /**
+   * Attached by the artist-facing loaders (lib/media-server) when a live
+   * media_deals row targets this offering: price_cents above is ALREADY the
+   * deal price, and this carries the marketing face + the original price for
+   * strikethrough display. Absent on admin reads and when no deal is live.
+   */
+  deal?: {
+    id: string;
+    title: string;
+    tagline: string | null;
+    deal_price_cents: number;
+    original_price_cents: number | null;
+  };
 }
 
 // ============================================================

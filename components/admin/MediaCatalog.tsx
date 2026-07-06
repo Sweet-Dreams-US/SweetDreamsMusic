@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react';
 import { Plus, Pencil, X, Save, RotateCcw, AlertCircle } from 'lucide-react';
 import type { MediaOffering, MediaOfferingEligibility, MediaOfferingKind } from '@/lib/media';
 import { formatCents } from '@/lib/utils';
+import MediaDealsPanel from './MediaDealsPanel';
 
 const ELIGIBILITY_OPTS: MediaOfferingEligibility[] = [
   'solo',
@@ -54,6 +55,9 @@ export default function MediaCatalog() {
 
   return (
     <div>
+      {/* Deals & specials — price overrides + site-wide promo banners. */}
+      <MediaDealsPanel />
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-xl font-bold mb-1">Media Catalog</h2>
