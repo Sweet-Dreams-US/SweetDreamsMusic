@@ -9,7 +9,7 @@
 // self-reported conversion value.
 
 import { useCallback, useEffect, useState } from 'react';
-import { Megaphone, RefreshCw, TrendingUp, MousePointerClick, Eye, DollarSign, UserPlus } from 'lucide-react';
+import { Megaphone, RefreshCw, TrendingUp, MousePointerClick, Eye, DollarSign, UserPlus, Users } from 'lucide-react';
 import { formatCents } from '@/lib/utils';
 
 type Campaign = {
@@ -42,6 +42,23 @@ type Lead = {
 };
 
 const LEAD_STATUSES: Lead['status'][] = ['new', 'contacted', 'converted', 'ignored'];
+
+type Audience = {
+  id: string;
+  name: string;
+  subtype: string;
+  size: number | null;
+  deliveryStatus: string | null;
+  updated: string | null;
+};
+
+type AudienceSources = { all_customers: number; booking_customers: number; beat_buyers: number };
+
+const SOURCE_LABELS: Record<keyof AudienceSources, string> = {
+  all_customers: 'All customers (bookings + beat buyers)',
+  booking_customers: 'Booking customers',
+  beat_buyers: 'Beat buyers',
+};
 
 const RANGES = [7, 28, 90] as const;
 
@@ -103,6 +120,52 @@ export default function MarketingDashboard() {
       setLeadsMsg('Sync failed');
     } finally {
       setSyncing(false);
+    }
+  }
+
+  // ── Audiences (Custom Audiences on the ad account) ─────────────────────
+  const [audiences, setAudiences] = useState<Audience[]>([]);
+  const [sources, setSources] = useState<AudienceSources | null>(null);
+  const [audMsg, setAudMsg] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [newAudName, setNewAudName] = useState('');
+  const [newAudSource, setNewAudSource] = useState<keyof AudienceSources>('all_customers');
+
+  const loadAudiences = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/marketing/audiences', { cache: 'no-store' });
+      const body = await res.json();
+      if (res.ok) {
+        setAudiences(body.audiences ?? []);
+        setSources(body.sources ?? null);
+      }
+    } catch { /* additive section — never block the ads view */ }
+  }, []);
+
+  useEffect(() => { loadAudiences(); }, [loadAudiences]);
+
+  async function createAudience() {
+    if (!newAudName.trim()) { setAudMsg('Give the audience a name first.'); return; }
+    setCreating(true);
+    setAudMsg('');
+    try {
+      const res = await fetch('/api/admin/marketing/audiences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newAudName.trim(), source: newAudSource }),
+      });
+      const body = await res.json();
+      if (res.ok) {
+        setAudMsg(`Created "${newAudName.trim()}" — ${body.emailsUploaded} emails + ${body.phonesUploaded} phones uploaded (hashed).`);
+        setNewAudName('');
+        await loadAudiences();
+      } else {
+        setAudMsg(body.error || 'Audience creation failed');
+      }
+    } catch {
+      setAudMsg('Audience creation failed');
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -250,6 +313,87 @@ export default function MarketingDashboard() {
           </p>
         </>
       )}
+
+      {/* ── Audiences ────────────────────────────────────────────────── */}
+      <div className="mt-10">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h3 className="font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center gap-2">
+            <Users className="w-4 h-4 text-accent" /> Audiences
+            <span className="text-black/40 font-normal normal-case tracking-normal">
+              — all audiences on the shared ad account (Meta doesn&apos;t attribute audiences per business)
+            </span>
+          </h3>
+        </div>
+
+        {/* Create from platform customers */}
+        <div className="border border-black/10 p-4 mb-4">
+          <p className="font-mono text-[10px] uppercase tracking-wider text-black/40 mb-2">
+            Create a Custom Audience from your platform customers (emails/phones uploaded hashed)
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={newAudName}
+              onChange={(e) => setNewAudName(e.target.value)}
+              placeholder="Audience name (e.g. SDM Customers 2026)"
+              className="border border-black/20 px-3 py-2 font-mono text-xs flex-1 min-w-[220px] focus:border-accent focus:outline-none"
+            />
+            <select
+              value={newAudSource}
+              onChange={(e) => setNewAudSource(e.target.value as keyof AudienceSources)}
+              className="border border-black/20 px-2 py-2 font-mono text-xs"
+            >
+              {(Object.keys(SOURCE_LABELS) as Array<keyof AudienceSources>).map((k) => (
+                <option key={k} value={k}>
+                  {SOURCE_LABELS[k]}{sources ? ` (${sources[k]})` : ''}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={createAudience}
+              disabled={creating}
+              className="font-mono text-xs font-bold uppercase tracking-wider px-4 py-2 bg-accent text-black hover:bg-accent/90 transition-colors disabled:opacity-50"
+            >
+              {creating ? 'Creating…' : 'Create audience'}
+            </button>
+          </div>
+          {audMsg && (
+            <p className={`font-mono text-xs mt-3 ${/Advanced Access|Terms|blocked/i.test(audMsg) ? 'text-amber-700 border border-amber-400/50 bg-amber-50 p-3' : 'text-black/60'}`}>
+              {audMsg}
+            </p>
+          )}
+          <p className="font-mono text-[10px] text-black/40 mt-2">
+            Once created, open it in Ads Manager to spin a Lookalike (1%–3%) for prospecting.
+          </p>
+        </div>
+
+        {/* Existing audiences */}
+        {audiences.length > 0 && (
+          <div className="overflow-x-auto border border-black/10">
+            <table className="w-full font-mono text-xs">
+              <thead>
+                <tr className="bg-black text-white text-left">
+                  {['Audience', 'Type', 'Approx. size', 'Updated'].map((h) => (
+                    <th key={h} className="px-3 py-2.5 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {audiences.map((a) => (
+                  <tr key={a.id} className="border-t border-black/10">
+                    <td className="px-3 py-2.5 max-w-[320px] truncate" title={a.name}>{a.name}</td>
+                    <td className="px-3 py-2.5">{a.subtype.replaceAll('_', ' ').toLowerCase()}</td>
+                    <td className="px-3 py-2.5">{a.size == null ? '—' : `${a.size.toLocaleString('en-US')}+`}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      {a.updated ? new Date(a.updated).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* ── Ad Leads ─────────────────────────────────────────────────── */}
       <div className="mt-10">
