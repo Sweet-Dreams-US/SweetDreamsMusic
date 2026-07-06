@@ -9,7 +9,7 @@
 // self-reported conversion value.
 
 import { useCallback, useEffect, useState } from 'react';
-import { Megaphone, RefreshCw, TrendingUp, MousePointerClick, Eye, DollarSign } from 'lucide-react';
+import { Megaphone, RefreshCw, TrendingUp, MousePointerClick, Eye, DollarSign, UserPlus } from 'lucide-react';
 import { formatCents } from '@/lib/utils';
 
 type Campaign = {
@@ -29,6 +29,19 @@ type MarketingPayload = {
   revenue: { totalCents: number; sessionsCents: number; beatsCents: number; mediaCents: number; from: string; to: string };
   roas: number | null;
 };
+
+type Lead = {
+  id: string;
+  form_name: string | null;
+  campaign_name: string | null;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  created_time: string | null;
+  status: 'new' | 'contacted' | 'converted' | 'ignored';
+};
+
+const LEAD_STATUSES: Lead['status'][] = ['new', 'contacted', 'converted', 'ignored'];
 
 const RANGES = [7, 28, 90] as const;
 
@@ -58,6 +71,49 @@ export default function MarketingDashboard() {
   }, []);
 
   useEffect(() => { load(days); }, [days, load]);
+
+  // ── Ad leads (Meta lead-ad submissions synced into meta_leads) ──────────
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [syncing, setSyncing] = useState(false);
+  const [leadsMsg, setLeadsMsg] = useState('');
+
+  const loadLeads = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/marketing/leads', { cache: 'no-store' });
+      const body = await res.json();
+      if (res.ok) setLeads(body.leads ?? []);
+    } catch { /* leads list is additive — never block the ads view */ }
+  }, []);
+
+  useEffect(() => { loadLeads(); }, [loadLeads]);
+
+  async function syncLeads() {
+    setSyncing(true);
+    setLeadsMsg('');
+    try {
+      const res = await fetch('/api/admin/marketing/leads', { method: 'POST' });
+      const body = await res.json();
+      if (res.ok) {
+        setLeadsMsg(`Synced: ${body.fetched} lead${body.fetched === 1 ? '' : 's'} across ${body.forms} form${body.forms === 1 ? '' : 's'} (${body.inserted} new).`);
+        await loadLeads();
+      } else {
+        setLeadsMsg(body.error || 'Sync failed');
+      }
+    } catch {
+      setLeadsMsg('Sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function setLeadStatus(id: string, status: Lead['status']) {
+    setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status } : l)));
+    await fetch('/api/admin/marketing/leads', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status }),
+    }).catch(() => loadLeads());
+  }
 
   const t = data?.ads.totals;
 
@@ -194,6 +250,78 @@ export default function MarketingDashboard() {
           </p>
         </>
       )}
+
+      {/* ── Ad Leads ─────────────────────────────────────────────────── */}
+      <div className="mt-10">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h3 className="font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center gap-2">
+            <UserPlus className="w-4 h-4 text-accent" /> Ad Leads
+            <span className="text-black/40 font-normal normal-case tracking-normal">
+              — Meta lead-form submissions (auto-syncs hourly)
+            </span>
+          </h3>
+          <button
+            onClick={syncLeads}
+            disabled={syncing}
+            className="font-mono text-xs font-bold uppercase tracking-wider px-4 py-2 bg-black text-white hover:bg-black/80 transition-colors disabled:opacity-50 inline-flex items-center gap-2"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Syncing…' : 'Sync now'}
+          </button>
+        </div>
+
+        {leadsMsg && (
+          <p className={`font-mono text-xs mb-3 ${/not accessible|assign/i.test(leadsMsg) ? 'text-amber-700 border border-amber-400/50 bg-amber-50 p-3' : 'text-black/60'}`}>
+            {leadsMsg}
+          </p>
+        )}
+
+        {leads.length === 0 ? (
+          <p className="font-mono text-xs text-black/40 border border-black/10 p-4">
+            No ad leads yet. Leads land here automatically when a Meta Lead Ads campaign runs
+            (requires the Sweet Dreams Music Page to be assigned to the system user in Business Settings).
+          </p>
+        ) : (
+          <div className="overflow-x-auto border border-black/10">
+            <table className="w-full font-mono text-xs">
+              <thead>
+                <tr className="bg-black text-white text-left">
+                  {['Name', 'Email', 'Phone', 'Campaign', 'Form', 'Submitted', 'Status'].map((h) => (
+                    <th key={h} className="px-3 py-2.5 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {leads.map((l) => (
+                  <tr key={l.id} className="border-t border-black/10">
+                    <td className="px-3 py-2.5">{l.full_name || '—'}</td>
+                    <td className="px-3 py-2.5">
+                      {l.email ? <a href={`mailto:${l.email}`} className="text-accent hover:underline">{l.email}</a> : '—'}
+                    </td>
+                    <td className="px-3 py-2.5">{l.phone || '—'}</td>
+                    <td className="px-3 py-2.5 max-w-[200px] truncate" title={l.campaign_name ?? ''}>{l.campaign_name || '—'}</td>
+                    <td className="px-3 py-2.5 max-w-[160px] truncate" title={l.form_name ?? ''}>{l.form_name || '—'}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      {l.created_time ? new Date(l.created_time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <select
+                        value={l.status}
+                        onChange={(e) => setLeadStatus(l.id, e.target.value as Lead['status'])}
+                        className={`border border-black/20 px-2 py-1 font-mono text-[11px] ${l.status === 'new' ? 'text-accent font-bold' : ''}`}
+                      >
+                        {LEAD_STATUSES.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
