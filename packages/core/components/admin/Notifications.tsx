@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Send, Clock, Search, X, ChevronDown, Mail, Users, Mic, Music, CheckCircle, PartyPopper } from 'lucide-react';
+import { Send, Clock, Search, X, ChevronDown, Mail, Users, Mic, Music, CheckCircle, PartyPopper, Gift } from 'lucide-react';
 import { isEventListed, type SweetEvent } from '@/lib/events';
 import { fmtStampDate, fmtStampTime, fmtStampDateTime } from '@/lib/studio-time';
 import { SITE_URL } from '@/lib/constants';
@@ -68,6 +68,31 @@ function buildEventAnnouncement(event: SweetEvent, brandName: string): { subject
   ].join('\n');
 
   return { subject, body };
+}
+
+// A faithful sample of the PERSONALIZED rewards-progress email that
+// lib/email.ts → sendRewardsProgressEmail() sends after each session (and that
+// the "Send rewards update to all customers" blast fires now). Real sends swap
+// in each customer's own name, hours, next reward, and progress — this uses
+// representative sample data so admins can preview the format. Styling mirrors
+// the email's wrap/h1/p/detailTable/btn helpers (dark bg, gold headline).
+// Brand-parameterized like the templates below (sign-off + site link).
+function buildRewardsExampleHtml(brandName: string): string {
+  const name = escapeHtml(brandName);
+  return [
+    '<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">You\'re Getting Close 🔥</h1>',
+    '<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Hey Alex — you\'ve booked <strong style="color:#fff">7 hrs</strong> of studio time this year, and you\'re just <strong style="color:#fff">3 hrs</strong> away from unlocking <strong style="color:#fff">1 free studio hour</strong>.</p>',
+    '<table style="margin:20px 0;border-collapse:collapse">',
+    '<tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Hours this year</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">7 hrs</td></tr>',
+    '<tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Next reward</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">1 free studio hour</td></tr>',
+    '<tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Hours to go</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">3 hrs</td></tr>',
+    '<tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Progress</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">70%</td></tr>',
+    '</table>',
+    '<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Book your next session to keep the momentum going — your rewards stack up automatically as you log studio hours.</p>',
+    `<a href="${SITE_URL}/dashboard" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">Book &amp; Track My Perks</a>`,
+    '<br/><br/>',
+    `<p style="font-size:11px;line-height:1.6;color:#666;margin:0">Thanks for being part of ${name}. Questions? Just reply to this email.</p>`,
+  ].join('\n');
 }
 
 // Templates are brand-parameterized: the sign-offs, "at <studio>" copy, and
@@ -142,6 +167,49 @@ function buildTemplates(brandName: string): EmailTemplate[] {
     color: 'bg-orange-50 border-orange-200 text-orange-700',
   },
   {
+    key: 'rewards_progress',
+    name: 'Rewards Update',
+    // Special, personalized template: picking it shows a dedicated send-to-all
+    // panel (each customer gets their OWN progress) instead of the normal
+    // compose/recipients steps. Subject/body here are unused placeholders.
+    subject: `You're getting close — ${brandName}`,
+    body: '<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">This template is personalized per customer — pick it to send everyone their own rewards progress.</p>',
+    icon: 'Rewards',
+    color: 'bg-accent/10 border-accent/40 text-black',
+  },
+  {
+    key: 'rewards_program',
+    name: 'Rewards Program',
+    subject: `Your ${brandName} Rewards`,
+    body: `<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">EARN AS YOU CREATE</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Every hour you book at ${name} earns you rewards — automatically. The more you create, the more you unlock.</p>\n<table style="margin:20px 0;border-collapse:collapse"><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">10 hours</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">1 free studio hour</td></tr><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">20 hours</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">25% off a music video</td></tr><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">35 hours</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">2 free studio hours</td></tr><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">100 hours</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">A free music video</td></tr></table>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Track your progress anytime in your dashboard — we'll let you know when you're close to your next reward.</p>\n<a href="${SITE_URL}/dashboard" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">VIEW MY REWARDS</a>\n<br/><br/>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— ${name}</p>`,
+    icon: 'Rewards',
+    color: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+  },
+  {
+    key: 'redeem_perks',
+    name: 'Redeem Perks',
+    subject: "You've Got Rewards Waiting",
+    body: `<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">DON'T LEAVE PERKS ON THE TABLE</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">You've earned rewards at ${name} — make sure you put them to use!</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Your free hour / discount / perk] is sitting in your account, ready to redeem on your next session.</p>\n<a href="${SITE_URL}/book" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">BOOK &amp; REDEEM</a>\n<br/><br/>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— ${name}</p>`,
+    icon: 'Perks',
+    color: 'bg-teal-50 border-teal-200 text-teal-700',
+  },
+  {
+    key: 'open_slots',
+    name: 'Open Slots',
+    subject: 'Open Studio Time This Week',
+    body: `<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">STUDIO TIME AVAILABLE</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We've got open sessions coming up at ${name}:</p>\n<table style="margin:20px 0;border-collapse:collapse"><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Days</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">[days here]</td></tr><tr><td style="padding:6px 16px 6px 0;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Times</td><td style="padding:6px 0;color:#fff;font-size:14px;font-weight:600">[times here]</td></tr></table>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">Grab a slot before they're gone.</p>\n<a href="${SITE_URL}/book" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">BOOK A SESSION</a>\n<br/><br/>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— ${name}</p>`,
+    icon: 'Slots',
+    color: 'bg-sky-50 border-sky-200 text-sky-700',
+  },
+  {
+    key: 'new_beats',
+    name: 'New Beats',
+    subject: 'Fresh Beats Just Dropped',
+    body: `<h1 style="font-size:24px;font-weight:700;color:#F4C430;text-transform:uppercase;margin:0 0 16px">NEW BEATS IN THE STORE</h1>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">We just added new beats to the ${name} catalog.</p>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">[Describe the new beats — vibe, producers, genres]</p>\n<a href="${SITE_URL}/beats" style="display:inline-block;background:#F4C430;color:#000;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:13px;padding:14px 28px;text-decoration:none;margin-top:16px">BROWSE BEATS</a>\n<br/><br/>\n<p style="font-size:14px;line-height:1.6;color:#ccc;margin:0 0 12px">— ${name}</p>`,
+    icon: 'Beats',
+    color: 'bg-violet-50 border-violet-200 text-violet-700',
+  },
+  {
     key: 'custom',
     name: 'Custom',
     subject: '',
@@ -168,6 +236,10 @@ interface Broadcast {
   recipient_emails: string[];
   sent_by: string | null;
   created_at: string;
+  // Per-recipient delivery roll-up (added with resumable broadcasts).
+  sent_count?: number | null;
+  failed_count?: number | null;
+  send_status?: 'sending' | 'partial' | 'complete' | null;
 }
 
 type SubView = 'compose' | 'history';
@@ -179,6 +251,7 @@ export default function Notifications() {
 
   // Brand-aware template set (sign-offs + copy render from the active brand).
   const templates = useMemo(() => buildTemplates(brand.name), [brand.name]);
+  const rewardsExampleHtml = useMemo(() => buildRewardsExampleHtml(brand.name), [brand.name]);
 
   // Compose state
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null);
@@ -188,7 +261,15 @@ export default function Notifications() {
   const [manualEmails, setManualEmails] = useState('');
   const [recipientMode, setRecipientMode] = useState<'groups' | 'individual' | 'manual'>('groups');
   const [sending, setSending] = useState(false);
-  const [sendResult, setSendResult] = useState<{ sentCount: number; failedCount: number; total: number } | null>(null);
+  const [sendResult, setSendResult] = useState<{ broadcastId?: string; sentCount: number; failedCount: number; pending?: number; total: number } | null>(null);
+  // Tracks which broadcast id is mid-resume (compose result or a history row).
+  const [resumingId, setResumingId] = useState<string | null>(null);
+
+  // Rewards-progress blast state (the "send everyone their own progress" action).
+  const [rewardsSending, setRewardsSending] = useState(false);
+  const [rewardsResult, setRewardsResult] = useState<{ attempted: number; failed: number; total: number } | null>(null);
+  const [rewardsError, setRewardsError] = useState<string | null>(null);
+  const [showRewardsPreview, setShowRewardsPreview] = useState(false);
 
   // Recipients data
   const [allRecipients, setAllRecipients] = useState<Recipient[]>([]);
@@ -348,6 +429,51 @@ export default function Notifications() {
     setSending(false);
   }
 
+  // Resume a partial broadcast: POST the resume route, which re-sends ONLY to
+  // recipients still pending/failed (never re-sends anyone already 'sent', so
+  // no duplicates), then refresh both the compose result and history list.
+  async function handleResume(broadcastId: string) {
+    setResumingId(broadcastId);
+    try {
+      const res = await fetch(`/api/admin/broadcasts/${broadcastId}/resume`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && sendResult && sendResult.broadcastId === broadcastId) {
+        setSendResult({ ...sendResult, ...data });
+      }
+      await loadHistory();
+    } catch {
+      alert('Failed to resume send');
+    }
+    setResumingId(null);
+  }
+
+  // One-time blast: send EVERY eligible customer their OWN personalized rewards
+  // progress (current hours + next reward). This emails real customers, so it's
+  // gated behind a confirm(). The route self-skips ineligible users, so the
+  // returned `attempted` is the set we tried (the eligible customer list).
+  async function handleSendRewardsToAll() {
+    if (!confirm(
+      'Send every eligible customer their own rewards-progress update right now? '
+      + 'Each customer gets a personalized email + in-app message with their current '
+      + 'studio hours and next reward. This is a one-time blast.',
+    )) return;
+    setRewardsSending(true);
+    setRewardsResult(null);
+    setRewardsError(null);
+    try {
+      const res = await fetch('/api/admin/rewards/notify-all', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setRewardsResult({ attempted: data.attempted, failed: data.failed, total: data.total });
+      } else {
+        setRewardsError(data.error || 'Failed to send rewards updates');
+      }
+    } catch {
+      setRewardsError('Failed to send rewards updates');
+    }
+    setRewardsSending(false);
+  }
+
   function resetCompose() {
     setSelectedTemplate(null);
     setSubject('');
@@ -361,7 +487,12 @@ export default function Notifications() {
   // For event_announcement we additionally require an event to be picked
   // before revealing Step 2 (body editor), Step 3 (recipients), Step 4 (send);
   // otherwise the admin could send the placeholder "Pick an event below" body.
-  const isTemplateReady = !!selectedTemplate &&
+  // The rewards "update" template is special: it doesn't compose one fixed body
+  // to a chosen recipient list — it sends each customer their OWN personalized
+  // progress. So it shows a dedicated send-to-all panel instead of Steps 2–4
+  // (which are all gated on isTemplateReady, hence the exclusion here).
+  const isRewardsTemplate = selectedTemplate?.key === 'rewards_progress';
+  const isTemplateReady = !!selectedTemplate && !isRewardsTemplate &&
     (selectedTemplate.key !== 'event_announcement' || !!selectedEventId);
 
   // ── Render ─────────────────────────────────────────────────────────
@@ -390,20 +521,42 @@ export default function Notifications() {
       {subView === 'compose' && (
         <div className="space-y-6">
           {/* Send result */}
-          {sendResult && (
-            <div className={`border-2 p-4 ${sendResult.failedCount === 0 ? 'border-green-300 bg-green-50' : 'border-amber-300 bg-amber-50'}`}>
-              <div className="flex items-center gap-2">
-                <CheckCircle className={`w-5 h-5 ${sendResult.failedCount === 0 ? 'text-green-600' : 'text-amber-600'}`} />
-                <p className="font-mono text-sm font-bold">
-                  {sendResult.sentCount} of {sendResult.total} email{sendResult.total > 1 ? 's' : ''} sent successfully
-                  {sendResult.failedCount > 0 && ` (${sendResult.failedCount} failed)`}
-                </p>
+          {sendResult && (() => {
+            const unsent = (sendResult.failedCount || 0) + (sendResult.pending || 0);
+            const allSent = unsent === 0;
+            return (
+              <div className={`border-2 p-4 ${allSent ? 'border-green-300 bg-green-50' : 'border-amber-300 bg-amber-50'}`}>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className={`w-5 h-5 ${allSent ? 'text-green-600' : 'text-amber-600'}`} />
+                  <p className="font-mono text-sm font-bold">
+                    {sendResult.sentCount} of {sendResult.total} email{sendResult.total > 1 ? 's' : ''} sent successfully
+                    {sendResult.failedCount > 0 && ` · ${sendResult.failedCount} failed`}
+                    {sendResult.pending ? ` · ${sendResult.pending} pending` : ''}
+                  </p>
+                </div>
+                {!allSent && (
+                  <p className="font-mono text-[11px] text-amber-700 mt-1">
+                    The send stopped before reaching everyone (likely a Resend rate-limit/quota). Resume to deliver to the rest — no one already sent will get a duplicate.
+                  </p>
+                )}
+                <div className="flex items-center gap-3 mt-2">
+                  {!allSent && sendResult.broadcastId && (
+                    <button
+                      onClick={() => handleResume(sendResult.broadcastId!)}
+                      disabled={resumingId === sendResult.broadcastId}
+                      className="bg-amber-500 text-black font-mono text-xs font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-amber-600 disabled:opacity-50 inline-flex items-center gap-1.5"
+                    >
+                      <Send className="w-3 h-3" />
+                      {resumingId === sendResult.broadcastId ? 'Resending…' : `Resend to unsent (${unsent})`}
+                    </button>
+                  )}
+                  <button onClick={resetCompose} className="font-mono text-xs text-accent hover:underline">
+                    Compose another
+                  </button>
+                </div>
               </div>
-              <button onClick={resetCompose} className="font-mono text-xs text-accent hover:underline mt-2">
-                Compose another
-              </button>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Step 1: Pick template */}
           <div>
@@ -424,6 +577,76 @@ export default function Notifications() {
               ))}
             </div>
           </div>
+
+          {/* Rewards "update" template — personalized send-to-all panel. Shown
+              in place of Steps 2–4 when that template is picked, because each
+              customer gets their OWN progress (not one fixed body to a list). */}
+          {isRewardsTemplate && (
+            <div className="border-2 border-accent/40 bg-accent/5 p-4">
+              <div className="flex items-start gap-3">
+                <Gift className="w-5 h-5 text-accent shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-black/80">
+                    Send rewards update to all customers
+                  </h3>
+                  <p className="font-mono text-[11px] text-black/60 mt-1 leading-relaxed">
+                    Unlike the other templates, this one is personalized: each customer gets their
+                    OWN current studio hours this year and how far they are from their next reward —
+                    by email and in-app message. Going forward it auto-sends after each session; use
+                    this for a one-time catch-up blast to everyone.
+                  </p>
+
+                  {rewardsResult && (
+                    <div className="mt-3 flex items-center gap-2 border border-green-300 bg-green-50 px-3 py-2">
+                      <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+                      <p className="font-mono text-xs font-bold text-black/80">
+                        Sent rewards updates to {rewardsResult.attempted} customer{rewardsResult.attempted === 1 ? '' : 's'}
+                        {rewardsResult.failed > 0 && ` · ${rewardsResult.failed} failed`}
+                      </p>
+                    </div>
+                  )}
+                  {rewardsError && (
+                    <p className="font-mono text-xs text-red-600 font-bold mt-3">{rewardsError}</p>
+                  )}
+
+                  <button
+                    onClick={handleSendRewardsToAll}
+                    disabled={rewardsSending}
+                    className="mt-3 bg-accent text-black font-mono text-xs font-bold uppercase tracking-wider px-4 py-2 hover:bg-accent/90 disabled:opacity-50 inline-flex items-center gap-2"
+                  >
+                    <Gift className="w-3.5 h-3.5" />
+                    {rewardsSending ? 'Sending…' : 'Send rewards update to all customers'}
+                  </button>
+
+                  {/* Example email — each customer's own numbers are substituted
+                      at send time. Sandboxed iframe (scripts disabled) so the
+                      email's own inline styles stay isolated. */}
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowRewardsPreview((v) => !v)}
+                      className="font-mono text-[11px] font-bold uppercase tracking-wider text-black/50 hover:text-black underline underline-offset-2"
+                    >
+                      {showRewardsPreview ? 'Hide email preview' : 'Preview the email'}
+                    </button>
+                    {showRewardsPreview && (
+                      <div className="mt-2">
+                        <p className="font-mono text-[10px] text-black/40 uppercase tracking-wider mb-1">
+                          Example — each customer sees their own name, hours &amp; next reward
+                        </p>
+                        <iframe
+                          title="Rewards progress email preview"
+                          sandbox=""
+                          className="w-full h-80 border border-black/10 bg-black"
+                          srcDoc={`<div style="background:#000;padding:24px;font-family:'IBM Plex Mono',monospace">${rewardsExampleHtml}</div>`}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Step 1.5: Pick an event (event-announcement template only) */}
           {selectedTemplate?.key === 'event_announcement' && (
@@ -663,7 +886,10 @@ export default function Notifications() {
           {broadcasts.length === 0 ? (
             <p className="font-mono text-sm text-black/60 py-8 text-center">No broadcasts sent yet</p>
           ) : (
-            broadcasts.map(b => (
+            broadcasts.map(b => {
+              const unsent = (b.failed_count || 0) + Math.max(0, b.recipient_count - (b.sent_count || 0) - (b.failed_count || 0));
+              const hasUnsent = (b.send_status === 'partial' || b.send_status === 'sending') && unsent > 0;
+              return (
               <div key={b.id} className="border border-black/10">
                 <button
                   onClick={() => setExpandedBroadcast(expandedBroadcast === b.id ? null : b.id)}
@@ -678,10 +904,35 @@ export default function Notifications() {
                       {b.template_key && ` · ${b.template_key}`}
                     </p>
                   </div>
+                  {hasUnsent && (
+                    <span className="font-mono text-[9px] font-bold uppercase px-1.5 py-0.5 bg-amber-100 text-amber-700 shrink-0">
+                      {unsent} unsent
+                    </span>
+                  )}
                   <ChevronDown className={`w-4 h-4 text-black/30 transition-transform ${expandedBroadcast === b.id ? 'rotate-180' : ''}`} />
                 </button>
                 {expandedBroadcast === b.id && (
                   <div className="border-t border-black/10 p-4 space-y-3">
+                    {/* Delivery status + resume control */}
+                    <div>
+                      <p className="font-mono text-[10px] text-black/40 uppercase tracking-wider mb-1">Delivery</p>
+                      <p className="font-mono text-xs text-black/70">
+                        {(b.sent_count ?? b.recipient_count)} sent
+                        {(b.failed_count ?? 0) > 0 && ` · ${b.failed_count} failed`}
+                        {unsent > 0 && b.send_status !== 'complete' && ` · ${unsent} unsent`}
+                        {' · '}{b.send_status || 'complete'}
+                      </p>
+                      {hasUnsent && (
+                        <button
+                          onClick={() => handleResume(b.id)}
+                          disabled={resumingId === b.id}
+                          className="mt-2 bg-amber-500 text-black font-mono text-xs font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-amber-600 disabled:opacity-50 inline-flex items-center gap-1.5"
+                        >
+                          <Send className="w-3 h-3" />
+                          {resumingId === b.id ? 'Resending…' : `Resend to unsent (${unsent})`}
+                        </button>
+                      )}
+                    </div>
                     <div>
                       <p className="font-mono text-[10px] text-black/40 uppercase tracking-wider mb-1">Recipients</p>
                       <p className="font-mono text-xs text-black/70">{b.recipient_emails.join(', ')}</p>
@@ -695,7 +946,8 @@ export default function Notifications() {
                   </div>
                 )}
               </div>
-            ))
+              );
+            })
           )}
         </div>
       )}

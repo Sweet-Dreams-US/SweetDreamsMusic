@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifyAdminAccess } from '@/lib/admin-auth';
 import { sendBeatReviewNotification } from '@/lib/email';
 import { getBrand } from '@/lib/brand-server';
+import { generateUniqueBeatSlug } from '@/lib/slug';
 
 // GET - list all beats with producer info (admin sees ALL statuses including pending_approval)
 export async function GET() {
@@ -184,11 +185,15 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Readable URL slug (unique). Old UUID links still resolve + redirect to it.
+  const slug = await generateUniqueBeatSlug(serviceClient, title);
+
   // Insert beat record
   const { data: beat, error: dbError } = await serviceClient
     .from('beats')
     .insert({
       title,
+      slug,
       producer: producerName,
       producer_id: producerId,
       genre: genre || null,

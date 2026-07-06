@@ -2259,6 +2259,196 @@ export async function sendMediaPaymentLink(to: string, details: {
 }
 
 /**
+ * Media PAYMENT RECEIPT — sent to the buyer the moment a payment lands against
+ * their media project (self-serve project payment OR a single installment).
+ * A real paying customer expects a receipt: this confirms the amount that just
+ * settled, where they stand against the contract total (paid-so-far / total /
+ * remaining), and links back to the order page. Mirrors the structure of the
+ * other media senders (sendMediaPaymentLink / sendMediaContractFinalized).
+ *
+ * Fire-and-forget at the call site — a failed receipt must never block or roll
+ * back the payment that already landed.
+ */
+export async function sendMediaPaymentReceipt(to: string, details: {
+  buyerName: string;
+  amountPaidCents: number;
+  offeringTitle: string;
+  bookingId: string;
+  paidSoFarCents: number;
+  totalCents: number;
+  remainingCents: number;
+}) {
+  const orderUrl = `${SITE_URL}/dashboard/media/orders/${details.bookingId}`;
+  const fullyPaid = details.remainingCents <= 0;
+  await mirrorToThread({
+    userEmail: to,
+    mediaBookingId: details.bookingId,
+    kind: 'booking_notification',
+    subject: 'Payment received',
+    body: `We received your ${formatMoney(details.amountPaidCents)} payment toward ${details.offeringTitle}. ${
+      fullyPaid
+        ? 'Your project is now paid in full — thank you!'
+        : `Paid so far ${formatMoney(details.paidSoFarCents)} of ${formatMoney(details.totalCents)} — ${formatMoney(details.remainingCents)} remaining.`
+    }`,
+    attachments: [{ label: 'View order', url: orderUrl, kind: 'link' as const }],
+  });
+  try {
+    await resend.emails.send({
+      from: await emailIdentity(),
+      to,
+      subject: `Payment Received — ${details.offeringTitle}`,
+      html: wrap(
+        h1('PAYMENT RECEIVED') +
+        p(`Hey ${details.buyerName}, thanks — we received your payment toward <strong>${details.offeringTitle}</strong>.`) +
+        detailTable(
+          detail('Amount Paid', formatMoney(details.amountPaidCents)) +
+          detail('Paid So Far', `${formatMoney(details.paidSoFarCents)} of ${formatMoney(details.totalCents)}`) +
+          detail('Remaining Balance', fullyPaid ? 'Paid in full' : formatMoney(details.remainingCents)) +
+          detail('Order', `#${details.bookingId.slice(0, 8)}`)
+        ) +
+        (fullyPaid
+          ? p('Your project is now <strong style="color:#F4C430">paid in full</strong> — thank you! Production continues on your end deliverables.')
+          : p('You can pay the remaining balance any time from your order page.')) +
+        btn('VIEW ORDER', orderUrl) +
+        p('<span style="color:#666;font-size:11px">This is your receipt for the payment above, powered by Stripe. Questions? Just reply to this email.</span>')
+      ),
+    });
+  } catch (e) { console.error('Email error (media payment receipt):', e); }
+}
+
+/**
+ * Media contract READY FOR SIGNATURE — sent to the artist the moment the
+ * manager signs + sends the contract. The manager has already agreed
+ * (manager_agreed_at); this asks the artist to review the terms and sign on
+ * their order page. Once they sign, the booking finalizes (both signatures)
+ * and any planned shoots drop onto the calendar.
+ */
+export async function sendMediaContractForSignature(to: string, details: {
+  buyerName: string;
+  offeringTitle: string;
+  bookingId: string;
+  // NO-LOGIN contract credential. The EMAILED button MUST point at the public
+  // tokenized page (/contract/<publicToken>) — a brand-new customer has no
+  // account, so the account-bound order page would 404 / wall them at login.
+  publicToken: string;
+}) {
+  // PUBLIC, no-login link for the emailed button (the credential is the token).
+  const publicUrl = `${SITE_URL}/contract/${details.publicToken}`;
+  await mirrorToThread({
+    userEmail: to,
+    mediaBookingId: details.bookingId,
+    kind: 'booking_notification',
+    subject: 'Your contract is ready to sign',
+    body: `Your contract for ${details.offeringTitle} is ready. Review the terms and add your signature to lock it in.`,
+    // Use the PUBLIC no-login link here too — so the "Review & sign" link works
+    // for EVERYONE who sees the thread: the customer AND logged-in staff. The
+    // account-bound order page 404s for anyone who isn't the booking's owner
+    // (e.g. an admin/media manager reviewing a customer's contract).
+    attachments: [{ label: 'Review & sign', url: publicUrl, kind: 'link' as const }],
+  });
+  try {
+    await resend.emails.send({
+      from: await emailIdentity(),
+      to,
+      subject: `Your Contract Is Ready to Sign — ${details.offeringTitle}`,
+      html: wrap(
+        h1('CONTRACT READY TO SIGN') +
+        p(`Hey ${details.buyerName}, your contract for <strong>${details.offeringTitle}</strong> is ready.`) +
+        p('We\'ve reviewed and signed our side. Open the link below to read the full contract and add your signature — no login required. Once you sign, your booking is final and any planned sessions go straight onto the calendar.') +
+        detailTable(
+          detail('Project', details.offeringTitle) +
+          detail('Order', `#${details.bookingId.slice(0, 8)}`)
+        ) +
+        btn('REVIEW & SIGN', publicUrl) +
+        p('<span style="color:#666;font-size:11px">Questions about the terms? Just reply to this email and we\'ll sort it out before you sign.</span>')
+      ),
+    });
+  } catch (e) { console.error('Email error (media contract for signature):', e); }
+}
+
+/** One materialized session, for the finalize confirmation email. */
+export interface FinalizedSessionSummary {
+  sessionKind: string;
+  startsAt: string; // ISO (true-UTC instant)
+  endsAt: string;   // ISO
+  location: 'studio' | 'external';
+  externalLocationText: string | null;
+  // The person in charge of the shoot. Media contract sessions are run by a
+  // media manager (managerName); the legacy engineer flow used engineerName.
+  managerName?: string | null;
+  engineerName?: string | null;
+}
+
+/**
+ * Media contract FINALIZED — sent to BOTH parties once the contract is signed
+ * by everyone. Confirms the booking is final and lists the sessions that just
+ * landed on the calendar. If any planned shoot was skipped (conflict / bad
+ * data) we surface a short heads-up so it can be rescheduled.
+ */
+export async function sendMediaContractFinalized(to: string, details: {
+  recipientName: string;
+  recipientRole: 'artist' | 'manager';
+  offeringTitle: string;
+  bookingId: string;
+  sessions: FinalizedSessionSummary[];
+  warnings: string[];
+}) {
+  const orderUrl = `${SITE_URL}/dashboard/media/orders/${details.bookingId}`;
+  // media_session_bookings.starts_at/ends_at are true-UTC instants → fmtStamp*
+  const sessionRows = details.sessions
+    .map((s) => {
+      const when = fmtStampDateTime(s.startsAt, {
+        weekday: 'short', month: 'short', day: 'numeric',
+      });
+      const endTime = fmtStampTime(s.endsAt);
+      const where = s.location === 'studio'
+        ? 'Sweet Dreams Studio'
+        : s.externalLocationText || 'External';
+      const inCharge = s.managerName || s.engineerName;
+      return detail(
+        inCharge ? `${s.sessionKind} — ${inCharge}` : s.sessionKind,
+        `${when} – ${endTime} · ${where}`,
+      );
+    })
+    .join('');
+  const sessionsSection = details.sessions.length
+    ? p('Here\'s what\'s on the calendar:') + detailTable(sessionRows)
+    : p('No sessions were scheduled in the contract — you can add them from the order page any time.');
+  const warningsSection = details.warnings.length
+    ? `
+      <p style="font-size:12px;color:#888;text-transform:uppercase;letter-spacing:0.05em;margin:20px 0 8px">Needs attention</p>
+      <div style="background:#111;padding:16px;margin:0 0 16px;border-left:3px solid #F4C430">
+        ${details.warnings.map((w) => `<p style="font-size:13px;color:#ccc;margin:0 0 6px">• ${w}</p>`).join('')}
+      </div>`
+    : '';
+  const intro = details.recipientRole === 'manager'
+    ? `The contract for <strong>${details.offeringTitle}</strong> is signed by both parties. The booking is final and on the calendar.`
+    : `Your contract for <strong>${details.offeringTitle}</strong> is signed by both parties — your booking is final and on the calendar.`;
+  await mirrorToThread({
+    userEmail: details.recipientRole === 'artist' ? to : undefined,
+    mediaBookingId: details.bookingId,
+    kind: 'booking_notification',
+    subject: 'Contract finalized',
+    body: `Signed by both parties — the booking for ${details.offeringTitle} is final${details.sessions.length ? ' and on the calendar' : ''}.`,
+    attachments: [{ label: 'View order', url: orderUrl, kind: 'link' as const }],
+  });
+  try {
+    await resend.emails.send({
+      from: await emailIdentity(),
+      to,
+      subject: `Contract Finalized — ${details.offeringTitle}`,
+      html: wrap(
+        h1('CONTRACT FINALIZED') +
+        p(`Hey ${details.recipientName}, ${intro}`) +
+        sessionsSection +
+        warningsSection +
+        btn('VIEW ORDER', orderUrl)
+      ),
+    });
+  } catch (e) { console.error('Email error (media contract finalized):', e); }
+}
+
+/**
  * Media component ready — sent when admin marks a single piece of a
  * media order as completed AND attaches a Google Drive link. Sent ONCE
  * per piece (the API tracks notified_at to prevent re-sends).
@@ -2667,4 +2857,73 @@ export async function sendPackageQuoteDeclined(details: {
       ),
     });
   } catch (e) { console.error('Email error (quote declined admin):', e); }
+}
+
+// ── Reward Issued ──────────────────────────────────────────────────────
+
+/**
+ * "Your reward is ready 🎁" — sent when an admin approves a reward grant and it
+ * materializes (status -> issued). Names the reward (rewardLabel) and points the
+ * recipient at their dashboard Perks + the booking flow to redeem it. Email-only
+ * here; the in-app mirror is fired separately in lib/rewards-issue so a band
+ * grant can fan out to every member's thread.
+ *
+ * Fire-and-forget: wrapped in try/catch, logs on error, never throws — issuing
+ * the reward must never fail because an email bounced.
+ */
+/**
+ * "You're getting close" rewards-progress nudge — tells a customer how many
+ * studio hours they've booked this year and how many more until their next
+ * reward (and what it is). Branded to match sendRewardReadyEmail. Never throws.
+ */
+export async function sendRewardsProgressEmail(to: string, details: {
+  recipientName: string;
+  currentHours: number;
+  nextThreshold: number;
+  hoursRemaining: number;
+  nextRewardLabel: string;
+  progressPct: number;
+}) {
+  try {
+    const hrs = (n: number) => `${Number.isInteger(n) ? n : n.toFixed(1)} ${n === 1 ? 'hr' : 'hrs'}`;
+    await resend.emails.send({
+      from: await emailIdentity(), to,
+      subject: `You're getting close — ${brandName()}`,
+      html: wrap(`
+        ${h1("You're Getting Close 🔥")}
+        ${p(`Hey ${escapeHtml(details.recipientName)} — you've booked <strong>${hrs(details.currentHours)}</strong> of studio time this year, and you're just <strong>${hrs(details.hoursRemaining)}</strong> away from unlocking <strong>${escapeHtml(details.nextRewardLabel)}</strong>.`)}
+        ${detailTable(`
+          ${detail('Hours this year', hrs(details.currentHours))}
+          ${detail('Next reward', escapeHtml(details.nextRewardLabel))}
+          ${detail('Hours to go', hrs(details.hoursRemaining))}
+          ${detail('Progress', `${details.progressPct}%`)}
+        `)}
+        ${p('Book your next session to keep the momentum going — your rewards stack up automatically as you log studio hours.')}
+        ${btn('Book & Track My Perks', `${SITE_URL}/dashboard`)}
+        ${p(`<span style="color:#666;font-size:11px">Thanks for being part of ${brandName()}. Questions? Just reply to this email.</span>`)}
+      `),
+    });
+  } catch (e) { console.error('Email error (rewards progress):', e); }
+}
+
+export async function sendRewardReadyEmail(to: string, details: {
+  recipientName: string; rewardLabel: string;
+}) {
+  try {
+    await resend.emails.send({
+      from: await emailIdentity(), to,
+      subject: `Your reward is ready 🎁 — ${brandName()}`,
+      html: wrap(`
+        ${h1('Your Reward Is Ready 🎁')}
+        ${p(`Hey ${escapeHtml(details.recipientName)} — you earned it.`)}
+        ${detailTable(`
+          ${detail('Reward', escapeHtml(details.rewardLabel))}
+          ${detail('Status', 'Ready to use')}
+        `)}
+        ${p('It\'s waiting in your dashboard under <strong>Perks</strong>. Free studio time and discounts apply automatically when you book your next session — credits and media perks are redeemed right from the booking flow.')}
+        ${btn('View My Perks', `${SITE_URL}/dashboard`)}
+        ${p(`<span style="color:#666;font-size:11px">Thanks for being part of ${brandName()}. Questions? Just reply to this email.</span>`)}
+      `),
+    });
+  } catch (e) { console.error('Email error (reward ready):', e); }
 }

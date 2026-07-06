@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Check, HelpCircle, X, Loader2, AlertCircle } from 'lucide-react';
+import { trackMeta } from '@/lib/meta-pixel';
 
 type Status = 'going' | 'maybe' | 'not_going';
 
@@ -25,6 +26,7 @@ export default function EventTokenActions({
   const [error, setError] = useState<string | null>(null);
 
   async function respond(status: Status) {
+    trackMeta('Schedule', { content_name: eventSlug });
     setSubmitting(status);
     setError(null);
     try {

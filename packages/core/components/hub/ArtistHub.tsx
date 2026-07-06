@@ -35,6 +35,12 @@ export interface HubRelocatedData {
     schedulableCredits: { id: string; credit_kind: CreditKind; tier: string | null; remaining: number }[];
     studioHours: { hoursRemaining: number; costBasisCents: number };
     orderCount: number;
+    // Media contracts the manager has agreed to but the artist hasn't signed
+    // yet — surfaced as a banner in HubOverview so artists can FIND + sign them.
+    awaitingContracts: { id: string; offering_id: string; offering_title: string; final_price_cents: number }[];
+    // SIGNED, in-progress media projects — surfaced in HubOverview right after
+    // the contract banner so a signed project stays easy to find (and pay).
+    activeProjects: { id: string; offering_title: string; status: string; total_cents: number; paid_cents: number; remaining_cents: number }[];
   };
   events: {
     myEvents: EventWithRsvp[];
@@ -225,7 +231,16 @@ export default function ArtistHub({ userId, relocated, initialTab }: { userId: s
 
             {/* Main Content */}
             <div className="flex-1 min-w-0">
-              {tab === 'overview' && <HubOverview onXpEarned={onXpEarned} onNavigate={(t) => setTab(t as ExtendedTab)} />}
+              {tab === 'overview' && (
+                <HubOverview
+                  onXpEarned={onXpEarned}
+                  onNavigate={(t) => setTab(t as ExtendedTab)}
+                  studioHours={relocated.media.studioHours}
+                  mediaCredits={relocated.media.credits}
+                  awaitingContracts={relocated.media.awaitingContracts}
+                  activeProjects={relocated.media.activeProjects}
+                />
+              )}
               {tab === 'projects' && <ProjectList onXpEarned={onXpEarned} />}
               {tab === 'goals' && <GoalTracker onXpEarned={onXpEarned} />}
               {tab === 'metrics' && <MetricsDashboard onXpEarned={onXpEarned} />}
@@ -253,7 +268,7 @@ export default function ArtistHub({ userId, relocated, initialTab }: { userId: s
                 />
               )}
               {tab === 'achievements' && <AchievementBadges newUnlocks={newAchievements} progress={achievementProgress} onDismiss={() => setNewAchievements([])} />}
-              {tab === 'perks' && <HubPerks />}
+              {tab === 'perks' && <HubPerks onNavigate={(t) => setTab(t as ExtendedTab)} />}
               {tab === 'roadmap' && <ArtistRoadmap />}
               {tab === 'notes' && <SessionNotes onXpEarned={onXpEarned} />}
             </div>

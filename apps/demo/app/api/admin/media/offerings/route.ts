@@ -10,13 +10,17 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
-import { createServiceClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { verifyMediaManagerAccess } from '@/lib/admin-auth';
 import { getAllOfferingsForAdmin } from '@/lib/media-server';
 
+// GET — media managers + admins (the New Project flow lists offerings).
+// Create/edit/delete stay admin-only (see POST below + the [id] sibling).
 export async function GET() {
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: 'Login required' }, { status: 401 });
-  if (user.role !== 'admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 });
+  const supabase = await createClient();
+  if (!(await verifyMediaManagerAccess(supabase))) {
+    return NextResponse.json({ error: 'Media team only' }, { status: 403 });
+  }
 
   const offerings = await getAllOfferingsForAdmin();
   return NextResponse.json({ offerings });

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Clock, AlertCircle, Check, Star, Users, Moon, Video } from 'lucide-react';
+import { Clock, AlertCircle, Check, Star, Users, Moon } from 'lucide-react';
 import { SITE_URL } from '@/lib/constants';
 import { formatCents } from '@/lib/utils';
 import { createServiceClient } from '@/lib/supabase/server';
@@ -10,16 +10,17 @@ import { priceSessionFromConfig, type StudioConfig } from '@/lib/studio-config';
 import { STUDIO_IMAGES } from '@/lib/images';
 import { getBrand } from '@/lib/brand-server';
 import { cityState } from '@/lib/brand';
+import MetaTrack from '@/components/analytics/MetaTrack';
 
 export async function generateMetadata(): Promise<Metadata> {
   const brand = await getBrand();
   return {
     title: 'Studio Pricing — Recording Rates & Packages',
-    description: `${brand.name} recording studio pricing in ${cityState(brand)}. Studio A from $70/hr, Studio B from $50/hr. The Sweet 4 — 4-hour flat-rate discount, band recording packages, free short-form video on 3+ hour sessions, and 24-hour availability. 50% deposit booking.`,
+    description: `${brand.name} recording studio pricing in ${cityState(brand)}. Studio A from $70/hr, Studio B from $50/hr. The Sweet 4 — 4-hour flat-rate discount, band recording packages, and 24-hour availability. 50% deposit booking.`,
     alternates: { canonical: `${SITE_URL}/pricing` },
     openGraph: {
       title: `Studio Pricing — Recording Rates & Packages | ${brand.name}`,
-      description: `Recording studio rates starting at $50/hr. Studio A and Studio B pricing, The Sweet 4 discount, band recording packages, free short-form video on 3+ hour bookings. Open 24/7 in ${brand.address.city}, Indiana.`,
+      description: `Recording studio rates starting at $50/hr. Studio A and Studio B pricing, The Sweet 4 discount, band recording packages. Open 24/7 in ${brand.address.city}, Indiana.`,
       url: `${SITE_URL}/pricing`,
       type: 'website',
     },
@@ -54,6 +55,7 @@ export default async function PricingPage() {
 
   return (
     <>
+      <MetaTrack event="ViewContent" params={{ content_name: 'Studio pricing', content_category: 'pricing' }} />
       {/* Hero */}
       <section className="relative bg-black text-white py-20 sm:py-28 overflow-hidden">
         <Image
@@ -119,17 +121,6 @@ export default async function PricingPage() {
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
-
-          {/* 3-Hour Free Video Callout — yellow banner above the add-ons grid */}
-          <div className="bg-yellow-300 border-4 border-black p-6 sm:p-8 mb-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <Video className="w-10 h-10 text-black flex-shrink-0" />
-            <div className="flex-1">
-              <h3 className="text-heading-sm mb-1">BOOK 3 HOURS — GET A FREE SHORT-FORM VIDEO</h3>
-              <p className="font-mono text-sm text-black/80">
-                Every session 3 hours or longer includes a free short-form video deliverable — content for your reels, shorts, or feed, shot while you record.
-              </p>
             </div>
           </div>
 

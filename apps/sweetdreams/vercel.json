@@ -49,6 +49,10 @@
     {
       "path": "/api/cron/career-sweep",
       "schedule": "30 8 * * *"
+    },
+    {
+      "path": "/api/cron/sync-meta-leads",
+      "schedule": "20 * * * *"
     }
   ]
 }

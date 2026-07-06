@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
     producerCommission: h.producer_commission_pct != null ? h.producer_commission_pct / 100 : currentCfg.producerCommission,
     mediaSellerPct: h.media_seller_pct != null ? h.media_seller_pct / 100 : currentCfg.mediaSellerPct,
     mediaWorkerTotal: h.media_worker_pct != null ? h.media_worker_pct / 100 : currentCfg.mediaWorkerTotal,
+    mediaManagerPct: h.media_manager_pct != null ? h.media_manager_pct / 100 : currentCfg.mediaManagerPct,
   };
 
   // Both ignore snapshots so the delta isolates the share change (not freezing).

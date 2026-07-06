@@ -11,6 +11,8 @@ import { getSessionUser } from '@/lib/auth';
 import { getUserBands } from '@/lib/bands-server';
 import MediaShowcaseCard from '@/components/media/MediaShowcaseCard';
 import { getBrand } from '@/lib/brand-server';
+import InstagramFeedSection from '@/components/media/InstagramFeedSection';
+import MetaTrack from '@/components/analytics/MetaTrack';
 
 export async function generateMetadata(): Promise<Metadata> {
   const brand = await getBrand();
@@ -100,6 +102,10 @@ export default async function MediaPage() {
 
   return (
     <>
+      <MetaTrack
+        event="ViewContent"
+        params={{ content_name: 'Media packages', content_category: 'packages' }}
+      />
       {/* ──────────────────── HERO ──────────────────── */}
       <section className="relative bg-black text-white py-20 sm:py-28 overflow-hidden">
         <Image
@@ -307,6 +313,11 @@ export default async function MediaPage() {
           </div>
         </div>
       </section>
+
+      {/* ──────────────── ON INSTAGRAM (Phase 5 — live IG feed) ──────────────── */}
+      {/* Server-rendered from the IG API (15-min cache); renders nothing if the
+          API is unavailable, so it can never break this page. */}
+      <InstagramFeedSection />
     </>
   );
 }

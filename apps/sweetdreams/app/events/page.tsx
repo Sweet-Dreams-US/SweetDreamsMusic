@@ -9,6 +9,7 @@ import { requireHref } from '@/lib/site-settings-server';
 import { allowsDirectRsvp } from '@/lib/events';
 import { fmtStampDate, fmtStampTime } from '@/lib/studio-time';
 import { getBrand } from '@/lib/brand-server';
+import MetaTrack from '@/components/analytics/MetaTrack';
 
 export async function generateMetadata(): Promise<Metadata> {
   const brand = await getBrand();
@@ -46,6 +47,7 @@ export default async function EventsPage() {
 
   return (
     <>
+      <MetaTrack event="ViewContent" params={{ content_name: 'Events', content_category: 'marketing' }} />
       {/* Hero */}
       <section className="relative bg-black text-white py-20 sm:py-28 overflow-hidden">
         <Image

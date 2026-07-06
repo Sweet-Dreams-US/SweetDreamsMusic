@@ -11,15 +11,20 @@ import Link from 'next/link';
 import {
   Folder, Target, Calendar, Award, ChevronRight, ArrowRight, Music,
   TrendingUp, Zap, X, Milestone, Headphones, CheckCircle2, Circle,
+  FileSignature,
 } from 'lucide-react';
 import { PROJECT_PHASES } from '@/lib/hub-constants';
-import { formatDuration } from '@/lib/utils';
+import { formatDuration, formatCents } from '@/lib/utils';
 import { fmtSessionDate } from '@/lib/studio-time';
 import { ACHIEVEMENTS } from '@/lib/achievements';
 import { tierLabel } from '@/lib/career';
 import TierBadge from '@/components/career/TierBadge';
 import { SkeletonList } from './LoadingSkeleton';
 import ActivePackages from './ActivePackages';
+import ProfileCompletion from './ProfileCompletion';
+import AvailableBalances from './AvailableBalances';
+import ActiveProjectsPanel, { type ActiveProject } from '@/components/dashboard/ActiveProjectsPanel';
+import type { MediaCreditBalance } from '@/lib/media-credits';
 
 interface NextStep {
   id: string;
@@ -70,6 +75,16 @@ interface OverviewData {
 interface HubOverviewProps {
   onXpEarned?: () => void;
   onNavigate?: (tab: string) => void;
+  // Spendable balances (passed down from the server via relocated.media) so the
+  // Overview can surface studio hours + media credits without a client fetch.
+  studioHours?: { hoursRemaining: number; costBasisCents: number };
+  mediaCredits?: MediaCreditBalance[];
+  // Media contracts the manager has agreed to but the artist hasn't signed —
+  // surfaced as a top-of-page banner so artists can FIND + open them to sign.
+  awaitingContracts?: { id: string; offering_id: string; offering_title: string; final_price_cents: number }[];
+  // SIGNED, in-progress media projects — surfaced right after the contract
+  // banner so a signed project stays easy to find (review contract + pay).
+  activeProjects?: ActiveProject[];
 }
 
 const DISMISS_PREFIX = 'career_dismissed_';
@@ -84,7 +99,14 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export default function HubOverview({ onXpEarned: _onXpEarned, onNavigate }: HubOverviewProps) {
+export default function HubOverview({
+  onXpEarned: _onXpEarned,
+  onNavigate,
+  studioHours,
+  mediaCredits,
+  awaitingContracts,
+  activeProjects,
+}: HubOverviewProps) {
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -114,10 +136,55 @@ export default function HubOverview({ onXpEarned: _onXpEarned, onNavigate }: Hub
     setDismissed((prev) => new Set(prev).add(id));
   }
 
+  // Contracts awaiting THIS artist's signature. Server-provided, so it renders
+  // even while the overview API is still loading — this is the highest-priority
+  // action on the page, and the whole point is that an artist can FIND it.
+  const contractBanner = (awaitingContracts && awaitingContracts.length > 0) ? (
+    <div className="border-2 border-accent bg-accent/10 p-5 mb-6">
+      <h3 className="font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center gap-2 mb-3">
+        <FileSignature className="w-4 h-4 text-accent" />
+        {awaitingContracts.length === 1
+          ? 'You have a contract to sign'
+          : `You have ${awaitingContracts.length} contracts to sign`}
+      </h3>
+      <div className="space-y-2">
+        {awaitingContracts.map((c) => (
+          <Link
+            key={c.id}
+            href={`/dashboard/media/orders/${c.id}`}
+            className="flex items-center justify-between gap-3 border-2 border-black/10 bg-white p-3 hover:border-accent transition-colors no-underline text-black group"
+          >
+            <div className="min-w-0">
+              <p className="font-mono text-sm font-bold truncate">{c.offering_title}</p>
+              <p className="font-mono text-[11px] text-black/50">
+                {c.final_price_cents > 0 ? formatCents(c.final_price_cents) : 'No payment yet'}
+                {' · Awaiting your signature'}
+              </p>
+            </div>
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wider bg-accent text-black px-3 py-1.5 inline-flex items-center gap-1 shrink-0">
+              Review &amp; sign
+              <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform duration-200" />
+            </span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  ) : null;
+
+  // SIGNED, in-progress projects. Server-provided (like the contract banner) so
+  // it renders even while the overview API loads or if it fails — the whole
+  // point is that a signed project stays findable. ActiveProjectsPanel returns
+  // null when empty, so this is safe to always render.
+  const projectsPanel = (
+    <ActiveProjectsPanel projects={activeProjects ?? []} />
+  );
+
   if (loading) {
     return (
       <div>
         <h2 className="text-heading-md mb-6">OVERVIEW</h2>
+        {contractBanner}
+        {projectsPanel}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <SkeletonList count={4} />
         </div>
@@ -125,7 +192,18 @@ export default function HubOverview({ onXpEarned: _onXpEarned, onNavigate }: Hub
     );
   }
 
-  if (!data) return null;
+  if (!data) {
+    // Even if the overview API failed, still surface a contract the artist
+    // needs to sign — and any signed/active project — too important to hide
+    // behind an API error.
+    return (contractBanner || (activeProjects && activeProjects.length > 0)) ? (
+      <div>
+        <h2 className="text-heading-md mb-6">OVERVIEW</h2>
+        {contractBanner}
+        {projectsPanel}
+      </div>
+    ) : null;
+  }
 
   function daysUntil(date: string) {
     return Math.ceil((new Date(date).getTime() - Date.now()) / 86400000);
@@ -160,6 +238,16 @@ export default function HubOverview({ onXpEarned: _onXpEarned, onNavigate }: Hub
     <div>
       <h2 className="text-heading-md mb-6">OVERVIEW</h2>
 
+      {/* CONTRACT TO SIGN — highest-priority action. Server-provided so it's
+          reliable; links straight to the order page where MediaContractSchedule
+          handles the actual signing. */}
+      {contractBanner}
+
+      {/* YOUR MEDIA PROJECTS — signed, in-progress projects. Once signed they
+          drop off the contract banner above; this keeps them easy to find
+          (review contract + pay balance). Renders null when there are none. */}
+      {projectsPanel}
+
       {/* Active packages & memberships — only renders when the customer
           has at least one entitlement, so users without packages see
           nothing extra. Sits at the top of overview because if you HAVE
@@ -167,6 +255,75 @@ export default function HubOverview({ onXpEarned: _onXpEarned, onNavigate }: Hub
       <div className="mb-8">
         <ActivePackages />
       </div>
+
+      {/* COMPLETE YOUR PROFILE — the carrot workflow. Self-fetches its own
+          completion state and renders ONLY when the profile is incomplete
+          (it collapses to null once every item is done), so a finished artist
+          isn't nagged. Placed near the top so artists actually finish it.
+          Deep-links social links to the Metrics tab via onNavigate. */}
+      <div className="mb-6">
+        <ProfileCompletion onNavigate={onNavigate} />
+      </div>
+
+      {/* AVAILABLE BALANCES — surfaces spendable studio hours + media credits at
+          the top of the Hub (previously buried in the Media tab). Renders
+          nothing when both are empty. The free-hour CTA goes to the $0
+          credit-redemption flow; media credits deep-link to the Media tab's
+          scheduler. */}
+      {(studioHours || mediaCredits) && (
+        <div className="mb-6">
+          <AvailableBalances
+            studioHours={studioHours ?? { hoursRemaining: 0, costBasisCents: 0 }}
+            mediaCredits={mediaCredits ?? []}
+            onNavigate={onNavigate}
+          />
+        </div>
+      )}
+
+      {/* BOOK A STUDIO SESSION — always visible. The owner flagged that there
+          was no obvious place to book from the Hub. When the artist has a free
+          hour, that ($0) redemption is the prominent CTA and the general paid
+          booking (/book) is secondary; otherwise /book is the primary CTA. */}
+      {(() => {
+        const hasFreeHour = (studioHours?.hoursRemaining ?? 0) > 0;
+        return (
+          <div className="border-2 border-accent p-5 mb-6">
+            <h3 className="font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center gap-2 mb-2">
+              <Calendar className="w-4 h-4 text-accent" /> Book a Studio Session
+            </h3>
+            <p className="font-mono text-sm text-black/60 mb-4">
+              {hasFreeHour
+                ? 'You have free studio time on your account — redeem it, or book a new paid session anytime.'
+                : 'Reserve studio time with our engineers whenever you’re ready to record.'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {hasFreeHour ? (
+                <>
+                  <Link
+                    href="/dashboard/media/credits"
+                    className="font-mono text-[10px] font-bold uppercase tracking-wider bg-accent text-black px-3 py-1.5 hover:opacity-80 transition-opacity duration-200 inline-flex items-center gap-1 no-underline"
+                  >
+                    Book your free hour <ArrowRight className="w-3 h-3" />
+                  </Link>
+                  <Link
+                    href="/book"
+                    className="font-mono text-[10px] font-bold uppercase tracking-wider border-2 border-black/10 text-black px-3 py-1.5 hover:border-accent/30 transition-colors duration-200 inline-flex items-center gap-1 no-underline"
+                  >
+                    Book a Paid Session <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </>
+              ) : (
+                <Link
+                  href="/book"
+                  className="font-mono text-[10px] font-bold uppercase tracking-wider bg-accent text-black px-3 py-1.5 hover:opacity-80 transition-opacity duration-200 inline-flex items-center gap-1 no-underline"
+                >
+                  Book a Session <ArrowRight className="w-3 h-3" />
+                </Link>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* WELCOME — brand-new users with zero content of any kind. Gives them a
           first move instead of a page of empty space. */}

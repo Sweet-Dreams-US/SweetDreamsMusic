@@ -69,6 +69,19 @@ export default async function Footer({
           <p className="font-mono text-xs text-white/60">
             &copy; {new Date().getFullYear()} {brand.legalName}. All rights reserved.
           </p>
+          {/* Legal links — always rendered (Meta App Review requires the
+              privacy/ToS/data-deletion URLs to be live and discoverable). */}
+          <nav aria-label="Legal" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+            <Link href="/privacy-policy" className="font-mono text-xs text-white/60 hover:text-accent transition-colors no-underline">
+              Privacy Policy
+            </Link>
+            <Link href="/tos" className="font-mono text-xs text-white/60 hover:text-accent transition-colors no-underline">
+              Terms of Service
+            </Link>
+            <Link href="/user-data-deletion" className="font-mono text-xs text-white/60 hover:text-accent transition-colors no-underline">
+              Data Deletion
+            </Link>
+          </nav>
           <Link
             href="https://sweetdreams.us"
             target="_blank"

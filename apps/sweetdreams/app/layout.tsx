@@ -96,6 +96,10 @@ export async function generateMetadata(): Promise<Metadata> {
       'geo.region': geoRegion(b),
       'geo.placename': city,
       'format-detection': 'telephone=no',
+      // Meta (Facebook) Business domain verification for sweetdreamsmusic.com.
+      // Sweet-Dreams-specific (like the pixel id below) — future studios set
+      // their own or remove; harmless on non-claimed hosts.
+      'facebook-domain-verification': '0ppvagsw7fvvlfcr6jmg603u5py8y4',
     },
     openGraph: {
       type: 'website',
@@ -156,9 +160,42 @@ export default async function RootLayout({
             </Script>
           </>
         )}
+        {/* Meta Pixel — GATED to the canonical production host only.
+            The same codebase runs on Vercel preview URLs (*.vercel.app), on
+            localhost, and on other domains attached to this project (e.g.
+            sweetdreams.us). Without this guard the pixel fired on ALL of them,
+            polluting the Sweet Dreams dataset with preview/dev/other-business
+            traffic. Only init + PageView when the browser host is the real
+            production domain (derived from SITE_URL so there's one source).
+            Pixel id + FB domain verification are Sweet-Dreams-specific (this
+            is the flagship's own app file) — future studios set their own. */}
+        <Script id="meta-pixel" strategy="afterInteractive">
+          {`if (${JSON.stringify([new URL(SITE_URL).host, 'www.' + new URL(SITE_URL).host])}.indexOf(location.hostname) !== -1) {
+          !function(f,b,e,v,n,t,s)
+          {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+          n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+          if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+          n.queue=[];t=b.createElement(e);t.async=!0;
+          t.src=v;s=b.getElementsByTagName(e)[0];
+          s.parentNode.insertBefore(t,s)}(window, document,'script',
+          'https://connect.facebook.net/en_US/fbevents.js');
+          fbq('init', '3631251467167744');
+          fbq('track', 'PageView');
+          }`}
+        </Script>
         <JsonLd brand={brand} engineers={engineers} />
       </head>
       <body className={ibmPlexMono.className}>
+        {/* Meta Pixel — noscript fallback */}
+        <noscript>
+          <img
+            height="1"
+            width="1"
+            style={{ display: 'none' }}
+            src="https://www.facebook.com/tr?id=3631251467167744&ev=PageView&noscript=1"
+            alt=""
+          />
+        </noscript>
         {/* Skip-to-content link — visually hidden until focused via keyboard.
             Lands on the <main> element below so screen reader / keyboard
             users can bypass the header navigation on every page.

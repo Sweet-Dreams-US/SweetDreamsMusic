@@ -14,6 +14,12 @@ import FileShowcaseToggle from '@/components/dashboard/FileShowcaseToggle';
 import PricingCalculator from '@/components/dashboard/PricingCalculator';
 import { getStudioConfigs } from '@/lib/studio-config-server';
 import ProfileBeatGrid from '@/components/beats/ProfileBeatGrid';
+import { getStudioCreditBalanceForUser, getMediaCreditsForOwner } from '@/lib/media-server';
+import { getUserBands } from '@/lib/bands-server';
+import DashboardBalances from '@/components/dashboard/DashboardBalances';
+import ContractsToSignBanner from '@/components/dashboard/ContractsToSignBanner';
+import ActiveProjectsPanel from '@/components/dashboard/ActiveProjectsPanel';
+import { getContractsAwaitingSignature, getActiveMediaProjectsForOwner } from '@/lib/media-scheduling-server';
 
 export const metadata: Metadata = {
   title: 'Dashboard',
@@ -31,6 +37,18 @@ export default async function DashboardPage() {
 
   // DB-driven room configs for the price calculator (matches the booking engine).
   const studios = await getStudioConfigs(createServiceClient());
+
+  // Spendable balances — surfaced at the top so a user who has a free studio hour
+  // (or media credits) sees it the moment they land on /dashboard, instead of only
+  // in the Artist Hub. Mirrors the Hub overview's data sources exactly.
+  const bandMemberships = await getUserBands(user.id);
+  const bandIds = bandMemberships.map((m) => m.band_id);
+  const [studioHours, mediaCredits, awaitingContracts, activeProjects] = await Promise.all([
+    getStudioCreditBalanceForUser(user.id),
+    getMediaCreditsForOwner({ userId: user.id, bandIds }),
+    getContractsAwaitingSignature({ userId: user.id, bandIds }),
+    getActiveMediaProjectsForOwner({ userId: user.id, bandIds }),
+  ]);
 
   // Fetch user's bookings
   const { data: bookings } = await supabase
@@ -51,7 +69,7 @@ export default async function DashboardPage() {
   // Fetch saved beats
   const { data: savedBeats } = await supabase
     .from('user_saved_beats')
-    .select('beat_id, beats(id, title, producer, genre, bpm, musical_key, preview_url, cover_image_url, mp3_lease_price, trackout_lease_price, exclusive_price, has_exclusive, lease_count)')
+    .select('beat_id, beats(id, slug, title, producer, genre, bpm, musical_key, preview_url, cover_image_url, mp3_lease_price, trackout_lease_price, exclusive_price, has_exclusive, lease_count)')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(6);
@@ -59,7 +77,7 @@ export default async function DashboardPage() {
   // Fetch user lyrics
   const { data: userLyrics } = await supabase
     .from('user_lyrics')
-    .select('beat_id, updated_at, beats(id, title, producer)')
+    .select('beat_id, updated_at, beats(id, slug, title, producer)')
     .eq('user_id', user.id)
     .order('updated_at', { ascending: false })
     .limit(6);
@@ -133,6 +151,40 @@ export default async function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {/* Contracts awaiting YOUR signature — highest-priority action, surfaced
+          the moment you land on /dashboard (not just the Artist Hub). Links
+          straight to the order page to review, sign, and pay. */}
+      {awaitingContracts.length > 0 && (
+        <section className="bg-white text-black pt-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <ContractsToSignBanner contracts={awaitingContracts} />
+          </div>
+        </section>
+      )}
+
+      {/* Your media projects — SIGNED, in-progress projects. Once a contract is
+          signed it drops off the "to sign" banner above; this keeps the project
+          easy to find (review the contract, pay any balance) instead of buried
+          in the media orders list. Renders nothing when there are none. */}
+      {activeProjects.length > 0 && (
+        <section className="bg-white text-black pt-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <ActiveProjectsPanel projects={activeProjects} />
+          </div>
+        </section>
+      )}
+
+      {/* Available Balances — surfaced at the top so a user with a free studio
+          hour (or media credits) sees it immediately on /dashboard. Renders
+          nothing when both balances are empty. */}
+      {(studioHours.hoursRemaining > 0 || mediaCredits.length > 0) && (
+        <section className="bg-white text-black pt-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <DashboardBalances studioHours={studioHours} mediaCredits={mediaCredits} />
+          </div>
+        </section>
+      )}
 
       {/* Content Grid */}
       <section className="bg-white text-black py-12 sm:py-16">
@@ -334,7 +386,7 @@ export default async function DashboardPage() {
                   return (
                     <Link
                       key={lyric.beat_id}
-                      href={`/beats/${beat.id}/write`}
+                      href={`/beats/${beat.slug || beat.id}/write`}
                       className="border-2 border-black/10 p-4 hover:border-accent transition-colors no-underline"
                     >
                       <p className="font-mono text-sm font-bold truncate">{beat.title}</p>

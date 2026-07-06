@@ -7,6 +7,7 @@ import { requireHref } from '@/lib/site-settings-server';
 import { getEngineers } from '@/lib/engineers-server';
 import { getBrand } from '@/lib/brand-server';
 import { cityState } from '@/lib/brand';
+import MetaTrack from '@/components/analytics/MetaTrack';
 
 // Reads the site's nav flags at request time so the page can 404 when disabled.
 export const dynamic = 'force-dynamic';
@@ -39,6 +40,7 @@ export default async function EngineersPage() {
   const engineers = await getEngineers();
   return (
     <>
+      <MetaTrack event="ViewContent" params={{ content_name: 'Engineers', content_category: 'team' }} />
       {/* Hero */}
       <section className="relative bg-black text-white py-20 sm:py-28 overflow-hidden">
         <Image

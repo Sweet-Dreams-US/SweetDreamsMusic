@@ -6,6 +6,7 @@ import { PRICING, SITE_URL, ROOM_LABELS, STUDIO_A_WEEKDAY_START, MAX_GUESTS, typ
 import { isSelfServeBandHours, parseTimeSlot, formatDuration } from '@/lib/utils';
 import { getStudioConfig } from '@/lib/studio-config-server';
 import { priceSessionFromConfig, priceBandFromConfig } from '@/lib/studio-config';
+import { FREE_HOUR_VALUE_CENTS } from '@/lib/credit-redemption-pricing';
 import { memberHasFlag } from '@/lib/bands';
 import { getMembership } from '@/lib/bands-server';
 import { isEngineerBlocked } from '@/lib/engineer-blocks';
@@ -25,7 +26,11 @@ const padClockHm = (t: string) => {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { date, startTime, duration, room, engineer: rawEngineer, customerName, customerEmail: bodyCustomerEmail, customerPhone, guestCount: rawGuestCount, notes, bandId, sweetSpotAddon: rawSweetSpotAddon } = body;
+    const { date, startTime, duration, room, engineer: rawEngineer, customerName, customerEmail: bodyCustomerEmail, customerPhone, guestCount: rawGuestCount, notes, bandId, sweetSpotAddon: rawSweetSpotAddon, apply_free_hour: rawApplyFreeHour } = body;
+    // Free-studio-hour opt-in. Solo bookings only — band sessions have their
+    // own rewards track. A no-op (no eligible credit) leaves the booking
+    // byte-identical to today.
+    const applyFreeHour = rawApplyFreeHour === true;
     // guestCount = number of GUESTS (artist always free, not counted). 0 = solo.
     const guestCount = Math.min(Math.max(0, Number(rawGuestCount) || 0), MAX_GUESTS);
     const isBandBooking = typeof bandId === 'string' && bandId.length > 0;
@@ -249,7 +254,65 @@ export async function POST(request: NextRequest) {
         if (best) { discountCents = Math.floor((pricing.total * best.pct) / 100); appliedGrantId = best.grantId; }
       } catch (e) { console.error('[BOOKING CREATE] discount lookup failed (non-fatal):', e); }
     }
-    const chargedTotal = Math.max(0, pricing.total - discountCents);
+    // ── Free studio hour (best-of vs the % reward, never stacked) ─────────
+    // A "free studio hour" credit discounts ONE base hour of studio time at
+    // the SAME per-hour rate the base session uses (single-hour rate for a
+    // 1-hour booking, multi-hour rate otherwise) — identical to the value
+    // computeCreditRedemptionPricing applies on the /dashboard/media/credits
+    // page (creditHoursApplied capped at 1 here). Surcharges are still paid in
+    // full because we only ever subtract from pricing.total, never from the
+    // surcharge components.
+    //
+    // RESOLUTION: free hour vs % reward are mutually exclusive. We compute both
+    // and keep the LARGER benefit. When the free hour wins we DROP the % reward
+    // (discountCents/appliedGrantId reset to their no-op state) so the grant
+    // isn't consumed, and we carry free-hour metadata for the webhook to drain
+    // the credit. When the % reward wins (or no eligible credit exists) the
+    // existing path is byte-unchanged.
+    //
+    // Eligibility: opt-in flag + logged-in user + SOLO booking only (band
+    // sessions excluded by design) + a personal studio_credit with >= 1 hour
+    // remaining. Any failure is non-fatal → behaves exactly like today.
+    let freeHourCreditId = '';
+    let freeHourDiscountCents = 0;
+    if (applyFreeHour && !!sessionUser?.id && !isBandBooking) {
+      try {
+        const svc = createServiceClient();
+        const { data: creditRows } = await svc
+          .from('studio_credits')
+          .select('id, hours_granted, hours_used, created_at')
+          .eq('user_id', sessionUser.id)
+          .is('band_id', null)
+          .order('created_at', { ascending: true });
+        const eligible = (creditRows || []).find(
+          (c) => Number(c.hours_granted) - Number(c.hours_used) >= 1,
+        ) as { id: string } | undefined;
+        if (eligible) {
+          // A free hour is a FLAT $50 (FREE_HOUR_VALUE_CENTS) regardless of
+          // room/duration. Never discount more than the session total.
+          freeHourDiscountCents = Math.min(FREE_HOUR_VALUE_CENTS, pricing.total);
+          freeHourCreditId = eligible.id;
+        }
+      } catch (e) {
+        console.error('[BOOKING CREATE] free-hour lookup failed (non-fatal):', e);
+      }
+    }
+
+    // Best-of: the free hour wins ties and anything strictly larger. When it
+    // wins, the % reward is dropped (not stacked, grant not consumed).
+    const freeHourApplied = freeHourDiscountCents > 0 && freeHourDiscountCents >= discountCents;
+    if (freeHourApplied) {
+      discountCents = 0;
+      appliedGrantId = '';
+    } else {
+      // % reward path (or no discount). The free hour did not win, so it must
+      // not leave any trace in the carried metadata below.
+      freeHourCreditId = '';
+      freeHourDiscountCents = 0;
+    }
+
+    const effectiveDiscount = freeHourApplied ? freeHourDiscountCents : discountCents;
+    const chargedTotal = Math.max(0, pricing.total - effectiveDiscount);
     const chargedDeposit = Math.round(chargedTotal * (studioConfig.depositPercent / 100));
 
     const endDec = (startHour + duration) % 24;
@@ -342,6 +405,17 @@ export async function POST(request: NextRequest) {
         discount_amount: String(discountCents),
         service_value_cents: String(pricing.total),
         applied_discount_grant_id: appliedGrantId,
+        // Free studio hour (no-op empty strings when not applied). When set,
+        // the webhook drains 1 hour from this credit on confirmed payment —
+        // payment-gated + idempotent, so an abandoned checkout never consumes
+        // the hour. service_value_cents already preserves the FULL session
+        // value above, so the engineer is still paid on the real value.
+        free_hour_credit_id: freeHourApplied ? freeHourCreditId : '',
+        free_hour_applied: freeHourApplied ? '1' : '',
+        free_hour_discount_cents: freeHourApplied ? String(freeHourDiscountCents) : '',
+        // Who redeemed (the logged-in booker) — stamped onto the
+        // studio_credit_redemptions row by the webhook. Empty when no free hour.
+        redeemed_by: freeHourApplied && sessionUser?.id ? sessionUser.id : '',
         night_fees: String(pricing.nightFees),
         same_day: String(sameDayBooking),
         same_day_fee: String(pricing.sameDayFee),

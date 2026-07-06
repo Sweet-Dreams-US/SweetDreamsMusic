@@ -1,4 +1,4 @@
-# DreamSuite Demo Studio — DreamSuite studio app
+# Sweet Dreams Music (Demo) — DreamSuite studio app
 
 Scaffolded from apps/sweetdreams by create-studio. Backend = packages/core
 (shared, updated for every studio at once). This app owns ONLY the look.

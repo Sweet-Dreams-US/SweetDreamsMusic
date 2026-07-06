@@ -15,6 +15,10 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { MEDIA_WORKER_TOTAL } from '@/lib/constants';
+import { rewardLabel } from '@/lib/rewards';
+import { customerNextReward } from '@/lib/rewards-server';
+import { mirrorToThread } from '@/lib/messaging-mirror';
+import { sendRewardReadyEmail, sendRewardsProgressEmail } from '@/lib/email';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Client = SupabaseClient<any, any, any>;
@@ -50,6 +54,52 @@ const MEDIA_KIND: Record<string, string> = {
   bundled_cutdowns: 'short_video',
 };
 
+// Map a media reward_type → the media_offerings.slug it should land on as a
+// comped PROJECT in /media-team. Used to resolve offering_id (NOT NULL on
+// media_bookings). Order of fallbacks is handled at insert time: we try the
+// primary slug, then any sibling that shares the same `kind` family, so a
+// tenant whose offering catalog uses slightly different slugs still resolves.
+//
+// NOTE: free_sweet_spot has no standalone media offering in the seed catalog
+// (it's a studio/recording perk, not a media deliverable), so it has no slug
+// here — that reward issues the media_credit only, no project (see issues).
+const MEDIA_OFFERING_SLUG: Record<string, string[]> = {
+  free_short_video: ['short-basic', 'short-mid', 'short-premium'],
+  free_music_video: ['mv-mid', 'mv-premium'],
+  free_photo_session: ['photo-session'],
+  bundled_cutdowns: ['short-basic', 'short-mid', 'short-premium'],
+};
+
+/**
+ * Resolve the media_offerings.id for a comped reward project. media_bookings
+ * .offering_id is NOT NULL with an FK, so we MUST have a real offering to create
+ * the project. Tries the reward's candidate slugs in order; returns the first
+ * active match (or any match), else null (caller then skips the project and
+ * keeps only the media_credit). Uses the same cross-tenant client issueGrant
+ * already holds, so it sees the calling studio's offering catalog.
+ */
+async function resolveCompOfferingId(db: Client, rewardType: string): Promise<{ id: string; title: string } | null> {
+  const slugs = MEDIA_OFFERING_SLUG[rewardType];
+  if (!slugs || !slugs.length) return null;
+  const { data } = await db.from('media_offerings')
+    .select('id,title,slug,is_active')
+    .in('slug', slugs);
+  const rows = (data ?? []) as Array<{ id: string; title: string; slug: string; is_active: boolean }>;
+  if (!rows.length) return null;
+  // Prefer the first candidate slug that exists AND is active; fall back to the
+  // first existing row regardless of active flag (better a comped project on an
+  // inactive offering than none).
+  for (const slug of slugs) {
+    const active = rows.find((r) => r.slug === slug && r.is_active);
+    if (active) return { id: active.id, title: active.title };
+  }
+  for (const slug of slugs) {
+    const any = rows.find((r) => r.slug === slug);
+    if (any) return { id: any.id, title: any.title };
+  }
+  return null;
+}
+
 export interface IssueResult { ok: boolean; reason?: string; issued_ref?: string }
 
 /** Issue an already-approved grant (idempotent). Creates the credit ledger row + stamps the grant. */
@@ -82,7 +132,73 @@ export async function issueGrant(db: Client, grantId: string): Promise<IssueResu
       cost_basis_cents: 0, expires_at, notes: `Reward: ${g.rule_key}`,
     }).select('id').single();
     if (error || !data) return { ok: false, reason: `media_credits: ${error?.message}` };
-    issued_ref = `media_credits:${(data as any).id}`;
+    const mediaCreditId = (data as any).id as string;
+    issued_ref = `media_credits:${mediaCreditId}`;
+
+    // ── Also materialize a COMPED media PROJECT so the reward lands in
+    // /media-team Projects ("media rewards link to media bookings"). The
+    // booking is fully comped: $0 price/deposit, marked paid now, dropped into
+    // a SCHEDULABLE status ('deposited' — NOT 'inquiry') so the media team can
+    // schedule shoots. offering_id is REQUIRED (NOT NULL FK), so we only create
+    // the project when a matching media_offerings row resolves; otherwise we
+    // keep just the media_credit (see resolveCompOfferingId + issues).
+    //
+    // Idempotency: a re-issue is already blocked by the guard at the top of
+    // issueGrant (status/issued_ref short-circuit). As a second layer, we skip
+    // project creation if this grant's metadata already records a booking id —
+    // so a manual force-reissue can never spawn a duplicate project.
+    const alreadyHasProject = !!((g as any).metadata?.comp_media_booking_id);
+    let compBookingId: string | null = null;
+    if (!alreadyHasProject) {
+      const offering = await resolveCompOfferingId(db, g.reward_type);
+      if (offering) {
+        const compNow = new Date().toISOString();
+        const projectDetails = {
+          comped: true,
+          source: 'reward_grant',
+          reward_grant_id: g.id,
+          reward_type: g.reward_type,
+          rule_key: g.rule_key,
+          media_credit_id: mediaCreditId,
+          additional_notes: `Comped from reward "${g.rule_key}" (grant ${g.id}). Fully covered — no charge to the artist.`,
+        };
+        const { data: booking, error: bookErr } = await db.from('media_bookings').insert({
+          offering_id: offering.id,
+          user_id: g.owner_user_id,
+          band_id: g.owner_band_id,
+          status: 'deposited', // schedulable, not 'inquiry'
+          configured_components: null,
+          project_details: projectDetails,
+          final_price_cents: 0,
+          deposit_cents: 0,
+          actual_deposit_paid: 0,
+          deposit_paid_at: compNow,
+          final_paid_at: compNow, // $0 owed → fully settled now
+          stripe_payment_intent_id: `REWARD-COMP-${g.id}`,
+          stripe_session_id: null,
+          notes_to_us: `Reward comp: ${offering.title} — issued from grant ${g.id} (${g.rule_key}). Linked media_credit ${mediaCreditId}.`,
+          is_test: false,
+          created_by: 'rewards-engine',
+        }).select('id').single();
+        if (bookErr || !booking) {
+          // Non-fatal: the credit already exists and is the source of truth for
+          // redemption. Log and continue so issuance still succeeds + stamps.
+          console.error('[rewards-issue] comp media_bookings insert failed:', bookErr?.message);
+        } else {
+          compBookingId = (booking as any).id as string;
+        }
+      } else {
+        console.warn(`[rewards-issue] no media offering matched reward_type=${g.reward_type}; comp project skipped, media_credit ${mediaCreditId} kept.`);
+      }
+    }
+
+    // Stamp the created booking id back onto the grant metadata so a re-issue
+    // detects it (idempotency) and the project<->grant link is queryable.
+    if (compBookingId) {
+      await db.from('reward_grants').update({
+        metadata: { ...((g as any).metadata || {}), comp_media_booking_id: compBookingId, comp_media_credit_id: mediaCreditId },
+      }).eq('id', grantId);
+    }
   } else {
     // discount / account_credit / cash_bonus / status — consumed by reading the grant.
     issued_ref = `inline:${g.reward_type}`;
@@ -92,7 +208,130 @@ export async function issueGrant(db: Client, grantId: string): Promise<IssueResu
     status: 'issued', issued_at: new Date().toISOString(), issued_ref, expires_at,
   }).eq('id', grantId);
   if (upd) return { ok: false, reason: `stamp: ${upd.message}` };
+
+  // Real earned/approved -> issued transition: notify the recipient. We only
+  // reach here on a fresh issue (the idempotent guard above early-returns for
+  // already-issued/redeemed grants), so this fires exactly once per grant.
+  // Fire-and-forget — a notify/email failure must never fail the issuance.
+  await notifyGrantIssued(db, g);
+
   return { ok: true, issued_ref };
+}
+
+/**
+ * In-app + email "your reward is ready" notification, fired once when a grant
+ * reaches 'issued'. Reuses the career system's inbox helper (mirrorToThread)
+ * for the in-app post and the studio's Resend sender (sendRewardReadyEmail).
+ *
+ * For a band grant we fan the in-app congrats out to every band member's thread
+ * (mirrorToThread supports a per-user thread); the email goes to the band's
+ * owner. For a personal grant, both go to owner_user_id.
+ *
+ * NEVER throws: each side is wrapped so issuance is never blocked by a notify or
+ * email failure (matches the codebase's fire-and-forget email pattern).
+ */
+async function notifyGrantIssued(db: Client, grant: any): Promise<void> {
+  try {
+    const label = rewardLabel({
+      reward_type: grant.reward_type,
+      reward_value: grant.reward_value,
+      reward_cap_cents: grant.reward_cap_cents,
+    });
+    const subject = 'Your reward is ready 🎁';
+    const body = `You earned ${label}. It's waiting in your dashboard under Perks — free studio time and discounts apply automatically when you book, and credits + media perks redeem right from the booking flow.`;
+
+    // Resolve recipient user ids: a band grant -> every band member; otherwise
+    // the single owner. Email goes to the band owner (or the owner user).
+    const recipientUserIds: string[] = [];
+    let emailUserId: string | null = null;
+
+    if (grant.owner_band_id) {
+      const { data: members } = await db.from('band_members')
+        .select('user_id,role').eq('band_id', grant.owner_band_id);
+      for (const m of ((members ?? []) as any[])) {
+        if (m.user_id) recipientUserIds.push(m.user_id);
+      }
+      const owner = ((members ?? []) as any[]).find((m) => m.role === 'owner');
+      emailUserId = owner?.user_id ?? recipientUserIds[0] ?? null;
+    } else if (grant.owner_user_id) {
+      recipientUserIds.push(grant.owner_user_id);
+      emailUserId = grant.owner_user_id;
+    }
+
+    // In-app: one inbox post per recipient. Each is independently best-effort.
+    for (const uid of recipientUserIds) {
+      try {
+        await mirrorToThread({ userId: uid, kind: 'update', subject, body });
+      } catch (e) { console.error('[rewards-issue] in-app notify failed:', e); }
+    }
+
+    // Email: resolve the recipient's address from profiles using the route's client.
+    if (emailUserId) {
+      const { data: prof } = await db.from('profiles')
+        .select('email,display_name').eq('user_id', emailUserId).maybeSingle();
+      const to = (prof as any)?.email as string | undefined;
+      if (to) {
+        await sendRewardReadyEmail(to, {
+          recipientName: (prof as any)?.display_name || 'there',
+          rewardLabel: label,
+        });
+      }
+    }
+  } catch (e) {
+    // Top-level guard: issuance already succeeded; swallow everything.
+    console.error('[rewards-issue] notifyGrantIssued failed:', e);
+  }
+}
+
+/**
+ * "Rewards progress" nudge: tell a customer where they are on the studio-hours
+ * reward ladder — current calendar-year hours, hours until the NEXT reward, and
+ * WHAT that reward is. Fired (fire-and-forget) after a solo studio booking is
+ * confirmed, so the customer sees their progress climb.
+ *
+ * Resolves the user's email + display_name from profiles, computes the next rung
+ * via customerNextReward, and — when there's something left to chase — posts an
+ * in-app update (mirrorToThread, kind 'update') AND sends the branded progress
+ * email. No-op (does nothing) when:
+ *   • the user has no profile/email, or
+ *   • currentHours is 0 (haven't logged any hours yet — nothing to celebrate), or
+ *   • the top tier is already reached (customerNextReward returns null).
+ *
+ * NEVER throws — wrapped end-to-end so it can never block or fail a booking.
+ */
+export async function notifyRewardsProgress(db: Client, userId: string): Promise<void> {
+  try {
+    if (!userId) return;
+    const { data: prof } = await db.from('profiles')
+      .select('email,display_name').eq('user_id', userId).maybeSingle();
+    const email = (prof as any)?.email as string | undefined;
+    if (!email) return; // can't compute customer studio hours without an email
+
+    const next = await customerNextReward(db, userId, email, new Date());
+    if (!next || next.currentHours <= 0) return; // top tier reached, or no hours yet
+
+    const hrs = (n: number) => `${Number.isInteger(n) ? n : n.toFixed(1)} ${n === 1 ? 'hr' : 'hrs'}`;
+    const subject = 'Your rewards update';
+    const body = `You've booked ${hrs(next.currentHours)} this year — ${hrs(next.hoursRemaining)} more for ${next.nextRewardLabel}! See Perks in your dashboard.`;
+
+    // In-app (best-effort, independent of the email).
+    try {
+      await mirrorToThread({ userId, kind: 'update', subject, body });
+    } catch (e) { console.error('[rewards-issue] progress in-app notify failed:', e); }
+
+    // Email (never throws — sendRewardsProgressEmail swallows its own errors).
+    await sendRewardsProgressEmail(email, {
+      recipientName: (prof as any)?.display_name || 'there',
+      currentHours: next.currentHours,
+      nextThreshold: next.nextThreshold,
+      hoursRemaining: next.hoursRemaining,
+      nextRewardLabel: next.nextRewardLabel,
+      progressPct: next.progressPct,
+    });
+  } catch (e) {
+    // Top-level guard: this is a fire-and-forget nudge; never let it surface.
+    console.error('[rewards-issue] notifyRewardsProgress failed:', e);
+  }
 }
 
 /** Approve a pending grant (and, by default, issue it immediately). */

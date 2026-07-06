@@ -34,7 +34,6 @@ export default function EventRsvpBlock({
 }: Props) {
   const [rsvp, setRsvp] = useState<EventRsvp | null>(initialRsvp);
   const [message, setMessage] = useState('');
-  const [guestCount, setGuestCount] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -211,7 +210,8 @@ export default function EventRsvpBlock({
         Request to Attend
       </p>
       <p className="font-mono text-xs text-black/60 mb-4">
-        This is a private event. Send a short message and the host will approve or deny your request.
+        This is a private event — there&apos;s no open guest list. Send a short message and
+        the host will approve or deny your request. Each guest must request individually.
       </p>
 
       <div className="space-y-3">
@@ -230,28 +230,13 @@ export default function EventRsvpBlock({
           <p className="font-mono text-[9px] text-black/40 mt-1">{message.length}/500</p>
         </div>
 
-        <div>
-          <label className="font-mono text-[10px] font-bold uppercase tracking-wider text-black/50 block mb-1">
-            Bringing guests?
-          </label>
-          <input
-            type="number"
-            min={0}
-            max={20}
-            value={guestCount}
-            onChange={(e) => setGuestCount(Math.max(0, Math.min(20, parseInt(e.target.value || '0', 10))))}
-            className="w-24 border-2 border-black/10 focus:border-accent px-3 py-2 font-mono text-xs outline-none"
-          />
-          <span className="font-mono text-[10px] text-black/50 ml-2">additional people</span>
-        </div>
-
         <button
           onClick={() => {
             if (!message.trim()) {
               setError('Please include a short message.');
               return;
             }
-            submitRsvp('requested', { message: message.trim(), guestCount });
+            submitRsvp('requested', { message: message.trim() });
           }}
           disabled={submitting || !message.trim()}
           className="w-full bg-accent text-black font-mono text-sm font-bold uppercase tracking-wider py-3 hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"

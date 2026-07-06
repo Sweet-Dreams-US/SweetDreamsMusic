@@ -1,8 +1,8 @@
-# Studio App Contract — DreamSuite Demo Studio (apps/demo)
+# Studio App Contract — Sweet Dreams Music (Demo) (apps/demo)
 
 **Read this at the start of every Claude Code design session in this app.**
 This file is the standing instruction set. The goal of a design session is to
-give DreamSuite Demo Studio its own feel — never to change how the platform works.
+give Sweet Dreams Music (Demo) its own feel — never to change how the platform works.
 
 ## Yours to restyle (go wild)
 - `app/globals.css` — colors, fonts, design tokens. This is the studio's skin.

@@ -17,8 +17,20 @@
 // Pattern mirrors /api/booking/invite/route.ts (studio sessions) so
 // admins switching between studio + media flows see the same shape.
 //
+// Buyer selection (one of):
+//   • user_id: string          — pick an existing buyer from the library
+//   • buyer_email: string      — invite by email. An existing user with
+//                                that email is attached; a new email
+//                                creates+invites the artist (auth user +
+//                                profile via trigger) and emails them a
+//                                set-password / welcome link. The created
+//                                user_id is attached to the booking.
+//   (buyer_name optional — used as the new artist's display name)
+//
 // Body: {
-//   user_id: string,           // pick a buyer from the customer library
+//   user_id?: string,          // existing buyer
+//   buyer_email?: string,      // OR invite by email
+//   buyer_name?: string,       // optional display name for a new artist
 //   offering_id: string,       // which package they're buying
 //   final_price_cents: number, // admin-set price (overrides offering.price_cents)
 //   paymentMethod: 'cash' | 'venmo' | 'check' | 'other' | 'link',
@@ -32,22 +44,29 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
-import { createServiceClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { verifyMediaManagerAccess } from '@/lib/admin-auth';
 import { stripe } from '@/lib/stripe';
 import { sendMediaPaymentLink } from '@/lib/email';
 import { SITE_URL } from '@/lib/constants';
+import { resolveOrInviteArtist } from '@/lib/media-installments-server';
 
 const VALID_OFFLINE_METHODS = ['cash', 'venmo', 'check', 'other'] as const;
 type OfflineMethod = (typeof VALID_OFFLINE_METHODS)[number];
-type PaymentMethod = OfflineMethod | 'link';
+// 'plan' = create an UNPAID inquiry shell (no charge, no email) so an
+// installment plan can be layered on top. The per-stint payment links are
+// sent later from the project detail panel after the artist agrees to the
+// contract. Additive: cash/check/other/link paths are untouched.
+type PaymentMethod = OfflineMethod | 'link' | 'plan';
 
 export async function POST(request: NextRequest) {
-  // ── Admin gate ─────────────────────────────────────────────────────
+  // ── Media-team gate (media managers + admins) ──────────────────────
+  const supabase = await createClient();
+  if (!(await verifyMediaManagerAccess(supabase))) {
+    return NextResponse.json({ error: 'Media team only' }, { status: 403 });
+  }
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Login required' }, { status: 401 });
-  if (user.role !== 'admin') {
-    return NextResponse.json({ error: 'Admin only' }, { status: 403 });
-  }
 
   // ── Parse + validate ───────────────────────────────────────────────
   let body: Record<string, unknown>;
@@ -57,7 +76,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const userId = typeof body.user_id === 'string' ? body.user_id.trim() : '';
+  const userIdInput = typeof body.user_id === 'string' ? body.user_id.trim() : '';
+  const buyerEmailInput =
+    typeof body.buyer_email === 'string' ? body.buyer_email.trim().toLowerCase() : '';
+  const buyerNameInput =
+    typeof body.buyer_name === 'string' && body.buyer_name.trim()
+      ? body.buyer_name.trim()
+      : null;
   const offeringId = typeof body.offering_id === 'string' ? body.offering_id.trim() : '';
   const priceCents = typeof body.final_price_cents === 'number' ? body.final_price_cents : NaN;
   const paymentMethod = (typeof body.paymentMethod === 'string' ? body.paymentMethod : '') as PaymentMethod;
@@ -73,9 +98,18 @@ export async function POST(request: NextRequest) {
       ? body.collected_by.trim()
       : user.email;
   const note = typeof body.note === 'string' ? body.note.trim() : '';
+  // contract_terms — optional per-project terms set at create time.
+  const contractTerms =
+    typeof body.contract_terms === 'string' && body.contract_terms.trim()
+      ? body.contract_terms.trim()
+      : null;
 
-  if (!userId) {
-    return NextResponse.json({ error: 'user_id is required' }, { status: 400 });
+  // Buyer: exactly one selection path must be provided.
+  if (!userIdInput && !buyerEmailInput) {
+    return NextResponse.json(
+      { error: 'Provide either user_id (existing buyer) or buyer_email (invite)' },
+      { status: 400 },
+    );
   }
   if (!offeringId) {
     return NextResponse.json({ error: 'offering_id is required' }, { status: 400 });
@@ -86,7 +120,7 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  const allMethods = [...VALID_OFFLINE_METHODS, 'link'] as const;
+  const allMethods = [...VALID_OFFLINE_METHODS, 'link', 'plan'] as const;
   if (!allMethods.includes(paymentMethod)) {
     return NextResponse.json(
       { error: `paymentMethod must be one of: ${allMethods.join(', ')}` },
@@ -94,13 +128,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ── Resolve buyer + offering ───────────────────────────────────────
   const service = createServiceClient();
+
+  // ── Resolve / invite the buyer ─────────────────────────────────────
+  // Existing user_id → use it. New email → attach existing user with that
+  // email, or create+invite a brand-new artist. The resulting user_id is
+  // attached to the booking.
+  const resolved = await resolveOrInviteArtist(service, {
+    userId: userIdInput || null,
+    email: buyerEmailInput || null,
+    displayName: buyerNameInput,
+  });
+  if (!resolved.ok) {
+    return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+  }
+  const userId = resolved.userId;
+
+  // ── Load buyer profile + offering ──────────────────────────────────
   const [{ data: buyerRow }, { data: offeringRow }] = await Promise.all([
     // profiles.full_name does NOT exist in this schema — display_name is
-    // the one full-name column on profiles. Selecting full_name caused the
-    // query to error out and return null, which surfaced as "Buyer not
-    // found" even when the dropdown showed a valid match.
+    // the one full-name column on profiles.
     service.from('profiles').select('user_id, email, display_name').eq('user_id', userId).maybeSingle(),
     service.from('media_offerings').select('id, title, slug, components').eq('id', offeringId).maybeSingle(),
   ]);
@@ -125,6 +172,63 @@ export async function POST(request: NextRequest) {
 
   const now = new Date().toISOString();
 
+  // ── Branch: plan — UNPAID inquiry shell (installments layered on after) ──
+  // No charge, no email, no ledger entry. The caller (manager UI) POSTs the
+  // installment plan to /installments next, then sends per-stint links from
+  // the project detail panel once the artist agrees to the contract.
+  if (paymentMethod === 'plan') {
+    const { data: planRow, error: planErr } = await service
+      .from('media_bookings')
+      .insert({
+        offering_id: offeringId,
+        user_id: userId,
+        band_id: bandId,
+        status: 'inquiry',
+        configured_components: null,
+        project_details: projectDetails,
+        contract_terms: contractTerms,
+        final_price_cents: priceCents,
+        deposit_cents: priceCents,
+        actual_deposit_paid: 0,
+        notes_to_us: notesToUs,
+        customer_phone: customerPhone,
+        is_test: false,
+        created_by: user.email,
+      })
+      .select('id')
+      .single();
+    if (planErr || !planRow) {
+      console.error('[admin/media/bookings/manual] plan insert error:', planErr);
+      return NextResponse.json(
+        { error: `Could not create project: ${planErr?.message || 'unknown error'}` },
+        { status: 500 },
+      );
+    }
+    const bookingId = (planRow as { id: string }).id;
+
+    await service.from('media_booking_audit_log').insert({
+      booking_id: bookingId,
+      action: 'manual_created_plan',
+      performed_by: user.email,
+      details: {
+        offering_id: offeringId,
+        offering_title: offering.title,
+        final_price_cents: priceCents,
+        has_contract_terms: !!contractTerms,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      bookingId,
+      paymentMethod: 'plan',
+      mode: 'plan',
+      userId,
+      artistInvited: resolved.invited,
+      artistCreated: resolved.created,
+    });
+  }
+
   // ── Branch: offline (cash/venmo/check/other) — fully paid immediately
   if (paymentMethod !== 'link') {
     const insertPayload = {
@@ -134,6 +238,7 @@ export async function POST(request: NextRequest) {
       status: 'deposited',
       configured_components: null,
       project_details: projectDetails,
+      contract_terms: contractTerms,
       final_price_cents: priceCents,
       deposit_cents: priceCents,
       actual_deposit_paid: priceCents,
@@ -201,6 +306,9 @@ export async function POST(request: NextRequest) {
       bookingId,
       paymentMethod,
       mode: 'offline',
+      userId,
+      artistInvited: resolved.invited,
+      artistCreated: resolved.created,
     });
   }
 
@@ -216,6 +324,7 @@ export async function POST(request: NextRequest) {
       status: 'inquiry',
       configured_components: null,
       project_details: projectDetails,
+      contract_terms: contractTerms,
       final_price_cents: priceCents,
       deposit_cents: priceCents, // full price asked — admin can adjust later
       actual_deposit_paid: 0,
@@ -291,6 +400,9 @@ export async function POST(request: NextRequest) {
       paymentMethod: 'link',
       mode: 'link',
       paymentUrl: link.url,
+      userId,
+      artistInvited: resolved.invited,
+      artistCreated: resolved.created,
     });
   } catch (err: unknown) {
     // If Stripe blew up, we already have the row — don't try to clean it

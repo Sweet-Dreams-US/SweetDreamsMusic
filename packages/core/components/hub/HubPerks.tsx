@@ -34,6 +34,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { REWARD_RULES, type RewardRule } from '@/lib/rewards';
+import ProfileCompletion from './ProfileCompletion';
 
 // ───────────────────────── types (mirror the API shape) ─────────────────────────
 
@@ -368,7 +369,7 @@ function GrantsList({ grants, heading }: { grants: Grant[]; heading: string }) {
 
 // ───────────────────────── main ─────────────────────────
 
-export default function HubPerks() {
+export default function HubPerks({ onNavigate }: { onNavigate?: (tab: string) => void } = {}) {
   const [data, setData] = useState<RewardsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -430,6 +431,12 @@ export default function HubPerks() {
           media, and standing discounts — automatically.
         </p>
       </div>
+
+      {/* COMPLETE YOUR PROFILE — the easiest reward to claim. Surfaced here on
+          Perks too (showWhenComplete keeps the celebratory done state visible,
+          since this is exactly where the free hour lands). Deep-links social
+          links to the Metrics tab via onNavigate. */}
+      <ProfileCompletion onNavigate={onNavigate} showWhenComplete />
 
       {/* Personal progress */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Calendar, Clock, Home, User, Users, ChevronLeft, ChevronRight, AlertTriangle, Star, Video, Music2 } from 'lucide-react';
+import { Calendar, Clock, Home, User, Users, ChevronLeft, ChevronRight, AlertTriangle, Star, Music2 } from 'lucide-react';
 import { formatCents, cn, isSameDay, formatTime, parseTimeSlot, decimalToTimeStr } from '@/lib/utils';
 import { priceSessionFromConfig, priceBandFromConfig, hourSurchargeFromConfig, sweetSpotAddonCents, type StudioConfig } from '@/lib/studio-config';
 import { useBrand } from '@/components/brand/BrandProvider';
+import { FREE_HOUR_VALUE_CENTS } from '@/lib/credit-redemption-pricing';
+import { trackMeta, centsToDollars } from '@/lib/meta-pixel';
 
 // Self-serve band tiers. As of 2026-04-28 the 24h ("3 Days") tier is
 // self-serve bookable — checkout creates 3 linked bookings rows and the
@@ -55,9 +57,17 @@ export default function BookingFlow({
   studios,
   engineers,
   band = null,
+  freeHourBalance = 0,
 }: {
   userName: string;
   userEmail: string;
+  /**
+   * Remaining hours on the logged-in user's PERSONAL studio credits (the free
+   * studio hour). When >= 1 AND the booking is solo, the review step offers a
+   * toggle to apply one hour off the base studio time at checkout. 0 → no
+   * toggle. Band bookings never show it.
+   */
+  freeHourBalance?: number;
   /** DB-driven engineer roster (active), filtered to the selected room for the picker. */
   engineers: readonly { name: string; displayName: string; specialties: string[]; studios: string[]; canBookBands?: boolean }[];
   /**
@@ -142,6 +152,15 @@ export default function BookingFlow({
   // freeGuests/guestFee from the studio config use the same "guests" basis.
   const [guestCount, setGuestCount] = useState(0);
   const [notes, setNotes] = useState('');
+  // Free studio hour opt-in. Default OFF. Only meaningful for solo bookings
+  // when the user has >= 1 hour of personal credit (freeHourBalance >= 1).
+  const [applyFreeHour, setApplyFreeHour] = useState(false);
+  // Hide + force-off the toggle whenever it can't apply (band mode, no
+  // balance) so stale state never leaks into a band booking's pricing/submit.
+  const freeHourEligible = !isBandMode && freeHourBalance >= 1;
+  useEffect(() => {
+    if (!freeHourEligible && applyFreeHour) setApplyFreeHour(false);
+  }, [freeHourEligible, applyFreeHour]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookedSlots, setBookedSlots] = useState<Record<string, number[]>>({});
   const [checkoutError, setCheckoutError] = useState('');
@@ -178,6 +197,22 @@ export default function BookingFlow({
     }
     return priceSessionFromConfig(cfg, { hours: duration, startHour, sameDay: isSameDayBooking, guests: guestCount });
   }, [isBandMode, cfg, bandCfg, duration, startHour, isSameDayBooking, guestCount, sweetSpotAddon, sweetSpotFilmingDay]);
+
+  // ── Free studio hour discount (display + submit) ───────────────────────
+  // Mirrors /api/booking/create + lib/credit-redemption-pricing: a free hour is a
+  // FLAT $50 (FREE_HOUR_VALUE_CENTS) regardless of room/duration, capped at the
+  // session total so surcharges are always paid. Solo only. The SERVER re-computes
+  // + re-validates this against the live credit; this is preview math, kept
+  // identical so the displayed total/deposit match what's charged.
+  const freeHourActive = freeHourEligible && applyFreeHour;
+  const freeHourApplicableRate = FREE_HOUR_VALUE_CENTS;
+  const freeHourDiscount = freeHourActive
+    ? Math.min(freeHourApplicableRate, pricing.total)
+    : 0;
+  const effectiveTotal = Math.max(0, pricing.total - freeHourDiscount);
+  const effectiveDeposit = freeHourActive
+    ? Math.round(effectiveTotal * (cfg.depositPercent / 100))
+    : pricing.deposit;
 
   // Fetch month-level availability for heat map coloring
   useEffect(() => {
@@ -292,6 +327,16 @@ export default function BookingFlow({
     if (!selectedDate || !selectedTime || !customerName.trim()) return;
     setCheckoutError('');
 
+    // Meta Pixel: user started a paid checkout (Book a session).
+    trackMeta('InitiateCheckout', {
+      value: centsToDollars(pricing.total),
+      currency: 'USD',
+      content_name: isBandMode
+        ? `Band session — ${duration}hr`
+        : `Studio session — ${duration}hr`,
+      content_category: 'Studio session booking',
+    });
+
     // Client-side overlap check
     if (wouldOverlap(startHour, duration)) {
       setCheckoutError('Your session overlaps with an existing booking. Please adjust your time or duration.');
@@ -330,11 +375,22 @@ export default function BookingFlow({
               ? { kind: '8hr-addon' as const }
               : { kind: '3day-addon' as const, filmingDayIndex: sweetSpotFilmingDay }
             : null,
+          // Free studio hour opt-in. Solo only — only true when the user has a
+          // balance AND toggled it on. The server re-validates against the live
+          // credit and silently ignores it if ineligible (no crash, no discount).
+          apply_free_hour: freeHourActive,
         }),
       });
 
       const data = await res.json();
       if (data.url) {
+        // Meta Pixel: proceeding to the Stripe-hosted payment page. Fire the
+        // deposit (the amount actually charged now), mode-aware like the pay
+        // button label, immediately before the redirect.
+        trackMeta('AddPaymentInfo', {
+          value: centsToDollars(isBandMode ? pricing.deposit : effectiveDeposit),
+          currency: 'USD',
+        });
         window.location.href = data.url;
       } else {
         setCheckoutError(data.error || 'Failed to create checkout session');
@@ -716,9 +772,6 @@ export default function BookingFlow({
                 {duration === sweet4HoursFor(cfg) && (
                   <span className="text-accent ml-2 inline-flex items-center gap-1"><Star className="w-3 h-3" /> The Sweet 4!</span>
                 )}
-                {duration === 3 && (
-                  <span className="text-accent ml-2 inline-flex items-center gap-1"><Video className="w-3 h-3" /> Free short-form video included</span>
-                )}
               </>
             )}
           </h3>
@@ -762,30 +815,6 @@ export default function BookingFlow({
                   </button>
                 ))}
           </div>
-
-          {/* 2-hour → 3-hour upsell nudge: adding one hour unlocks a free
-              short-form video. Solo only — band packages already include
-              everything, and 24h bookings go through contact, not upsell. */}
-          {!isBandMode && duration === 2 && (
-            <div className="mt-4 bg-yellow-300 border-2 border-black p-4 flex items-start gap-3">
-              <Video className="w-5 h-5 text-black flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="font-mono text-sm font-bold uppercase tracking-wider mb-1">
-                  Add 1 hour — get a free short-form video
-                </p>
-                <p className="font-mono text-xs text-black/80 mb-3">
-                  Every 3-hour session includes a free short-form video deliverable for reels, shorts, or feed — shot while you record.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setDuration(3)}
-                  className="bg-black text-yellow-300 font-mono text-xs font-bold uppercase tracking-wider px-4 py-2 hover:bg-black/80 transition-colors"
-                >
-                  Bump to 3 hours
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Band-mode 3-day notice: when the 24hr tier is selected, the
               picked date acts as Day 1 — the studio is reserved for the
@@ -1026,20 +1055,71 @@ export default function BookingFlow({
             )}
           </div>
 
+          {/* Free studio hour toggle. Solo only, shown when the user has a
+              balance. Default OFF. Turning it on subtracts one base hour at the
+              session's per-hour rate (surcharges still paid) and recomputes the
+              deposit on the discounted total. */}
+          {freeHourEligible && (
+            <>
+              <hr className="border-black/10 my-6" />
+              <div className={cn(
+                'border-2 p-4 transition-colors',
+                freeHourActive ? 'border-accent bg-accent/10' : 'border-black/20',
+              )}>
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="apply-free-hour"
+                    checked={applyFreeHour}
+                    onChange={(e) => setApplyFreeHour(e.target.checked)}
+                    className="mt-1 w-4 h-4 cursor-pointer"
+                  />
+                  <label htmlFor="apply-free-hour" className="flex-1 cursor-pointer">
+                    <p className="font-mono text-sm font-bold uppercase tracking-wider mb-1">
+                      Apply your free studio hour&nbsp;
+                      <span className="text-accent">
+                        − {formatCents(Math.min(freeHourApplicableRate, pricing.total))} off
+                      </span>
+                    </p>
+                    <p className="font-mono text-xs text-black/70">
+                      Covers 1 hour of studio time. You still pay any surcharges
+                      (late night / same-day / guests) and the rest of your session.
+                      {' '}You have <strong>{freeHourBalance} free hour{freeHourBalance > 1 ? 's' : ''}</strong> available — this uses 1.
+                    </p>
+                  </label>
+                </div>
+              </div>
+            </>
+          )}
+
           <hr className="border-black/10 my-6" />
 
           {/* Totals */}
           <div className="space-y-3 font-mono text-sm">
+            {freeHourActive && (
+              <>
+                <div className="flex justify-between text-black/60">
+                  <span>Session Subtotal</span>
+                  <span>{formatCents(pricing.total)}</span>
+                </div>
+                <div className="flex justify-between text-green-700">
+                  <span className="flex items-center gap-1">
+                    <Star className="w-3 h-3" /> Free studio hour applied
+                  </span>
+                  <span>−{formatCents(freeHourDiscount)}</span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between text-lg">
               <span className="font-semibold">Session Total</span>
-              <span className="font-bold">{formatCents(pricing.total)}</span>
+              <span className="font-bold">{formatCents(effectiveTotal)}</span>
             </div>
             <div className="flex justify-between text-xl font-bold">
               <span>Deposit Due Now ({cfg.depositPercent}%)</span>
-              <span className="text-accent">{formatCents(pricing.deposit)}</span>
+              <span className="text-accent">{formatCents(effectiveDeposit)}</span>
             </div>
             <p className="text-xs text-black/60 mt-2">
-              Remainder ({formatCents(pricing.total - pricing.deposit)}) charged to your card on file after your session.
+              Remainder ({formatCents(effectiveTotal - effectiveDeposit)}) charged to your card on file after your session.
             </p>
           </div>
         </div>
@@ -1125,7 +1205,7 @@ export default function BookingFlow({
             ? 'PROCESSING...'
             : isBandMode
               ? `PAY BAND DEPOSIT — ${formatCents(pricing.deposit)}`
-              : `PAY DEPOSIT — ${formatCents(pricing.deposit)}`}
+              : `PAY DEPOSIT — ${formatCents(effectiveDeposit)}`}
         </button>
       </section>
     </div>

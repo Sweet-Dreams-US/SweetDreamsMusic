@@ -6,7 +6,9 @@
     "dev": "npm run dev --workspace=apps/sweetdreams",
     "build": "npm run build --workspace=apps/sweetdreams",
     "start": "npm run start --workspace=apps/sweetdreams",
-    "lint": "eslint"
+    "lint": "eslint",
+    "check:signup-chain": "tsx --env-file=.env.local packages/core/scripts/check-signup-chain.ts",
+    "check:credit-pricing": "tsx --env-file=.env.local packages/core/scripts/credit-redemption-pricing-selfcheck.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",

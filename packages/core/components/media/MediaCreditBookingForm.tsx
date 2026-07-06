@@ -2,27 +2,32 @@
 
 // components/media/MediaCreditBookingForm.tsx
 //
-// Phase E credit-redemption booking form. The buyer picks a wallet, a
-// date/time/duration, a room, and an engineer; submit creates a `bookings`
-// row at $0 plus a `studio_credit_redemptions` link row. On success we
-// redirect to /dashboard so the booking shows up in their normal list.
+// Free-studio-hour credit-redemption form.
 //
-// We deliberately scope this narrower than the public /book flow:
-//   - No Stripe. The credit IS the payment.
-//   - No engineer-priority claim window — the buyer pre-assigns an
-//     engineer (same model as the media-session scheduler).
-//   - No same-day buffer logic. If you have credits and a slot's free,
-//     book it.
-//   - No guest-fee math. Credit hours are what you paid for; extras
-//     would still need to come through /book.
+// MONEY MODEL (reworked — was a $0 "the credit IS the payment" flow):
+//   A free studio hour discounts ONE hour of BASE studio time (room-aware,
+//   capped at the booked hours). The customer still pays the FULL surcharge
+//   (late-night / deep-night / same-day) up front by card, plus — for 2+ hour
+//   bookings — the discounted half of the deposit. The exact cents math is the
+//   PURE computeCreditRedemptionPricing (lib/credit-redemption-pricing), which
+//   we run live here for the price-breakdown preview AND the API re-runs
+//   server-side as the source of truth on submit.
 //
-// The server still does all conflict + ownership checks, so a tampered
-// form can't actually book invalid state.
+//   • amountDueNow > 0 → submit returns a Stripe Checkout URL; we redirect.
+//     The booking is confirmed + the credit decremented by the webhook on
+//     payment, so an abandoned checkout never burns the free hour.
+//   • amountDueNow == 0 → instant confirm (no Stripe), straight to /dashboard.
+//
+//   Any duration 1–12 hours is allowed now — extra hours beyond the credit are
+//   simply paid for. The server still does all conflict + ownership checks.
 
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, AlertTriangle } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import type { Room } from '@/lib/constants';
+import type { StudioConfig } from '@/lib/studio-config';
+import { computeCreditRedemptionPricing } from '@/lib/credit-redemption-pricing';
+import { formatCents, parseTimeSlot } from '@/lib/utils';
 
 interface PoolOption {
   id: string;
@@ -43,12 +48,19 @@ const ROOM_OPTIONS: { value: Room; label: string }[] = [
   { value: 'studio_b', label: 'Studio B' },
 ];
 
+const MAX_DURATION = 12;
+
 export default function MediaCreditBookingForm({
   pools,
   engineers,
+  pricingByRoom,
+  todayLocal,
 }: {
   pools: PoolOption[];
   engineers: EngineerOption[];
+  pricingByRoom: Record<Room, StudioConfig>;
+  /** Today's date (YYYY-MM-DD) in studio-local (Eastern) time — for same-day flagging. */
+  todayLocal: string;
 }) {
   const router = useRouter();
 
@@ -79,9 +91,7 @@ export default function MediaCreditBookingForm({
   );
 
   // Room change handler — atomically update room AND reset the engineer
-  // selection if the current pick can't work in the new room. Doing this
-  // here (not in a useEffect) avoids the cascading-render anti-pattern
-  // and matches React's "react to events, not state" guidance.
+  // selection if the current pick can't work in the new room.
   function handleRoomChange(newRoom: Room) {
     setRoom(newRoom);
     const stillEligible = engineers
@@ -94,7 +104,21 @@ export default function MediaCreditBookingForm({
   }
 
   const selectedPool = pools.find((p) => p.id === poolId);
-  const overdraw = selectedPool ? duration > selectedPool.hoursRemaining : false;
+  const sameDay = date === todayLocal;
+
+  // Live price breakdown — the SAME pure function the API uses on submit.
+  const quote = useMemo(() => {
+    if (!selectedPool || !pricingByRoom[room] || duration < 1) return null;
+    return computeCreditRedemptionPricing({
+      room,
+      hours: duration,
+      startHourLocal: parseTimeSlot(startTime),
+      sameDay,
+      guestCount: 0,
+      creditHoursRemaining: selectedPool.hoursRemaining,
+      pricing: pricingByRoom[room],
+    });
+  }, [selectedPool, pricingByRoom, room, duration, startTime, sameDay]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -103,8 +127,8 @@ export default function MediaCreditBookingForm({
       setError('Pick a wallet to draw from.');
       return;
     }
-    if (overdraw) {
-      setError(`Only ${selectedPool!.hoursRemaining.toFixed(1)} hr available — pick a shorter session.`);
+    if (duration < 1 || duration > MAX_DURATION) {
+      setError(`Pick a duration between 1 and ${MAX_DURATION} hours.`);
       return;
     }
     if (!engineerName) {
@@ -132,6 +156,11 @@ export default function MediaCreditBookingForm({
         setSubmitting(false);
         return;
       }
+      // Money due → Stripe Checkout. Otherwise instant-confirmed → dashboard.
+      if (data.requires_payment && data.checkout_url) {
+        window.location.href = data.checkout_url as string;
+        return; // leave submitting=true through the redirect
+      }
       router.push('/dashboard?status=credit-booking-confirmed');
       router.refresh();
     } catch (err) {
@@ -140,6 +169,8 @@ export default function MediaCreditBookingForm({
       setSubmitting(false);
     }
   }
+
+  const payNow = quote?.amountDueNow ?? 0;
 
   return (
     <form onSubmit={submit} className="space-y-5">
@@ -184,16 +215,20 @@ export default function MediaCreditBookingForm({
           <input
             type="number"
             min={1}
-            max={Math.min(12, Math.floor(selectedPool?.hoursRemaining ?? 12))}
+            max={MAX_DURATION}
             step={1}
             value={duration}
-            onChange={(e) => setDuration(Math.floor(Number(e.target.value)) || 0)}
+            onChange={(e) =>
+              setDuration(
+                Math.min(MAX_DURATION, Math.max(1, Math.floor(Number(e.target.value)) || 1)),
+              )
+            }
             className={inputCls}
             required
           />
           <p className="font-mono text-[11px] text-black/40 mt-1">
-            Whole hours only. Live booking system stores integer durations; partial-hour credit
-            balances roll over to your next session.
+            Whole hours, 1–{MAX_DURATION}. Your free hour covers one hour of base
+            studio time; any extra hours are billed.
           </p>
         </Field>
         <Field label="Room">
@@ -240,10 +275,37 @@ export default function MediaCreditBookingForm({
         />
       </Field>
 
-      {overdraw && (
-        <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-300 text-yellow-900 font-mono text-xs">
-          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-          Duration exceeds your available balance. Drop it to {selectedPool!.hoursRemaining.toFixed(1)} hr or less.
+      {/* Price breakdown — shown BEFORE confirming so the customer sees exactly
+          what the free hour covers, what surcharges apply, and what they pay
+          now vs. later. */}
+      {quote && (
+        <div className="border-2 border-black/15 bg-black/[0.02] p-4 space-y-1.5">
+          <p className="font-mono text-[11px] uppercase tracking-wider font-bold text-black/60 mb-2">
+            Price breakdown
+          </p>
+          <Row label={`Studio time (${duration} hr base)`} value={formatCents(quote.base)} />
+          {quote.surcharges > 0 && (
+            <Row
+              label={`Surcharges${sameDay ? ' (incl. same-day)' : ''}`}
+              value={formatCents(quote.surcharges)}
+            />
+          )}
+          <Row label="Session total" value={formatCents(quote.total)} bold />
+          <Row
+            label={`Free-hour credit (${quote.creditHoursApplied} hr)`}
+            value={`− ${formatCents(quote.discount)}`}
+            accent
+          />
+          <div className="border-t border-black/10 my-1.5" />
+          <Row label="Due now (card)" value={formatCents(quote.amountDueNow)} bold />
+          {quote.remainder > 0 && (
+            <Row label="Remainder (after session)" value={formatCents(quote.remainder)} />
+          )}
+          {quote.amountDueNow === 0 && (
+            <p className="font-mono text-[11px] text-green-700 pt-1">
+              Fully covered by your free hour — nothing to pay. Confirms instantly.
+            </p>
+          )}
         </div>
       )}
 
@@ -255,10 +317,16 @@ export default function MediaCreditBookingForm({
 
       <button
         type="submit"
-        disabled={submitting || overdraw}
+        disabled={submitting || !quote}
         className="bg-black text-white font-mono text-xs font-bold uppercase tracking-wider px-6 py-4 hover:bg-accent hover:text-black transition-colors inline-flex items-center gap-2 disabled:opacity-50"
       >
-        {submitting ? 'Booking…' : 'Book session with credits'}
+        {submitting
+          ? payNow > 0
+            ? 'Redirecting to checkout…'
+            : 'Booking…'
+          : payNow > 0
+            ? `Pay ${formatCents(payNow)} & book`
+            : 'Confirm booking (free)'}
         {!submitting && <ArrowRight className="w-3 h-3" />}
       </button>
     </form>
@@ -279,6 +347,29 @@ function Field({
       </span>
       {children}
     </label>
+  );
+}
+
+function Row({
+  label,
+  value,
+  bold,
+  accent,
+}: {
+  label: string;
+  value: string;
+  bold?: boolean;
+  accent?: boolean;
+}) {
+  return (
+    <div className="flex items-baseline justify-between text-sm">
+      <span className={`font-mono text-xs ${accent ? 'text-green-700' : 'text-black/60'}`}>
+        {label}
+      </span>
+      <span className={`font-mono text-xs ${bold ? 'font-bold' : ''} ${accent ? 'text-green-700' : ''}`}>
+        {value}
+      </span>
+    </div>
   );
 }
 

@@ -55,7 +55,7 @@ const L_ENG = 0.60, L_PROD = 0.60, L_SELLER = 0.15, L_WORKER = 0.50;
 function computeEarningsLegacy(input: EarningsInput): Record<string, PersonEarnings> {
   const { bookings: bks, media, beats, mediaSessions = [], engineerNames = {}, packageCommissions = [], bonuses = [] } = input;
   const people: Record<string, PersonEarnings> = {};
-  const init = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, rewardsCost: 0, bonusPay: 0, bonusCount: 0, totalPay: 0 });
+  const init = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, mediaManagerPay: 0, mediaManagedCount: 0, rewardsCost: 0, bonusPay: 0, bonusCount: 0, totalPay: 0 });
   bks.forEach((b) => {
     if (b.status !== 'completed') return;
     const eng = legacyNorm(b.engineer_name);

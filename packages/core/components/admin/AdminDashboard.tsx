@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Calendar, Music, Users, DollarSign, Clock, Video, Mic, FileText, LayoutDashboard, BarChart3, Bell, PartyPopper, Film, ClipboardList, Package, Gift, SlidersHorizontal, Calculator } from 'lucide-react';
+import { Calendar, Music, Users, DollarSign, Clock, Video, Mic, FileText, LayoutDashboard, BarChart3, Bell, PartyPopper, Film, ClipboardList, Package, Gift, SlidersHorizontal, Calculator, Megaphone, Instagram } from 'lucide-react';
 import type { SessionUser } from '@/lib/auth';
 import AdminOverview from './AdminOverview';
 import BookingManager from './BookingManager';
@@ -9,9 +9,7 @@ import BeatManager from './BeatManager';
 import UserManager from './UserManager';
 import Accounting from './Accounting';
 import StudioBlocks from './StudioBlocks';
-import MediaSales from './MediaSales';
 import MediaCatalog from './MediaCatalog';
-import MediaOrders from './MediaOrders';
 import ProducerApplications from './ProducerApplications';
 import ContractsViewer from './ContractsViewer';
 import ClientCRM from './ClientCRM';
@@ -22,8 +20,10 @@ import PackageTemplates from './PackageTemplates';
 import RewardsManager from './RewardsManager';
 import StudioControlPanel from './StudioControlPanel';
 import TaxCenter from './TaxCenter';
+import MarketingDashboard from './MarketingDashboard';
+import SocialManager from './SocialManager';
 
-type Tab = 'overview' | 'control' | 'clients' | 'accounting' | 'tax' | 'bookings' | 'events' | 'media' | 'media-catalog' | 'media-orders' | 'packages' | 'blocks' | 'beats' | 'producers' | 'contracts' | 'users' | 'rewards' | 'analytics' | 'notifications';
+type Tab = 'overview' | 'control' | 'clients' | 'accounting' | 'tax' | 'marketing' | 'social' | 'bookings' | 'events' | 'media-catalog' | 'packages' | 'blocks' | 'beats' | 'producers' | 'contracts' | 'users' | 'rewards' | 'analytics' | 'notifications';
 
 export default function AdminDashboard({ user }: { user: SessionUser }) {
   const [tab, setTab] = useState<Tab>('overview');
@@ -34,11 +34,11 @@ export default function AdminDashboard({ user }: { user: SessionUser }) {
     { key: 'clients', label: 'Clients', icon: Users },
     { key: 'accounting', label: 'Accounting', icon: DollarSign },
     { key: 'tax', label: 'Tax Center', icon: Calculator },
+    { key: 'marketing', label: 'Marketing', icon: Megaphone },
+    { key: 'social', label: 'Social', icon: Instagram },
     { key: 'bookings', label: 'Bookings', icon: Calendar },
     { key: 'events', label: 'Events', icon: PartyPopper },
-    { key: 'media', label: 'Media Sales', icon: Video },
     { key: 'media-catalog', label: 'Media Catalog', icon: Film },
-    { key: 'media-orders', label: 'Media Orders', icon: ClipboardList },
     // Packages & memberships sit alongside media catalog/orders since
     // they're a sibling concept (bundling offerings + studio time + beats).
     // Round A is read-only foundation.
@@ -105,11 +105,11 @@ export default function AdminDashboard({ user }: { user: SessionUser }) {
           {tab === 'clients' && <ClientCRM />}
           {tab === 'accounting' && <Accounting />}
           {tab === 'tax' && <TaxCenter />}
+          {tab === 'marketing' && <MarketingDashboard />}
+          {tab === 'social' && <SocialManager />}
           {tab === 'bookings' && <BookingManager />}
           {tab === 'events' && <AdminEvents />}
-          {tab === 'media' && <MediaSales />}
           {tab === 'media-catalog' && <MediaCatalog />}
-          {tab === 'media-orders' && <MediaOrders />}
           {tab === 'packages' && <PackageTemplates />}
           {tab === 'blocks' && <StudioBlocks />}
           {tab === 'beats' && <BeatManager />}

@@ -19,6 +19,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { getStudioConfigs } from '@/lib/studio-config-server';
 import { requireHref } from '@/lib/site-settings-server';
 import { getBrand } from '@/lib/brand-server';
+import MetaTrack from '@/components/analytics/MetaTrack';
 
 export async function generateMetadata(): Promise<Metadata> {
   const brand = await getBrand();
@@ -150,6 +151,7 @@ export default async function BandsPage() {
   const bandPrice = (hours: number) => formatCents(bandCfg?.tiers.find((t) => t.kind === `band_${hours}h`)?.priceCents ?? 0);
   return (
     <>
+      <MetaTrack event="ViewContent" params={{ content_name: 'Bands', content_category: 'marketing' }} />
       {/* ═══════════════════════════════════════════════════════════════
           HERO — slim. Heavy paragraphs were dropped per Cole's feedback;
           the page no longer leads with Sweet Spot copy. The four-feature
