@@ -205,6 +205,44 @@ export function periodKeyFor(window: RewardWindow, d: Date): string {
   }
 }
 
+// ── Staff pay-period approval gating (pure; shared by server guard + admin UI) ──
+
+/** Tracks whose rewards are EMPLOYEE compensation (payroll-adjacent). */
+export const STAFF_TRACKS: readonly string[] = ['engineer', 'producer', 'media_manager'];
+
+/**
+ * When a STAFF grant becomes approvable. Windowed staff rewards (monthly
+ * 'YYYY-MM', quarterly 'YYYY-Qn', calendar-year 'YYYY' period keys) keep
+ * ACCRUING until their period ends — approving mid-period would freeze the
+ * payout at a partial value — so approval is locked until the period is over.
+ * Once approved, payroll slots the bonus by approved_at, i.e. into the NEXT
+ * pay period (Cole's policy).
+ *
+ * @returns the unlock Date, or null when the grant is approvable immediately
+ *   (customer/band rewards, and per-event staff rewards like review invites).
+ *
+ * Period boundary = midnight Eastern, computed as 05:00 UTC (exact during EST;
+ * 1h late during EDT — fine for a day-granularity payroll gate).
+ */
+export function staffApprovalUnlockAt(
+  track: string | null | undefined,
+  periodKey: string | null | undefined,
+): Date | null {
+  if (!track || !STAFF_TRACKS.includes(track)) return null;
+  const key = String(periodKey ?? '');
+
+  let m = key.match(/^(\d{4})-(\d{2})$/); // monthly '2026-07' → Aug 1
+  if (m) return new Date(Date.UTC(Number(m[1]), Number(m[2]), 1, 5, 0, 0));
+
+  m = key.match(/^(\d{4})-Q([1-4])$/); // quarterly '2026-Q3' → Oct 1
+  if (m) return new Date(Date.UTC(Number(m[1]), Number(m[2]) * 3, 1, 5, 0, 0));
+
+  m = key.match(/^(\d{4})$/); // calendar year '2026' → Jan 1 next year
+  if (m) return new Date(Date.UTC(Number(m[1]) + 1, 0, 1, 5, 0, 0));
+
+  return null; // one_time / per-event keys — nothing to wait out
+}
+
 /** [start, endExclusive) UTC bounds for the calendar window containing `d`. */
 export function windowRange(window: RewardWindow, d: Date): { start: Date; end: Date } {
   const y = d.getUTCFullYear();

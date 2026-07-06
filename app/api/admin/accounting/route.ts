@@ -247,11 +247,17 @@ export async function GET(request: NextRequest) {
   // other earnings, funded from the studio's cut. 'approved'/'issued' = owed (not
   // yet paid); 'redeemed' = already paid out. We resolve owner_user_id → the
   // canonical roster name so it lands in the SAME per-person bucket as sessions.
-  const { data: bonusGrants } = await supabase
+  // Pay-period slicing: a staff bonus belongs to the pay period in which it was
+  // APPROVED. Approval is gated until the earn-period ends (see approveGrant),
+  // so an approved bonus always lands in the NEXT pay period — Cole's policy.
+  let bonusQuery = supabase
     .from('reward_grants')
-    .select('id, owner_user_id, value_cents, status, period_key, rule_key, created_at, redeemed_at')
+    .select('id, owner_user_id, value_cents, status, period_key, rule_key, created_at, approved_at, redeemed_at')
     .eq('reward_type', 'cash_bonus')
     .in('status', ['approved', 'issued', 'redeemed']);
+  if (from) bonusQuery = bonusQuery.gte('approved_at', from);
+  if (to) bonusQuery = bonusQuery.lte('approved_at', `${to}T23:59:59`);
+  const { data: bonusGrants } = await bonusQuery;
 
   const bonusOwnerIds = Array.from(new Set((bonusGrants || []).map((g: { owner_user_id: string | null }) => g.owner_user_id).filter((x): x is string => !!x)));
   const bonusNameMap: Record<string, string> = {};
