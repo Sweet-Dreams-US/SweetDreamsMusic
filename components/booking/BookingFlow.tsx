@@ -1150,7 +1150,7 @@ export default function BookingFlow({
               </label>
               <select id="guestCount" value={guestCount} onChange={(e) => setGuestCount(Number(e.target.value))}
                 className="w-full border-2 border-black px-4 py-3 font-mono text-sm bg-transparent focus:border-accent focus:outline-none">
-                {Array.from({ length: cfg.maxGuests }, (_, i) => i).map((guests) => {
+                {Array.from({ length: cfg.maxGuests + 1 }, (_, i) => i).map((guests) => {
                   // freeGuests = number of FREE guests; the artist is always free + never counted.
                   const extra = Math.max(0, guests - cfg.freeGuests);
                   return (

@@ -664,7 +664,7 @@ export default function BookingManager() {
                           <div className="mt-2 flex items-center gap-2">
                             <select value={guestInput} onChange={(e) => setGuestInput(Number(e.target.value))}
                               className="border border-black/20 px-2 py-1 font-mono text-xs">
-                              {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
+                              {Array.from({ length: 25 }, (_, i) => i + 1).map(n => (
                                 <option key={n} value={n}>{n} {n === 1 ? 'person' : 'people'}{n > 2 ? ` (+$${(n - 2) * 10}/hr)` : ''}</option>
                               ))}
                             </select>
