@@ -875,14 +875,18 @@ git commit -m "feat(packages): surface sellable templates on /media + Artist Hub
 
 ---
 
-## SLICE D — Contract studio-credit grant (DEFERRED — needs a product decision)
+## SLICE D — Contract studio-credit grant (APPROVED 2026-07-06 — build with C)
 
-**Why deferred, not built now:** the spec wants a `recording_session` line to grant redeemable
-`studio_credits`. The contract builder's line `qty` is a generic count, so hours cannot be safely
-inferred from it (a "recording_session, qty 1, $300" row could mean one 3-hour session, not one
-hour). Auto-granting studio hours off an ambiguous `qty` is a money-path guess and is unsafe.
+**Decision (Cole, 2026-07-06):** YES — a paid contract's `recording_session` line should also
+grant the artist redeemable studio hours (credits they can book later), like the catalog packages.
+To keep it safe, hours are **stated explicitly**, not inferred from the generic line `qty`
+(a "recording_session, qty 1, $300" row could mean one 3-hour session, not one hour).
 
-**Recommended shape when we build it:**
+**Sequencing:** build alongside Slice C, AFTER Cole has tested the live Slice A+B contract builder
+(he asked to test A+B first). Both C and D touch payment/fulfillment, so they ship as one verified
+batch.
+
+**Shape to build:**
 1. Add an explicit optional `hours` field to recording_session line items in the builder (and a
    nullable `hours` column on `media_booking_line_items`, migration 099), so studio hours are
    stated, not inferred.
@@ -897,9 +901,17 @@ hour). Auto-granting studio hours off an ambiguous `qty` is a money-path guess a
 4. Golden-verify: existing contracts (no recording_session hours) grant nothing; a new contract
    with stated hours grants exactly those hours, once, even if the webhook retries.
 
-**Confirm with Cole before building:** should a paid contract's recording line also become
-redeemable studio time, or is the recording line simply the service being delivered (no extra
-bookable credit)? This one-line answer decides whether Slice D happens at all.
+**Status: confirmed — build with Slice C after Cole's A+B test.**
+
+---
+
+## Status log
+
+- **2026-07-06:** Slices A + B built, adversarially reviewed (no correctness bugs), and
+  **shipped to production** (commit `32e7426`, deployment READY on sweetdreamsmusic.com).
+  Offering dropdown is now category-only; "Start from a package" loads template + catalog
+  packages as editable rows. Awaiting Cole's live test before building Slices C + D as one batch.
+  Decisions locked: C timing = after A+B test; D = grant redeemable hours (explicit `hours` field).
 
 ---
 
