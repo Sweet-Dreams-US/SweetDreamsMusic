@@ -158,7 +158,7 @@ export default function Accounting() {
   // Round 7c: band display_names so the band-revenue panel renders
   // human-readable band names without a separate fetch.
   const [bandMap, setBandMap] = useState<Record<string, string>>({});
-  const [cancelledBookings, setCancelledBookings] = useState<{ id: string; customer_name: string; start_time: string; total_amount: number; deposit_amount: number; actual_deposit_paid: number | null; deposit_kept: boolean }[]>([]);
+  const [cancelledBookings, setCancelledBookings] = useState<{ id: string; customer_name: string; start_time: string; total_amount: number; deposit_amount: number; actual_deposit_paid: number | null; deposit_kept: boolean; engineer_name: string | null }[]>([]);
   const [cashLedger, setCashLedger] = useState<{ id: string; engineer_name: string; amount: number; client_name: string; note: string | null; status: string; created_at: string; booking_id: string | null; deposit_event_id?: string | null; deposited_at?: string | null; collection_event_id?: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>('overview');
@@ -644,6 +644,61 @@ export default function Accounting() {
     };
   }, [mediaBookings, mediaInstallments, mediaOfferingMap]);
 
+  // ── Engineer-scoped media/Hub/cancelled aggregates (OVERVIEW only) ───
+  // The engineer filter must reach the media + Hub-orders + cancelled numbers,
+  // not just sessions/beats — otherwise a single-engineer view leaks in
+  // studio-wide media/Hub revenue (this is what made one engineer's box read
+  // ~$2,150 instead of their real ~$150). GOLDEN-SAFE: when engineerFilter is
+  // 'all', every value below is byte-identical to the unfiltered stats. When an
+  // engineer is selected, media is scoped to sales they worked (sold/filmed/
+  // edited); Hub contracts carry no per-engineer attribution client-side, so a
+  // single engineer's Hub revenue is $0 (not the studio-wide total). The
+  // dedicated Media Sales / Hub tabs keep using the unfiltered mediaStats /
+  // mediaBookingStats above.
+  const filteredMediaSales = useMemo(() => {
+    if (engineerFilter === 'all') return mediaSales;
+    return mediaSales.filter((m) =>
+      [m.sold_by, m.filmed_by, m.edited_by].some(
+        (n) => n && normalizeName(n) === engineerFilter,
+      ),
+    );
+  }, [mediaSales, engineerFilter]);
+
+  const filteredMediaStats = useMemo(() => {
+    const totalRevenue = filteredMediaSales.reduce((s, m) => s + m.amount, 0);
+    const businessRevenue = Math.round(totalRevenue * MEDIA_BUSINESS_CUT);
+    return { totalRevenue, businessRevenue };
+  }, [filteredMediaSales]);
+
+  const filteredMediaBookings = useMemo(
+    () => (engineerFilter === 'all' ? mediaBookings : []),
+    [mediaBookings, engineerFilter],
+  );
+
+  const filteredMediaBookingStats = useMemo(() => {
+    const paidByBooking: Record<string, number> = {};
+    for (const inst of mediaInstallments) {
+      if (inst.status !== 'paid') continue;
+      paidByBooking[inst.booking_id] = (paidByBooking[inst.booking_id] || 0) + (inst.amount_cents || 0);
+    }
+    let revenue = 0, collected = 0, outstanding = 0;
+    for (const b of filteredMediaBookings) {
+      const price = b.final_price_cents ?? 0;
+      const paid = paidByBooking[b.id] !== undefined ? paidByBooking[b.id] : (b.actual_deposit_paid ?? 0);
+      revenue += price;
+      collected += paid;
+      if (!b.final_paid_at) outstanding += Math.max(0, price - paid);
+    }
+    return { total: filteredMediaBookings.length, revenue, collected, outstanding };
+  }, [filteredMediaBookings, mediaInstallments]);
+
+  const filteredCancelledBookings = useMemo(() => {
+    if (engineerFilter === 'all') return cancelledBookings;
+    return cancelledBookings.filter(
+      (b) => (normalizeName(b.engineer_name) || 'Unassigned') === engineerFilter,
+    );
+  }, [cancelledBookings, engineerFilter]);
+
   // Round 7c: Band-session revenue slice.
   //
   // Bands and solo sessions live on the same `bookings` table. We split
@@ -921,26 +976,31 @@ export default function Accounting() {
   // during the period — cash basis; bill pays lag, so the two can differ.)
   const filteredPayrollData = useMemo(() => {
     const totalBooked = filteredBookings.reduce((s, b) => s + b.total_amount, 0);
-    const mediaRev = mediaSales.reduce((s, m) => s + m.amount, 0);
+    // Engineer-scoped media revenue (mirrors sessions/beats which already
+    // honor the engineer filter). When engineerFilter is 'all', filteredMediaSales
+    // === mediaSales, so this is identical to before.
+    const mediaRev = filteredMediaSales.reduce((s, m) => s + m.amount, 0);
     const beatRev = filteredPurchases.reduce((s, p) => s + p.amount_paid, 0);
     // Cash actually collected on media-booking contracts (paid installments).
     // Folded into gross alongside the legacy media_sales line so contract money
     // (e.g. a $1,000 music video, $330 paid so far) shows up as real revenue.
-    const mediaBookingsCollected = mediaBookingStats.collected;
+    // Engineer-scoped (Hub contracts carry no per-engineer attribution → $0 when
+    // an engineer is selected; unchanged when 'all').
+    const mediaBookingsCollected = filteredMediaBookingStats.collected;
     const totalGross = totalBooked + mediaRev + beatRev + mediaBookingsCollected;
 
     const earnings = computeEarnings(
-      filteredBookings, mediaSales, filteredPurchases,
+      filteredBookings, filteredMediaSales, filteredPurchases,
       periodMediaSessions, engineerNameMap, periodPackageCommissions, periodRewardBonuses,
       mediaManagerJobs,
     );
     const totalPayroll = Object.values(earnings).reduce((s, p) => s + p.totalPay, 0);
     const businessKeeps = totalGross - totalPayroll;
-    const keptDeposits = cancelledBookings.filter((b) => b.deposit_kept).reduce((s, b) => s + (b.actual_deposit_paid || 0), 0);
+    const keptDeposits = filteredCancelledBookings.filter((b) => b.deposit_kept).reduce((s, b) => s + (b.actual_deposit_paid || 0), 0);
 
     return { totalGrossRevenue: totalGross, totalPayroll, businessKeeps, keptDeposits, mediaBookingsCollected };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredBookings, mediaSales, filteredPurchases, cancelledBookings, periodMediaSessions, engineerNameMap, periodPackageCommissions, periodRewardBonuses, mediaBookingStats, mediaManagerJobs]);
+  }, [filteredBookings, filteredMediaSales, filteredPurchases, filteredCancelledBookings, periodMediaSessions, engineerNameMap, periodPackageCommissions, periodRewardBonuses, filteredMediaBookingStats, mediaManagerJobs]);
 
   const SALE_TYPE_LABELS: Record<string, string> = {
     video: 'Music Video',
@@ -1072,16 +1132,16 @@ export default function Accounting() {
                 <StatCard icon={DollarSign} label="Gross Revenue (All)" value={formatCents(filteredPayrollData.totalGrossRevenue)} accent />
                 <StatCard icon={Calendar} label="Session Revenue" value={formatCents(sessionStats.totalBooked)} />
                 <StatCard icon={Music} label="Beat Sales" value={formatCents(beatStats.totalRevenue)} />
-                <StatCard icon={TrendingUp} label="Media Sales" value={formatCents(mediaStats.totalRevenue)} />
+                <StatCard icon={TrendingUp} label="Media Sales" value={formatCents(filteredMediaStats.totalRevenue)} />
               </div>
 
               {/* Round 7b: Hub Orders revenue split — booked vs. collected vs. owed.
                   Shown as its own row so it doesn't muddy the legacy line-item math. */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon={TrendingUp} label="Hub Orders — Booked" value={formatCents(mediaBookingStats.revenue)} />
-                <StatCard icon={DollarSign} label="Hub Orders — Collected" value={formatCents(mediaBookingStats.collected)} />
-                <StatCard icon={DollarSign} label="Hub Orders — Outstanding" value={formatCents(mediaBookingStats.outstanding)} />
-                <StatCard icon={Users} label="Hub Order Count" value={String(mediaBookingStats.total)} />
+                <StatCard icon={TrendingUp} label="Hub Orders — Booked" value={formatCents(filteredMediaBookingStats.revenue)} />
+                <StatCard icon={DollarSign} label="Hub Orders — Collected" value={formatCents(filteredMediaBookingStats.collected)} />
+                <StatCard icon={DollarSign} label="Hub Orders — Outstanding" value={formatCents(filteredMediaBookingStats.outstanding)} />
+                <StatCard icon={Users} label="Hub Order Count" value={String(filteredMediaBookingStats.total)} />
               </div>
 
               {/* Business Profit */}
@@ -1108,7 +1168,7 @@ export default function Accounting() {
                   </div>
                   <div className="flex justify-between py-1 border-b border-black/5">
                     <span className="text-black/60">Media Sales — Business {Math.round(MEDIA_BUSINESS_CUT * 100)}%</span>
-                    <span className="font-bold">{formatCents(mediaStats.businessRevenue)}</span>
+                    <span className="font-bold">{formatCents(filteredMediaStats.businessRevenue)}</span>
                   </div>
                   {filteredPayrollData.mediaBookingsCollected > 0 && (
                     <div className="flex justify-between py-1 border-b border-black/5">
@@ -1140,9 +1200,9 @@ export default function Accounting() {
               {cancelledBookings.length > 0 && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    <StatCard icon={Calendar} label="Cancelled Sessions" value={String(cancelledBookings.length)} />
-                    <StatCard icon={DollarSign} label="Deposits on Cancellations (collected)" value={formatCents(cancelledBookings.reduce((s, b) => s + (b.actual_deposit_paid || 0), 0))} />
-                    <StatCard icon={DollarSign} label="Total Kept from Cancelled" value={formatCents(cancelledBookings.filter((b) => b.deposit_kept).reduce((s, b) => s + (b.actual_deposit_paid || 0), 0))} accent />
+                    <StatCard icon={Calendar} label="Cancelled Sessions" value={String(filteredCancelledBookings.length)} />
+                    <StatCard icon={DollarSign} label="Deposits on Cancellations (collected)" value={formatCents(filteredCancelledBookings.reduce((s, b) => s + (b.actual_deposit_paid || 0), 0))} />
+                    <StatCard icon={DollarSign} label="Total Kept from Cancelled" value={formatCents(filteredCancelledBookings.filter((b) => b.deposit_kept).reduce((s, b) => s + (b.actual_deposit_paid || 0), 0))} accent />
                   </div>
 
                   {/* Per-booking Keep Deposit control. A cancelled deposit only counts
