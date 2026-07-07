@@ -50,6 +50,7 @@ import {
   SESSION_KIND_LABELS,
 } from '@/lib/media-scheduling';
 import { buildDefaultContractTerms } from '@/lib/media-contract-terms';
+import type { ContractPackageOption } from '@/lib/media-contract-packages';
 
 // ── Offering option (subset of the admin offerings GET payload) ──────────
 interface OfferingComponentSlot {
@@ -130,6 +131,9 @@ export default function ContractBuilder({
   const [offerings, setOfferings] = useState<OfferingOption[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [optionsError, setOptionsError] = useState<string | null>(null);
+  // "Start from a package" presets (templates + catalog packages, normalized)
+  const [packageOptions, setPackageOptions] = useState<ContractPackageOption[]>([]);
+  const [startedFromPackage, setStartedFromPackage] = useState<string>('');
 
   // ── Section 1: client ──────────────────────────────────────────────
   const [userId, setUserId] = useState('');
@@ -202,6 +206,21 @@ export default function ContractBuilder({
             (o: { is_active?: boolean }) => o.is_active !== false,
           ),
         );
+        // Package presets for "Start from a package" — non-fatal if it fails;
+        // the builder still works without them.
+        try {
+          const pkgsRes = await fetch('/api/admin/media/contract-packages', {
+            cache: 'no-store',
+          });
+          if (pkgsRes.ok) {
+            const pkgData = await pkgsRes.json();
+            if (!cancelled) {
+              setPackageOptions(Array.isArray(pkgData.options) ? pkgData.options : []);
+            }
+          }
+        } catch {
+          /* builder works without presets */
+        }
       } catch (e) {
         console.error('[contract-builder] load options error:', e);
         if (!cancelled) setOptionsError('Could not load artists or offerings.');
@@ -692,7 +711,7 @@ export default function ContractBuilder({
                   </Field>
                 )}
 
-                <Field label="Offering">
+                <Field label="Offering (category)">
                   <select
                     value={offeringId}
                     onChange={(e) => {
@@ -700,14 +719,16 @@ export default function ContractBuilder({
                     }}
                     className={inputCls}
                   >
-                    <option value="">— Pick an offering —</option>
+                    <option value="">— Pick a category —</option>
                     {offerings.map((o) => (
                       <option key={o.id} value={o.id}>
                         {o.title}
-                        {o.price_cents != null ? ` · ${formatCents(o.price_cents)}` : ' · (inquiry)'}
                       </option>
                     ))}
                   </select>
+                  <p className="font-mono text-[11px] text-black/50 mt-1">
+                    Category only — the total comes from the deliverables you price below.
+                  </p>
                 </Field>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -906,6 +927,53 @@ export default function ContractBuilder({
                   add-on (it carries the &ldquo;subject to SD socials
                   collaboration&rdquo; clause).
                 </p>
+
+                {/* Start from a package — loads a template or catalog package's
+                    items as editable rows (set your own price on each). */}
+                {packageOptions.length > 0 && (
+                  <div className="border-2 border-black/10 p-3">
+                    <label className="block font-mono text-[10px] uppercase tracking-wider text-black/50 mb-1">
+                      Start from a package (optional)
+                    </label>
+                    <select
+                      value={startedFromPackage}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setStartedFromPackage(id);
+                        if (!id) return;
+                        const opt = packageOptions.find(
+                          (p) => `${p.source}:${p.id}` === id,
+                        );
+                        if (!opt) return;
+                        setDeliverables(
+                          opt.lines.map((nl) => ({
+                            kind: nl.kind,
+                            label: nl.label,
+                            qty: String(nl.qty),
+                            unitDollars: nl.unit_cents
+                              ? (nl.unit_cents / 100).toFixed(2)
+                              : '',
+                            source_slot_key: nl.source_slot_key,
+                            notes: nl.notes,
+                            is_free_addon: false,
+                          })),
+                        );
+                      }}
+                      className={inputCls}
+                    >
+                      <option value="">— Build from scratch —</option>
+                      {packageOptions.map((p) => (
+                        <option key={`${p.source}:${p.id}`} value={`${p.source}:${p.id}`}>
+                          {p.name} ({p.source === 'template' ? 'package' : 'catalog'})
+                        </option>
+                      ))}
+                    </select>
+                    <p className="font-mono text-[11px] text-black/50 mt-1">
+                      Loads the package&apos;s items as editable rows — set your own
+                      price on each. Replaces the current deliverables.
+                    </p>
+                  </div>
+                )}
 
                 {/* Slot quick-add chips from the selected offering */}
                 {offeringSlots.length > 0 && (
