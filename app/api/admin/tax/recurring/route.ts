@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import { normalizeCategory } from '@/lib/tax';
+import { backfillRecurringTemplate } from '@/lib/tax-recurring-server';
 
 async function requireAdmin() {
   const user = await getSessionUser();
@@ -32,17 +33,51 @@ export async function POST(request: NextRequest) {
   const label = String(body.label || '').trim();
   const amountCents = Math.round(Number(body.amount_cents));
   const dayOfMonth = Math.round(Number(body.day_of_month ?? 1));
+  const category = normalizeCategory(body.category as string);
+  const vendor = body.vendor ? String(body.vendor) : null;
   if (!label) return NextResponse.json({ error: 'Label required' }, { status: 400 });
   if (!Number.isFinite(amountCents) || amountCents <= 0) return NextResponse.json({ error: 'Amount must be positive' }, { status: 400 });
   if (!(dayOfMonth >= 1 && dayOfMonth <= 28)) return NextResponse.json({ error: 'Day must be 1–28' }, { status: 400 });
 
-  const { data, error } = await createServiceClient().from('recurring_expense_templates').insert({
-    studio_id: null, label, category: normalizeCategory(body.category as string),
-    amount_cents: amountCents, vendor: body.vendor ? String(body.vendor) : null,
+  // Optional start month ('YYYY-MM') — the month the monthly expense begins.
+  // Defaults to the current month. We backfill business_expenses rows from this
+  // month through the current month immediately (so it shows in the P&L now and
+  // applies "from that time forward"); the cron continues future months.
+  const now = new Date();
+  const curPeriod = now.toISOString().slice(0, 7);
+  const rawStart = String(body.start_period || '').slice(0, 7);
+  const startPeriod = /^\d{4}-\d{2}$/.test(rawStart) && rawStart <= curPeriod ? rawStart : curPeriod;
+
+  const db = createServiceClient();
+  const { data, error } = await db.from('recurring_expense_templates').insert({
+    studio_id: null, label, category,
+    amount_cents: amountCents, vendor,
     day_of_month: dayOfMonth, active: true, created_by: g.user!.id,
   } as never).select('id').single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true, id: (data as { id: string }).id });
+  const id = (data as { id: string }).id;
+
+  // Backfill from the start month → now (idempotent), then stamp
+  // last_materialized_period so the cron picks up from next month without
+  // re-creating the current one.
+  let created = 0;
+  try {
+    const res = await backfillRecurringTemplate(
+      db,
+      { id, category, label, amount_cents: amountCents, vendor, day_of_month: dayOfMonth, created_by: g.user!.id },
+      startPeriod,
+      now,
+    );
+    created = res.created;
+    await db.from('recurring_expense_templates')
+      .update({ last_materialized_period: curPeriod } as never)
+      .eq('id', id);
+  } catch (e) {
+    console.error('[tax/recurring POST] backfill failed:', e);
+    // Template still exists; the cron will materialize going forward.
+  }
+
+  return NextResponse.json({ success: true, id, backfilled: created });
 }
 
 export async function PATCH(request: NextRequest) {

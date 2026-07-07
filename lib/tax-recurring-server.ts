@@ -7,6 +7,65 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Client = SupabaseClient<any, any, any>;
 
+/** Inclusive list of 'YYYY-MM' periods from start→end (capped at 24 to avoid
+ *  runaway backfills). Returns [] if start is after end. */
+export function monthsInclusive(startPeriod: string, endPeriod: string, cap = 24): string[] {
+  const parse = (p: string) => {
+    const [y, m] = p.split('-').map(Number);
+    return { y, m };
+  };
+  if (!/^\d{4}-\d{2}$/.test(startPeriod) || !/^\d{4}-\d{2}$/.test(endPeriod)) return [];
+  const s = parse(startPeriod);
+  const e = parse(endPeriod);
+  const out: string[] = [];
+  let y = s.y, m = s.m;
+  while ((y < e.y || (y === e.y && m <= e.m)) && out.length < cap) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return out;
+}
+
+/**
+ * Backfill a recurring template into business_expenses for every month from
+ * `startPeriod` ('YYYY-MM') through the current month, inclusive. Idempotent:
+ * skips any month that already has a (non-deleted) row for this template, so
+ * it's safe to call alongside the cron. Used when an admin creates a monthly
+ * expense mid-stream so it applies "from that time forward" and shows up
+ * immediately in the P&L instead of waiting for the cron's day-of-month.
+ */
+export async function backfillRecurringTemplate(
+  db: Client,
+  template: { id: string; category: string; label: string; amount_cents: number; vendor: string | null; day_of_month: number | null; created_by: string | null },
+  startPeriod: string,
+  now: Date = new Date(),
+): Promise<{ created: number }> {
+  const curPeriod = now.toISOString().slice(0, 7);
+  const dd = String(template.day_of_month ?? 1).padStart(2, '0');
+  let created = 0;
+  for (const period of monthsInclusive(startPeriod, curPeriod)) {
+    const monthStart = `${period}-01`;
+    const monthEnd = `${period}-31`;
+    const { data: existing } = await db.from('business_expenses')
+      .select('id')
+      .eq('recurring_template_id', template.id)
+      .gte('incurred_on', monthStart)
+      .lte('incurred_on', monthEnd)
+      .is('deleted_at', null)
+      .limit(1);
+    if (existing && existing.length > 0) continue;
+    const { error } = await db.from('business_expenses').insert({
+      studio_id: null, category: template.category, description: template.label,
+      amount_cents: template.amount_cents, incurred_on: `${period}-${dd}`,
+      vendor: template.vendor ?? null, recurring_template_id: template.id,
+      created_by: template.created_by ?? null,
+    } as never);
+    if (!error) created++;
+  }
+  return { created };
+}
+
 export async function materializeRecurringExpenses(db: Client, now: Date = new Date()):
   Promise<{ checked: number; created: number }> {
   const period = now.toISOString().slice(0, 7);          // 'YYYY-MM'

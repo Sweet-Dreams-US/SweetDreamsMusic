@@ -5,7 +5,7 @@
 // Entry + edit + receipt upload/view + recurring templates. One system, two
 // doors — the numbers can't diverge because both read the same rows.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2, ChevronDown, Receipt, Pencil, Repeat, X } from 'lucide-react';
 import { formatCents } from '@/lib/utils';
 import { EXPENSE_CATEGORIES, EQUIPMENT_SUGGEST_CENTS, deductiblePctFor } from '@/lib/tax';
@@ -36,7 +36,22 @@ export default function TaxExpenses({ from, to, showRecurring = true, onChanged 
   const [form, setForm] = useState({ incurred_on: new Date().toISOString().slice(0, 10), amount: '', vendor: '', category: 'supplies', description: '' });
   const [receiptPath, setReceiptPath] = useState<string | null>(null);
   const [recurringOpen, setRecurringOpen] = useState(false);
-  const [tplForm, setTplForm] = useState({ label: '', amount: '', category: 'rent', vendor: '', day_of_month: '1' });
+  const [tplForm, setTplForm] = useState({ label: '', amount: '', category: 'rent', vendor: '', day_of_month: '1', start_period: from.slice(0, 7) });
+
+  // Default the one-off expense date to the period you're VIEWING (Profit tab's
+  // month picker), not always "today" — so picking May and adding an expense
+  // logs it in May. Falls back to today when the current day is in-range.
+  const defaultIncurredOn = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return today >= from && today <= to ? today : from;
+  }, [from, to]);
+  // Sync the form's date + the recurring start-month to the viewed period
+  // whenever it changes (but never stomp an in-progress edit).
+  useEffect(() => {
+    if (!editing) setForm((f) => ({ ...f, incurred_on: defaultIncurredOn }));
+    setTplForm((t) => ({ ...t, start_period: from.slice(0, 7) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultIncurredOn, from]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -115,11 +130,11 @@ export default function TaxExpenses({ from, to, showRecurring = true, onChanged 
     if (!tplForm.label.trim() || !Number.isFinite(cents) || cents <= 0) { setErr('Template needs a label + amount'); return; }
     const res = await fetch('/api/admin/tax/recurring', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label: tplForm.label, amount_cents: cents, category: tplForm.category, vendor: tplForm.vendor, day_of_month: Number(tplForm.day_of_month) }),
+      body: JSON.stringify({ label: tplForm.label, amount_cents: cents, category: tplForm.category, vendor: tplForm.vendor, day_of_month: Number(tplForm.day_of_month), start_period: tplForm.start_period }),
     });
     const j = await res.json();
     if (!res.ok) { setErr(j.error || 'Save failed'); return; }
-    setTplForm({ label: '', amount: '', category: 'rent', vendor: '', day_of_month: '1' });
+    setTplForm({ label: '', amount: '', category: 'rent', vendor: '', day_of_month: '1', start_period: from.slice(0, 7) });
     await changed();
   }
 
@@ -142,7 +157,7 @@ export default function TaxExpenses({ from, to, showRecurring = true, onChanged 
       <div className="border-2 border-accent/50 bg-accent/5 p-4">
         <p className="font-mono text-xs font-bold uppercase tracking-wider mb-3">
           {editing ? `Edit expense — ${editing.description.slice(0, 40)}` : 'Add expense'}
-          {editing && <button onClick={() => { setEditing(null); setForm({ incurred_on: new Date().toISOString().slice(0, 10), amount: '', vendor: '', category: 'supplies', description: '' }); }} className="ml-2 text-black/40 hover:text-black"><X className="w-3 h-3 inline" /></button>}
+          {editing && <button onClick={() => { setEditing(null); setForm({ incurred_on: defaultIncurredOn, amount: '', vendor: '', category: 'supplies', description: '' }); }} className="ml-2 text-black/40 hover:text-black"><X className="w-3 h-3 inline" /></button>}
         </p>
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-2">
           <input type="date" value={form.incurred_on} onChange={(e) => setForm({ ...form, incurred_on: e.target.value })} className="border-2 border-black/15 px-2 py-1.5 font-mono text-xs focus:border-accent focus:outline-none" />
@@ -190,15 +205,19 @@ export default function TaxExpenses({ from, to, showRecurring = true, onChanged 
                   <button onClick={() => removeTemplate(t.id)} className="text-black/20 hover:text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>
               ))}
-              <div className="grid grid-cols-2 md:grid-cols-6 gap-2 pt-1">
+              <div className="grid grid-cols-2 md:grid-cols-7 gap-2 pt-1">
                 <input placeholder="Label (e.g. Studio rent)" value={tplForm.label} onChange={(e) => setTplForm({ ...tplForm, label: e.target.value })} className="border-2 border-black/15 px-2 py-1.5 font-mono text-xs focus:border-accent focus:outline-none md:col-span-2" />
                 <input inputMode="decimal" placeholder="$/month" value={tplForm.amount} onChange={(e) => setTplForm({ ...tplForm, amount: e.target.value })} className="border-2 border-black/15 px-2 py-1.5 font-mono text-xs focus:border-accent focus:outline-none" />
                 <select value={tplForm.category} onChange={(e) => setTplForm({ ...tplForm, category: e.target.value })} className="border-2 border-black/15 px-2 py-1.5 font-mono text-xs focus:border-accent focus:outline-none">
                   {EXPENSE_CATEGORIES.filter((c) => c.key !== 'contract_labor').map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
                 </select>
-                <input placeholder="Day (1–28)" inputMode="numeric" value={tplForm.day_of_month} onChange={(e) => setTplForm({ ...tplForm, day_of_month: e.target.value })} className="border-2 border-black/15 px-2 py-1.5 font-mono text-xs focus:border-accent focus:outline-none" />
+                <input placeholder="Day (1–28)" inputMode="numeric" value={tplForm.day_of_month} onChange={(e) => setTplForm({ ...tplForm, day_of_month: e.target.value })} className="border-2 border-black/15 px-2 py-1.5 font-mono text-xs focus:border-accent focus:outline-none" title="Day of month it recurs" />
+                <input type="month" value={tplForm.start_period} onChange={(e) => setTplForm({ ...tplForm, start_period: e.target.value })} className="border-2 border-black/15 px-2 py-1.5 font-mono text-xs focus:border-accent focus:outline-none" title="Start month — backfilled from here through now" />
                 <button onClick={addTemplate} className="bg-black text-white font-mono text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 hover:bg-black/80">Add monthly</button>
               </div>
+              <p className="font-mono text-[10px] text-black/40 pt-1">
+                Logged for every month from the <span className="font-bold">start month</span> through now (shows in the P&amp;L immediately), then automatically each month going forward.
+              </p>
             </div>
           )}
         </div>
