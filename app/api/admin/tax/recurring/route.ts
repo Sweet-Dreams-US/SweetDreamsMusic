@@ -98,9 +98,31 @@ export async function PATCH(request: NextRequest) {
   if (body.vendor != null) updates.vendor = body.vendor === '' ? null : String(body.vendor);
   if (body.category != null) updates.category = normalizeCategory(body.category as string);
   if (Object.keys(updates).length === 0) return NextResponse.json({ error: 'No fields' }, { status: 400 });
-  const { error } = await createServiceClient().from('recurring_expense_templates').update(updates as never).eq('id', id);
+  const db = createServiceClient();
+  const { error } = await db.from('recurring_expense_templates').update(updates as never).eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true });
+
+  // Propagate the DEFINITIONAL fields (category, name, vendor) to every already-
+  // materialized month for this template, so editing e.g. the category reclassifies
+  // all its business_expenses rows — not just future ones. Amount is intentionally
+  // NOT propagated: past months may have legitimately had a different amount
+  // (a rate change), and silently rewriting historical dollar figures is unsafe.
+  // `active` is a scheduling flag, so it's excluded too.
+  const rowUpdates: Record<string, unknown> = {};
+  if ('category' in updates) rowUpdates.category = updates.category;
+  if ('label' in updates) rowUpdates.description = updates.label;
+  if ('vendor' in updates) rowUpdates.vendor = updates.vendor;
+  let propagated = 0;
+  if (Object.keys(rowUpdates).length > 0) {
+    const { data: rows, error: propErr } = await db.from('business_expenses')
+      .update(rowUpdates as never)
+      .eq('recurring_template_id', id)
+      .is('deleted_at', null)
+      .select('id');
+    if (propErr) return NextResponse.json({ error: propErr.message }, { status: 500 });
+    propagated = rows?.length ?? 0;
+  }
+  return NextResponse.json({ success: true, propagated });
 }
 
 export async function DELETE(request: NextRequest) {
