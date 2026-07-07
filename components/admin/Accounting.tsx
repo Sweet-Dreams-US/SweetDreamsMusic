@@ -903,6 +903,17 @@ export default function Accounting() {
       .filter(p => p.created_at >= periodStartStr && p.created_at <= periodEndStr)
       .reduce((s, p) => s + p.amount, 0);
 
+    // Per-person payouts within the selected period — powers the period-scoped
+    // "Owed (this period)" number (period earned − period paid). Separate from
+    // normalizedPayouts (all-time) so the two live side by side.
+    const normalizedPeriodPayouts: Record<string, number> = {};
+    payouts
+      .filter(p => p.created_at >= periodStartStr && p.created_at <= periodEndStr)
+      .forEach(p => {
+        const nm = normalizeName(p.person_name) || p.person_name;
+        normalizedPeriodPayouts[nm] = (normalizedPeriodPayouts[nm] || 0) + p.amount;
+      });
+
     // Build combined entries: all people who have either all-time earnings,
     // current period earnings, OR pending activity this period
     const allNames = new Set([
@@ -915,7 +926,7 @@ export default function Accounting() {
     ]);
     const initEmpty = (): PersonEarnings => ({ sessionCount: 0, sessionRevenue: 0, sessionPay: 0, sessionHours: 0, mediaCommission: 0, mediaSoldCount: 0, mediaWorkerPay: 0, mediaFilmedCount: 0, mediaEditedCount: 0, beatSales: 0, beatProducerPay: 0, beatCount: 0, packageCommission: 0, packageSoldCount: 0, mediaManagerPay: 0, mediaManagedCount: 0, rewardsCost: 0, bonusPay: 0, bonusCount: 0, totalPay: 0 });
     type PeriodPending = { count: number; potentialPay: number; hours: number };
-    const entries: [string, PersonEarnings & { allTimeTotal: number; allTimePaid: number; balance: number; periodTotal: number; allTimeData: PersonEarnings; periodPending: PeriodPending }][] = [];
+    const entries: [string, PersonEarnings & { allTimeTotal: number; allTimePaid: number; balance: number; periodTotal: number; periodPaid: number; periodOwed: number; allTimeData: PersonEarnings; periodPending: PeriodPending }][] = [];
 
     for (const name of allNames) {
       const allTime = allTimePeople[name] || initEmpty();
@@ -924,17 +935,25 @@ export default function Accounting() {
       const allTimeTotal = allTime.totalPay;
       const balance = Math.max(0, allTimeTotal - allTimePaid);
       const periodTotal = period?.totalPay || 0;
+      // Period-scoped owed = what they earned this period minus what they were
+      // paid this period. This is the "What We Owe" number that tracks the
+      // selected pay period (Cole's request); the all-time `balance` above is
+      // kept as the running lifetime figure.
+      const periodPaid = normalizedPeriodPayouts[name] || 0;
+      const periodOwed = Math.max(0, periodTotal - periodPaid);
       const periodPending = pendingByEngineer[name] || { count: 0, potentialPay: 0, hours: 0 };
 
       // Use period data for "this period" display, store allTime separately for full breakdown
       const display = period || allTime;
 
-      entries.push([name, { ...display, allTimeTotal, allTimePaid, balance, periodTotal, allTimeData: allTime, periodPending }]);
+      entries.push([name, { ...display, allTimeTotal, allTimePaid, balance, periodTotal, periodPaid, periodOwed, allTimeData: allTime, periodPending }]);
     }
 
-    // Sort by balance owed (most owed first), then by pending count so
-    // engineers with upcoming sessions-to-complete surface above idle zeros
+    // Sort by owed-this-period (most owed first — the pay-now list), then
+    // all-time balance, then pending count so engineers with upcoming
+    // sessions-to-complete surface above idle zeros.
     entries.sort((a, b) => {
+      if (b[1].periodOwed !== a[1].periodOwed) return b[1].periodOwed - a[1].periodOwed;
       if (b[1].balance !== a[1].balance) return b[1].balance - a[1].balance;
       if (b[1].periodTotal !== a[1].periodTotal) return b[1].periodTotal - a[1].periodTotal;
       if (b[1].periodPending.count !== a[1].periodPending.count) return b[1].periodPending.count - a[1].periodPending.count;
@@ -948,6 +967,9 @@ export default function Accounting() {
 
     const totalPayroll = entries.reduce((s, [, d]) => s + d.allTimeTotal, 0);
     const totalPaid = Object.values(normalizedPayouts).reduce((s, v) => s + v, 0);
+    // Period-scoped totals for the "What We Owe" header.
+    const totalPeriodOwed = entries.reduce((s, [, d]) => s + d.periodOwed, 0);
+    const totalPeriodEarned = entries.reduce((s, [, d]) => s + d.periodTotal, 0);
 
     // Business keeps (all-time)
     const allTimeSessionRevenue = allTimeBookings.reduce((s, b) => s + b.total_amount, 0);
@@ -963,7 +985,7 @@ export default function Accounting() {
       totalPayroll, totalPaid, normalizedPayouts,
       totalGrossRevenue, businessKeeps, keptDeposits,
       periodLabel, periodStart: periodStartStr, periodEnd: periodEndStr,
-      periodPayoutTotal,
+      periodPayoutTotal, totalPeriodOwed, totalPeriodEarned,
     };
   }, [allTimeBookings, allTimeMediaSales, allTimeBeatPurchases, allTimeCancelledBookings, allTimeMediaSessions, allTimePackageCommissions, allTimeRewardBonuses, engineerNameMap, payouts, payPeriods, payrollPeriodIndex, mediaManagerJobs, payableStaff]);
 
@@ -1402,8 +1424,11 @@ export default function Accounting() {
                     </select>
                   </div>
                   <div className="text-right">
-                    <p className="font-mono text-[10px] text-black/40 uppercase tracking-wider">Total Owed (All Time)</p>
-                    <p className="font-mono text-2xl font-bold text-red-600">{formatCents(Math.max(0, payrollData.totalPayroll - payrollData.totalPaid))}</p>
+                    <p className="font-mono text-[10px] text-black/40 uppercase tracking-wider">Owed This Period</p>
+                    <p className="font-mono text-2xl font-bold text-red-600">{formatCents(payrollData.totalPeriodOwed)}</p>
+                    <p className="font-mono text-[10px] text-black/40 mt-0.5">
+                      All-time balance: {formatCents(Math.max(0, payrollData.totalPayroll - payrollData.totalPaid))}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1433,9 +1458,10 @@ export default function Accounting() {
                         <th className="text-left font-mono text-[10px] text-black/60 uppercase tracking-wider py-2">Person</th>
                         <th className="text-right font-mono text-[10px] text-black/60 uppercase tracking-wider py-2">This Period</th>
                         <th className="text-right font-mono text-[10px] text-black/60 uppercase tracking-wider py-2">Pending (period)</th>
+                        <th className="text-right font-mono text-[10px] text-red-600/80 uppercase tracking-wider py-2 border-l-2 border-black/10">Owed (Period)</th>
                         <th className="text-right font-mono text-[10px] text-black/60 uppercase tracking-wider py-2 border-l border-black/10">All-Time Earned</th>
                         <th className="text-right font-mono text-[10px] text-black/60 uppercase tracking-wider py-2">All-Time Paid</th>
-                        <th className="text-right font-mono text-[10px] text-black/60 uppercase tracking-wider py-2 border-l-2 border-black/10">Balance Owed</th>
+                        <th className="text-right font-mono text-[10px] text-black/60 uppercase tracking-wider py-2 border-l border-black/10">All-Time Balance</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1454,6 +1480,9 @@ export default function Accounting() {
                             ) : (
                               <span className="text-black/30">—</span>
                             )}
+                          </td>
+                          <td className={`font-mono text-sm text-right font-bold border-l-2 border-black/10 ${data.periodOwed > 0 ? 'text-red-600' : 'text-black/30'}`}>
+                            {data.periodOwed > 0 ? formatCents(data.periodOwed) : '—'}
                           </td>
                           <td className="font-mono text-sm text-right border-l border-black/10">
                             {formatCents(data.allTimeTotal)}
