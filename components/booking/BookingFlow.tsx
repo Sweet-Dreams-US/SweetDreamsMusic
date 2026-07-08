@@ -197,13 +197,14 @@ export default function BookingFlow({
   }, [isBandMode, cfg, bandCfg, duration, startHour, isSameDayBooking, guestCount, sweetSpotAddon, sweetSpotFilmingDay]);
 
   // ── Free studio hour discount (display + submit) ───────────────────────
-  // Mirrors /api/booking/create + lib/credit-redemption-pricing: a free hour is a
-  // FLAT $50 (FREE_HOUR_VALUE_CENTS) regardless of room/duration, capped at the
-  // session total so surcharges are always paid. Solo only. The SERVER re-computes
-  // + re-validates this against the live credit; this is preview math, kept
-  // identical so the displayed total/deposit match what's charged.
+  // Mirrors /api/booking/create + lib/credit-redemption-pricing. A 1-HOUR session
+  // redeemed with a free hour is fully free on the base — the credit covers the
+  // whole single studio hour (single-hour rate), so only surcharges remain (no
+  // leftover $10). 2+ hour sessions keep the flat $50 (FREE_HOUR_VALUE_CENTS).
+  // Capped at the session total. Solo only. The SERVER re-computes + re-validates
+  // against the live credit; this is preview math, kept identical to the charge.
   const freeHourActive = freeHourEligible && applyFreeHour;
-  const freeHourApplicableRate = FREE_HOUR_VALUE_CENTS;
+  const freeHourApplicableRate = duration === 1 ? pricing.subtotal : FREE_HOUR_VALUE_CENTS;
   const freeHourDiscount = freeHourActive
     ? Math.min(freeHourApplicableRate, pricing.total)
     : 0;

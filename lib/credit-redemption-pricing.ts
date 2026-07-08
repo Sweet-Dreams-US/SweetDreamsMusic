@@ -28,16 +28,17 @@
 // the cents math, and is covered by scripts/credit-redemption-pricing-selfcheck.ts
 // which proves the four worked examples below.
 //
-// Worked examples (studio_b; cents; 1 credit hour):
-//   1. 1hr, 11pm (late), same-day → total 8000 (6000+1000+1000), discount 5000,
-//      amountDueNow 3000, remainder 0.
-//   2. 1hr, 11pm, NOT same-day     → total 7000, discount 5000, amountDueNow 2000,
+// Worked examples (studio_b; cents; 1 credit hour). 1-hour sessions: the free
+// hour covers the FULL base (6000 single-hour rate), so only surcharges remain:
+//   1. 1hr, 11pm (late), same-day → total 8000 (6000+1000+1000), discount 6000,
+//      amountDueNow 2000 (the surcharges), remainder 0.
+//   2. 1hr, 11pm, NOT same-day     → total 7000, discount 6000, amountDueNow 1000,
 //      remainder 0.
-//   3. 1hr, 2pm, not same-day, 1 guest → total 6000, discount 5000, amountDueNow 1000,
-//      remainder 0.
+//   3. 1hr, 2pm, not same-day, 1 guest (free) → total 6000, discount 6000,
+//      amountDueNow 0 → instant confirm, no Stripe.
 //   4. 3hr, 11pm, same-day → base 15000, surcharge 6000 (3×1000 late + 3×1000
-//      same-day), total 21000, deposit 10500, discount 5000, amountDueNow 5500,
-//      remainder 10500 (netTotal 16000).
+//      same-day), total 21000, deposit 10500, discount 5000 (flat $50, 2+ hrs),
+//      amountDueNow 5500, remainder 10500 (netTotal 16000).
 
 import type { StudioConfig } from '@/lib/studio-config';
 import { priceSessionFromConfig } from '@/lib/studio-config';
@@ -118,9 +119,16 @@ export function computeCreditRedemptionPricing(
     0,
     Math.min(Math.floor(creditHoursRemaining), hours),
   );
-  // A free hour is a FLAT $50 (FREE_HOUR_VALUE_CENTS) per credit hour, regardless
-  // of room or duration — NOT the booked room's hourly rate. (Cole's rule.)
-  const discount = creditHoursApplied * FREE_HOUR_VALUE_CENTS;
+  // A free hour is a FLAT $50 (FREE_HOUR_VALUE_CENTS) per credit hour for
+  // multi-hour sessions — NOT the booked room's rate. (Cole's rule.)
+  // EXCEPTION (Cole, 2026-07): a 1-HOUR session redeemed with a free hour is
+  // FULLY free on the base — the credit covers the whole single studio hour
+  // (e.g. the $60 single-hour rate), so the customer pays only surcharges and
+  // there's no leftover $10 gap. 2+ hour sessions keep the flat $50/hr value.
+  const discount =
+    hours === 1 && creditHoursApplied >= 1
+      ? Math.min(base, total)
+      : creditHoursApplied * FREE_HOUR_VALUE_CENTS;
 
   const netTotal = Math.max(0, total - discount);
 

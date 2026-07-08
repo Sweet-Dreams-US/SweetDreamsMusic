@@ -7,6 +7,7 @@ import { isSelfServeBandHours, parseTimeSlot, formatDuration } from '@/lib/utils
 import { getStudioConfig } from '@/lib/studio-config-server';
 import { priceSessionFromConfig, priceBandFromConfig } from '@/lib/studio-config';
 import { FREE_HOUR_VALUE_CENTS } from '@/lib/credit-redemption-pricing';
+import { instantConfirmFreeHourBooking } from '@/lib/free-hour-booking-server';
 import { memberHasFlag } from '@/lib/bands';
 import { getMembership } from '@/lib/bands-server';
 import { isEngineerBlocked } from '@/lib/engineer-blocks';
@@ -274,6 +275,7 @@ export async function POST(request: NextRequest) {
     // sessions excluded by design) + a personal studio_credit with >= 1 hour
     // remaining. Any failure is non-fatal → behaves exactly like today.
     let freeHourCreditId = '';
+    let freeHourCreditHoursUsed = 0;
     let freeHourDiscountCents = 0;
     if (applyFreeHour && !!sessionUser?.id && !isBandBooking) {
       try {
@@ -286,12 +288,21 @@ export async function POST(request: NextRequest) {
           .order('created_at', { ascending: true });
         const eligible = (creditRows || []).find(
           (c) => Number(c.hours_granted) - Number(c.hours_used) >= 1,
-        ) as { id: string } | undefined;
+        ) as { id: string; hours_used: number } | undefined;
         if (eligible) {
-          // A free hour is a FLAT $50 (FREE_HOUR_VALUE_CENTS) regardless of
-          // room/duration. Never discount more than the session total.
-          freeHourDiscountCents = Math.min(FREE_HOUR_VALUE_CENTS, pricing.total);
+          // A free hour discounts a FLAT $50 (FREE_HOUR_VALUE_CENTS) per hour for
+          // 2+ hour sessions — NOT the booked room's rate (Cole's rule).
+          // EXCEPTION (Cole, 2026-07): a 1-HOUR session redeemed with a free hour
+          // is FULLY free on the base — the credit covers the whole single studio
+          // hour (e.g. the $60 single-hour rate), so only surcharges remain and
+          // there's no leftover $10. Never discount more than the session total.
+          // When this nets to $0 (no surcharges) the booking is instant-confirmed
+          // below with no Stripe charge. Exactly 1 credit hour drains either way.
+          freeHourDiscountCents = Number(duration) === 1
+            ? Math.min(pricing.subtotal, pricing.total)
+            : Math.min(FREE_HOUR_VALUE_CENTS, pricing.total);
           freeHourCreditId = eligible.id;
+          freeHourCreditHoursUsed = Number(eligible.hours_used) || 0;
         }
       } catch (e) {
         console.error('[BOOKING CREATE] free-hour lookup failed (non-fatal):', e);
@@ -308,6 +319,7 @@ export async function POST(request: NextRequest) {
       // % reward path (or no discount). The free hour did not win, so it must
       // not leave any trace in the carried metadata below.
       freeHourCreditId = '';
+      freeHourCreditHoursUsed = 0;
       freeHourDiscountCents = 0;
     }
 
@@ -318,6 +330,64 @@ export async function POST(request: NextRequest) {
     const endDec = (startHour + duration) % 24;
     const endTime = `${Math.floor(endDec)}:${endDec % 1 >= 0.5 ? '30' : '00'}`;
     const roomLabel = ROOM_LABELS[room as Room] || room;
+
+    // ── Fully-free ($0) free-hour booking → instant confirm, no Stripe ────────
+    // A 1-hour free-hour session with no surcharges nets to $0. Stripe can't take
+    // a $0 charge, and this booking is otherwise created only by the payment
+    // webhook — so confirm it directly here (conflict-check → insert → drain the
+    // free hour → notify), exactly like the /dashboard/media/credits $0 path. Any
+    // booking with a dollar still due (surcharges, 2+ hr, or no free hour) falls
+    // through to the normal Stripe checkout below, byte-unchanged.
+    if (freeHourApplied && chargedTotal === 0 && freeHourCreditId) {
+      const svc = createServiceClient();
+      const startISO = `${date}T${padClockHm(startTime)}:00`;
+      const endISO = new Date(new Date(startISO).getTime() + Number(duration) * 3600000)
+        .toISOString()
+        .slice(0, 19);
+      const engineerForConfirm =
+        requestedEngineer && requestedEngineer !== 'any' ? requestedEngineer : null;
+      // Tie the booking back to the source reward grant (if the credit came from
+      // one) so accounting + a future cancel reconcile — same as the credits flow.
+      let rewardGrantId: string | null = null;
+      try {
+        const { data: srcGrant } = await svc
+          .from('reward_grants')
+          .select('id')
+          .eq('issued_ref', `studio_credits:${freeHourCreditId}`)
+          .maybeSingle();
+        rewardGrantId = (srcGrant as { id: string } | null)?.id ?? null;
+      } catch {
+        rewardGrantId = null;
+      }
+      const adminNotes = `free_hour_credit:${freeHourCreditId}${notes ? ` · ${notes}` : ''}`;
+
+      const result = await instantConfirmFreeHourBooking(svc, {
+        userId: sessionUser!.id,
+        customerName,
+        customerEmail,
+        room: room as Room,
+        engineerName: engineerForConfirm,
+        date,
+        startTime: padClockHm(startTime),
+        startISO,
+        endISO,
+        durationHours: Number(duration),
+        serviceValueCents: pricing.total,
+        guestCount,
+        creditId: freeHourCreditId,
+        creditHoursUsed: freeHourCreditHoursUsed,
+        hoursToDecrement: 1,
+        adminNotes,
+        bandId: null,
+        rewardGrantId,
+      });
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+      // No checkout — send the client straight to the success page. The success
+      // page tolerates a missing session_id (renders a generic confirmation).
+      return NextResponse.json({ url: `${SITE_URL}/book/success?free=1`, confirmed: true });
+    }
 
     // Find or create Stripe customer
     const customers = await stripe.customers.list({ email: customerEmail, limit: 1 });
