@@ -310,21 +310,15 @@ export default function BookingFlow({
     }
   }, [showStudio, showTime]);
 
-  // Step 4: Show review after time is selected
+  // Step 4: Reveal the review/summary once a start time is picked — but do NOT
+  // scroll there. The customer still needs to choose their END time, studio, and
+  // guests right in this section; auto-scrolling past those settings is exactly
+  // what made people miss steps and give up. They scroll down when ready.
   useEffect(() => {
     if (selectedTime && !showReview) {
       setShowReview(true);
-      setTimeout(() => reviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
     }
   }, [selectedTime, showReview]);
-
-  // Re-scroll to review when pricing changes
-  useEffect(() => {
-    if (showReview) {
-      setTimeout(() => reviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room, duration]);
 
   async function handleCheckout() {
     if (!selectedDate || !selectedTime || !customerName.trim()) return;
