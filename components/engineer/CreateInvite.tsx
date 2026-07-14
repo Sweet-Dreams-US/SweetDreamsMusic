@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Copy, Check, Link as LinkIcon, Search, UserPlus, X, Video, Trash2, ChevronDown, ChevronUp, Plus } from 'lucide-react';
-import { formatCents, formatTime, parseTimeSlot } from '@/lib/utils';
+import { formatCents, formatTime, parseTimeSlot, decimalToTimeStr, formatDuration } from '@/lib/utils';
 import { priceSessionFromConfig, type StudioConfig } from '@/lib/studio-config';
 
 type EngineerOpt = { name: string; displayName: string };
@@ -384,17 +384,21 @@ export default function CreateInvite({ studios, engineers }: { studios: StudioCo
       </div>
 
       <div>
-        <label className="block font-mono text-xs font-semibold uppercase tracking-wider mb-1">Duration: {duration} hours</label>
-        <div className="flex gap-2">
-          {Array.from({ length: cfg.maxHours }, (_, i) => i + 1).map((h) => (
-            <button key={h} onClick={() => setDuration(h)}
-              className={`w-12 h-12 font-mono text-sm font-bold border transition-colors ${
-                duration === h ? 'bg-black text-white border-black' : 'border-black/20 hover:border-black'
-              }`}>
-              {h}
-            </button>
+        <label className="block font-mono text-xs font-semibold uppercase tracking-wider mb-1">
+          End Time * <span className="text-black/50 normal-case">({formatDuration(duration)} session)</span>
+        </label>
+        <select value={duration} onChange={(e) => setDuration(Number(e.target.value))}
+          className="w-full border-2 border-black px-4 py-3 font-mono text-sm focus:border-accent focus:outline-none">
+          {/* 30-min steps: min 1hr, then any half-hour add-on up to the studio max. */}
+          {Array.from({ length: cfg.maxHours * 2 - 1 }, (_, i) => (i + 2) / 2).map((dur) => (
+            <option key={dur} value={dur}>
+              {formatTime(decimalToTimeStr((startHour + dur) % 24))} — {formatDuration(dur)}
+            </option>
           ))}
-        </div>
+        </select>
+        <p className="font-mono text-[10px] text-black/50 mt-1">
+          Extra half hours add {formatCents(cfg.halfHourAddCents)} each.
+        </p>
       </div>
 
       <div>
@@ -611,13 +615,13 @@ export default function CreateInvite({ studios, engineers }: { studios: StudioCo
       <div className="border-2 border-black p-4 font-mono text-sm space-y-2">
         {useCustomPrice ? (
           <div className="flex justify-between">
-            <span className="text-black/60">Custom deal — {cfg.displayName} × {duration}hr</span>
+            <span className="text-black/60">Custom deal — {cfg.displayName} · {formatDuration(duration)}</span>
             <span>{formatCents(customPriceCents)}</span>
           </div>
         ) : (
           <>
             <div className="flex justify-between text-black/60">
-              <span>{cfg.displayName} × {duration}hr @ {formatCents(duration === 1 ? cfg.singleHourRateCents : cfg.hourlyRateCents)}/hr</span>
+              <span>{cfg.displayName} · {formatDuration(duration)}{duration % 1 !== 0 ? ` (incl. +${formatCents(cfg.halfHourAddCents)} half hour)` : ''}</span>
               <span>{formatCents(pricing.subtotal)}</span>
             </div>
             {pricing.nightFees > 0 && (

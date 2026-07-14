@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Calendar, Clock, Home, User, Users, ChevronLeft, ChevronRight, AlertTriangle, Star, Music2 } from 'lucide-react';
-import { formatCents, cn, isSameDay, formatTime, parseTimeSlot, decimalToTimeStr } from '@/lib/utils';
+import { formatCents, cn, isSameDay, formatTime, parseTimeSlot, decimalToTimeStr, formatDuration } from '@/lib/utils';
 import { priceSessionFromConfig, priceBandFromConfig, hourSurchargeFromConfig, sweetSpotAddonCents, type StudioConfig } from '@/lib/studio-config';
 import { FREE_HOUR_VALUE_CENTS } from '@/lib/credit-redemption-pricing';
 import { trackMeta, centsToDollars } from '@/lib/meta-pixel';
@@ -203,6 +203,10 @@ export default function BookingFlow({
   // leftover $10). 2+ hour sessions keep the flat $50 (FREE_HOUR_VALUE_CENTS).
   // Capped at the session total. Solo only. The SERVER re-computes + re-validates
   // against the live credit; this is preview math, kept identical to the charge.
+  // Whole-hour vs trailing-half split for the price-breakdown labels (solo).
+  const wholeHours = Math.floor(duration);
+  const hasHalfHour = !isBandMode && Math.round((duration - wholeHours) * 2) === 1;
+
   const freeHourActive = freeHourEligible && applyFreeHour;
   const freeHourApplicableRate = duration === 1 ? pricing.subtotal : FREE_HOUR_VALUE_CENTS;
   const freeHourDiscount = freeHourActive
@@ -758,62 +762,84 @@ export default function BookingFlow({
           </div>
         </div>
 
-        {/* Duration */}
+        {/* Duration — band mode picks a fixed tier; solo picks an END time
+            (start is chosen above), so sessions run in clean 30-min steps
+            (min 1hr, then any half-hour add-on). */}
         <div className="mb-4">
           <h3 className="font-mono text-sm font-semibold uppercase tracking-wider mb-4">
-            Duration: {duration} hour{duration > 1 ? 's' : ''}
             {isBandMode ? (
-              <span className="text-accent ml-2 inline-flex items-center gap-1">
-                <Music2 className="w-3 h-3" /> Band Tier ({formatCents(bandTier(duration)?.priceCents || 0)})
-              </span>
+              <>
+                Duration: {duration} hour{duration > 1 ? 's' : ''}
+                <span className="text-accent ml-2 inline-flex items-center gap-1">
+                  <Music2 className="w-3 h-3" /> Band Tier ({formatCents(bandTier(duration)?.priceCents || 0)})
+                </span>
+              </>
             ) : (
               <>
+                End Time{selectedTime && ` — ${formatDuration(duration)} session`}
                 {duration === sweet4HoursFor(cfg) && (
                   <span className="text-accent ml-2 inline-flex items-center gap-1"><Star className="w-3 h-3" /> The Sweet 4!</span>
                 )}
               </>
             )}
           </h3>
-          <div className="flex flex-wrap gap-2">
-            {/* Band mode: 4 / 8 / 24 (3-day) tiers. The 24h tier renders as
-                "3 Days" with a slightly different label so the user knows
-                their pick is Day 1 of three. Solo path: 1..maxHours. */}
-            {isBandMode
-              ? BAND_DURATIONS.map((h) => {
-                  const tier = bandTier(h);
-                  const headline = h === 24 ? '3 Days' : `${h} hours`;
-                  return (
-                    <button
-                      key={h}
-                      onClick={() => setDuration(h)}
-                      className={cn(
-                        'px-5 py-4 font-mono text-left border-2 transition-colors',
-                        duration === h ? 'bg-black text-white border-black' : 'border-black/20 hover:border-black'
-                      )}
-                    >
-                      <p className="text-lg font-bold">{headline}</p>
-                      <p className={cn('text-xs mt-0.5', duration === h ? 'text-white/80' : 'text-black/60')}>
-                        {formatCents(tier?.priceCents || 0)} · {tier?.note}
-                      </p>
-                    </button>
-                  );
-                })
-              : Array.from({ length: cfg.maxHours }, (_, i) => i + 1).map((h) => (
+          {isBandMode ? (
+            <div className="flex flex-wrap gap-2">
+              {/* Band mode: 4 / 8 / 24 (3-day) tiers. The 24h tier renders as
+                  "3 Days" so the user knows their pick is Day 1 of three. */}
+              {BAND_DURATIONS.map((h) => {
+                const tier = bandTier(h);
+                const headline = h === 24 ? '3 Days' : `${h} hours`;
+                return (
                   <button
                     key={h}
                     onClick={() => setDuration(h)}
                     className={cn(
-                      'w-14 h-14 font-mono text-lg font-bold border transition-colors relative',
+                      'px-5 py-4 font-mono text-left border-2 transition-colors',
                       duration === h ? 'bg-black text-white border-black' : 'border-black/20 hover:border-black'
                     )}
                   >
-                    {h}
-                    {h === sweet4HoursFor(cfg) && duration !== h && (
-                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-accent rounded-full" />
-                    )}
+                    <p className="text-lg font-bold">{headline}</p>
+                    <p className={cn('text-xs mt-0.5', duration === h ? 'text-white/80' : 'text-black/60')}>
+                      {formatCents(tier?.priceCents || 0)} · {tier?.note}
+                    </p>
                   </button>
-                ))}
-          </div>
+                );
+              })}
+            </div>
+          ) : !selectedTime ? (
+            <p className="font-mono text-xs text-black/60">Pick a start time above to choose your end time.</p>
+          ) : (
+            <>
+              <p className="font-mono text-xs text-black/60 mb-3">
+                Minimum 1 hour. Add 30-minute blocks as needed
+                ({formatCents(cfg.halfHourAddCents)} per extra half hour).
+              </p>
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {Array.from({ length: cfg.maxHours * 2 - 1 }, (_, i) => (i + 2) / 2).map((dur) => {
+                  const endDec = (startHour + dur) % 24;
+                  const overlaps = wouldOverlap(startHour, dur);
+                  return (
+                    <button
+                      key={dur}
+                      onClick={() => !overlaps && setDuration(dur)}
+                      disabled={overlaps}
+                      className={cn(
+                        'px-2 py-3 font-mono text-xs border text-center transition-colors',
+                        overlaps && 'bg-black/10 text-black/30 border-black/10 cursor-not-allowed line-through',
+                        !overlaps && duration === dur ? 'bg-black text-white border-black' : !overlaps && 'border-black/20 hover:border-black'
+                      )}
+                    >
+                      <span className="block font-bold text-sm">{formatTime(decimalToTimeStr(endDec))}</span>
+                      <span className={cn('block text-[10px] mt-0.5', duration === dur && !overlaps ? 'text-white/80' : 'text-black/60')}>
+                        {formatDuration(dur)}{dur === sweet4HoursFor(cfg) ? ' ★' : ''}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
           {/* Band-mode 3-day notice: when the 24hr tier is selected, the
               picked date acts as Day 1 — the studio is reserved for the
@@ -974,7 +1000,7 @@ export default function BookingFlow({
             </div>
             <div className="flex justify-between">
               <span className="text-black/60">Duration</span>
-              <span className="font-semibold">{duration} hour{duration > 1 ? 's' : ''}</span>
+              <span className="font-semibold">{isBandMode ? `${duration} hour${duration > 1 ? 's' : ''}` : formatDuration(duration)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-black/60">Studio</span>
@@ -1000,11 +1026,17 @@ export default function BookingFlow({
                   ? `Band Session — ${bandTier(duration)?.label} (${bandTier(duration)?.note})`
                   : pricing.sweetSpot
                     ? `${cfg.displayName} The Sweet 4 (${duration}hr flat rate)`
-                    : `${cfg.displayName} (${duration}hr × ${formatCents(duration === 1 ? cfg.singleHourRateCents : cfg.hourlyRateCents)})`
+                    : `${cfg.displayName} (${wholeHours}hr × ${formatCents(wholeHours === 1 ? cfg.singleHourRateCents : cfg.hourlyRateCents)})`
                 }
               </span>
-              <span>{formatCents(pricing.subtotal)}</span>
+              <span>{formatCents(pricing.subtotal - (hasHalfHour ? cfg.halfHourAddCents : 0))}</span>
             </div>
+            {hasHalfHour && !pricing.sweetSpot && (
+              <div className="flex justify-between">
+                <span className="text-black/60">+ 30-minute add-on</span>
+                <span>+{formatCents(cfg.halfHourAddCents)}</span>
+              </div>
+            )}
             {pricing.sweetSpot && !isBandMode && (
               <div className="flex justify-between text-green-700">
                 <span className="flex items-center gap-1"><Star className="w-3 h-3" /> The Sweet 4 savings</span>

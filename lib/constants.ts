@@ -140,6 +140,14 @@ export const ROOM_RATES_SINGLE: Record<Room, number> = {
   studio_b: PRICING.studioBSingleHour,
 };
 
+// Flat surcharge for adding a trailing half-hour (cents). Sessions run in 30-min
+// steps (min 1hr); each extra 30 min adds this flat amount plus pro-rated
+// night/same-day/guest surcharges. Cole 2026-07: Studio A $35, Studio B $25.
+export const ROOM_RATES_HALF_HOUR: Record<Room, number> = {
+  studio_a: 3500,
+  studio_b: 2500,
+};
+
 export const ENGINEERS = [
   { name: 'PRVRB', displayName: 'PRVRB', email: 'prvrbsounds@gmail.com', specialties: ['Recording', 'Mixing & Mastering', 'Production'], studios: ['studio_a'] as Room[] },
   { name: 'Iszac Griner', displayName: 'Iszac', email: 'iisszzaacc@gmail.com', specialties: ['Recording', 'Mixing & Mastering', 'Production'], studios: ['studio_a', 'studio_b'] as Room[] },

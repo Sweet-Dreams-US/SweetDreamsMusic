@@ -130,8 +130,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Band sessions must be 4, 8, or 24 hours.' }, { status: 400 });
       }
     } else {
-      // Solo flow — unchanged bounds.
-      if (duration < PRICING.minHours || duration > PRICING.maxHours) {
+      // Solo flow — sessions run in 30-min steps: min 1hr, then any half-hour
+      // add-on up to the studio max (e.g. 1, 1.5, 2, 2.5 …). Reject anything not
+      // on a clean 0.5 boundary so a tampered POST can't smuggle 1.7h, etc.
+      const dur = Number(duration);
+      const onHalfStep = Number.isFinite(dur) && Math.abs(dur * 2 - Math.round(dur * 2)) < 1e-9;
+      if (!onHalfStep || dur < PRICING.minHours || dur > PRICING.maxHours) {
         return NextResponse.json({ error: 'Invalid duration' }, { status: 400 });
       }
     }

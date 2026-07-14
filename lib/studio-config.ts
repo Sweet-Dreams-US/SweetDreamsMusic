@@ -10,7 +10,7 @@
 // the same shape from the current constants (the seed source AND the safe fallback).
 
 import {
-  ROOM_RATES, ROOM_RATES_SINGLE, SWEET_4, BAND_PRICING, PRICING,
+  ROOM_RATES, ROOM_RATES_SINGLE, ROOM_RATES_HALF_HOUR, SWEET_4, BAND_PRICING, PRICING,
   GUEST_FEE_PER_HOUR, FREE_GUESTS, MAX_GUESTS, ROOM_LABELS, STUDIO_A_WEEKDAY_START,
   SWEET_SPOT_PRICING,
   type Room,
@@ -24,6 +24,8 @@ export interface StudioConfig {
   displayName: string;
   hourlyRateCents: number;
   singleHourRateCents: number;
+  /** Flat surcharge for a trailing half-hour add-on (cents). Studio A $35, B $25. */
+  halfHourAddCents: number;
   depositPercent: number;
   minHours: number;
   maxHours: number;
@@ -42,6 +44,8 @@ export interface StudioConfig {
 export type HourTier = 'regular' | 'lateNight' | 'deepNight';
 export interface HourBreakdownEntry {
   hour: number; baseRate: number; nightFee: number; sameDayFee: number; hourTotal: number; tier: HourTier;
+  /** True for the trailing 30-min add-on row (baseRate is the flat half-hour fee, fees pro-rated ×0.5). */
+  half?: boolean;
 }
 // Mirrors lib/utils SessionPricing exactly so priceSessionFromConfig is a
 // drop-in replacement for calculateSessionTotal (incl. the per-hour breakdown).
@@ -79,24 +83,37 @@ export function hourSurchargeFromConfig(config: StudioConfig, hour: number): { t
 }
 
 /**
- * Solo session price from config — byte-for-byte equal to calculateSessionTotal.
- * Sweet-4 when hours === the sweet_4 tier's hours; single rate at 1hr; else hourly.
- * Night + same-day surcharges stack per hour; guest fee for guests beyond free_guests.
+ * Solo session price from config. Byte-for-byte equal to calculateSessionTotal
+ * for whole-hour durations (the golden case). Sweet-4 when hours === the sweet_4
+ * tier's hours; single rate at 1 whole hour; else hourly. Night + same-day
+ * surcharges stack per hour; guest fee for guests beyond free_guests.
+ *
+ * HALF-HOUR ADD-ONS (Cole 2026-07): a session may run in 30-min steps (1.0, 1.5,
+ * 2.0, …). The base is the WHOLE hours priced as above; a trailing half-hour adds
+ * a flat halfHourAddCents ($35 Studio A / $25 Studio B) PLUS pro-rated (×0.5)
+ * night/same-day/guest surcharges for the half-hour's clock slot. `hours` must be
+ * a multiple of 0.5; a non-half value collapses to the exact whole-hour math, so
+ * existing whole-hour bookings are unchanged.
  */
 export function priceSessionFromConfig(
   config: StudioConfig,
   opts: { hours: number; startHour: number; sameDay: boolean; guests: number },
 ): SessionPriceResult {
   const { hours, startHour, sameDay, guests } = opts;
+  const wholeHours = Math.floor(hours);
+  const hasHalf = Math.round((hours - wholeHours) * 2) === 1; // exact .5 step
   const sweet4 = config.tiers.find((t) => t.kind === 'sweet_4');
   const isSweet4 = !!sweet4 && hours === sweet4.hours;
-  const basePerHour = isSweet4 ? sweet4!.perHourCents : hours === 1 ? config.singleHourRateCents : config.hourlyRateCents;
+  // A 1.5h session is "the 1-hour session + 30 min", so the single-hour rate
+  // applies at exactly one whole hour; two or more whole hours use the hourly rate.
+  const basePerHour = isSweet4 ? sweet4!.perHourCents : wholeHours === 1 ? config.singleHourRateCents : config.hourlyRateCents;
   const sameDayCents = config.surcharges.find((s) => s.kind === 'same_day')?.amountCents ?? 0;
+  const extraGuests = Math.max(0, guests - config.freeGuests);
 
   const hourBreakdown: HourBreakdownEntry[] = [];
   let nightFees = 0;
   let sameDayFee = 0;
-  for (let i = 0; i < hours; i++) {
+  for (let i = 0; i < wholeHours; i++) {
     const h = (startHour + i) % 24; // decimal hour preserved (e.g. 18.5); floored only for the surcharge lookup
     const sc = hourSurchargeFromConfig(config, h);
     const sdFee = sameDay ? sameDayCents : 0;
@@ -104,9 +121,27 @@ export function priceSessionFromConfig(
     nightFees += sc.amount;
     sameDayFee += sdFee;
   }
-  const subtotal = isSweet4 ? sweet4!.priceCents : basePerHour * hours;
-  const extraGuests = Math.max(0, guests - config.freeGuests);
-  const guestFee = extraGuests * config.guestFeeCents * hours;
+
+  let subtotal = isSweet4 ? sweet4!.priceCents : basePerHour * wholeHours;
+  // Guest fee accrues per whole hour; the half-hour adds a pro-rated half below.
+  let guestFee = extraGuests * config.guestFeeCents * wholeHours;
+
+  if (hasHalf) {
+    const h = (startHour + wholeHours) % 24; // the clock slot the extra 30 min occupies
+    const sc = hourSurchargeFromConfig(config, h);
+    const halfNight = Math.round(sc.amount * 0.5);
+    const halfSameDay = sameDay ? Math.round(sameDayCents * 0.5) : 0;
+    const halfGuest = Math.round(extraGuests * config.guestFeeCents * 0.5);
+    subtotal += config.halfHourAddCents;
+    nightFees += halfNight;
+    sameDayFee += halfSameDay;
+    guestFee += halfGuest;
+    hourBreakdown.push({
+      hour: h, baseRate: config.halfHourAddCents, nightFee: halfNight, sameDayFee: halfSameDay,
+      hourTotal: config.halfHourAddCents + halfNight + halfSameDay, tier: sc.tier, half: true,
+    });
+  }
+
   const total = subtotal + nightFees + sameDayFee + guestFee;
   const deposit = Math.round(total * (config.depositPercent / 100));
   return { subtotal, hourBreakdown, nightFees, sameDayFee, guestFee, guestCount: guests, sweetSpot: isSweet4, total, deposit };
@@ -159,6 +194,7 @@ export function studioConfigFromConstants(room: Room): StudioConfig {
     displayName: ROOM_LABELS[room],
     hourlyRateCents: ROOM_RATES[room],
     singleHourRateCents: ROOM_RATES_SINGLE[room],
+    halfHourAddCents: ROOM_RATES_HALF_HOUR[room],
     depositPercent: PRICING.depositPercent,
     minHours: PRICING.minHours,
     maxHours: PRICING.maxHours,

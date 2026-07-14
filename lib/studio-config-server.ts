@@ -21,6 +21,9 @@ function rowToConfig(s: any, tiers: any[], surcharges: any[]): StudioConfig {
     displayName: s.display_name,
     hourlyRateCents: s.hourly_rate_cents,
     singleHourRateCents: s.single_hour_rate_cents,
+    // Half-hour add-on fee. Falls back to half the hourly rate if the column is
+    // null/absent (pre-migration safety) — which equals the seeded values ($35/$25).
+    halfHourAddCents: s.half_hour_add_cents ?? Math.round(Number(s.hourly_rate_cents) / 2),
     depositPercent: s.deposit_percent,
     minHours: Number(s.min_hours),
     maxHours: Number(s.max_hours),
@@ -108,6 +111,7 @@ export async function seedStudiosFromConstants(db: Client): Promise<{ locationId
     const { data: srow } = await db.from('studio_rooms').upsert({
       location_id: locationId, slug: c.slug, display_name: c.displayName,
       hourly_rate_cents: c.hourlyRateCents, single_hour_rate_cents: c.singleHourRateCents,
+      half_hour_add_cents: c.halfHourAddCents,
       deposit_percent: c.depositPercent, min_hours: c.minHours, max_hours: c.maxHours,
       free_guests: c.freeGuests, guest_fee_cents: c.guestFeeCents, max_guests: c.maxGuests,
       weekday_start_hour: c.weekdayStartHour, open_hour: c.openHour, close_hour: c.closeHour,
