@@ -147,10 +147,21 @@ export default function Accounting() {
     Array<{ booking_id: string; amount_cents: number; status: string; paid_at: string | null }>
   >([]);
   // Media-manager pay: one entry per PAID media-booking installment, carrying the
-  // assigned manager + paid_at so payroll can slice it by pay period.
+  // assigned manager + paid_at so payroll can slice it by pay period. `mediaManagerJobs`
+  // is PERIOD-scoped (from the selected-range fetch, by paid_at) — used by the
+  // Profit/Overview period view. `allTimeMediaManagerJobs` is the ALL-TIME set (from
+  // the payroll fetch) — the Payroll tab slices IT by pay period, so a manager's cut
+  // lands in the pay period the installment was actually paid, regardless of contract date.
   const [mediaManagerJobs, setMediaManagerJobs] = useState<
     Array<{ manager_name: string | null; amount_cents: number; paid_at: string | null }>
   >([]);
+  const [allTimeMediaManagerJobs, setAllTimeMediaManagerJobs] = useState<
+    Array<{ manager_name: string | null; amount_cents: number; paid_at: string | null }>
+  >([]);
+  // Media-contract cash collected in the selected period, by installment paid_at
+  // (route-computed). Feeds the Profit/Overview "collected" revenue + the Hub
+  // Orders — Collected card. Independent of contract created_at.
+  const [mediaCollectedCents, setMediaCollectedCents] = useState(0);
   // Active staff roster (engineers + media managers) so the payroll tab lists
   // every staffer — and lets you pay them — even with no earnings this period.
   const [payableStaff, setPayableStaff] = useState<string[]>([]);
@@ -275,6 +286,9 @@ export default function Accounting() {
     setAllTimeMediaSessions(data.mediaSessions || []);
     setAllTimePackageCommissions(data.packageCommissions || []);
     setAllTimeRewardBonuses(data.rewardBonuses || []);
+    // All-time media-manager jobs (by paid_at) — the Payroll tab slices these by
+    // pay period, so a June contract's July payment pays the manager in July.
+    setAllTimeMediaManagerJobs(data.mediaManagerJobs || []);
     setEngineerNameMap(data.engineerNameMap || {});
     setPayouts(payoutsData.payouts || []);
     setCashLedger(cashData.entries || []);
@@ -299,6 +313,7 @@ export default function Accounting() {
     setMediaBookings(data.mediaBookings || []);
     setMediaInstallments(data.mediaInstallments || []);
     setMediaManagerJobs(data.mediaManagerJobs || []);
+    setMediaCollectedCents(data.mediaCollectedCents || 0);
     setPayableStaff(data.payableStaff || []);
     setMediaOfferingMap(data.mediaOfferingMap || {});
     setBandMap(data.bandMap || {});
@@ -676,21 +691,27 @@ export default function Accounting() {
   );
 
   const filteredMediaBookingStats = useMemo(() => {
+    // paidByBooking = all-time paid per contract — used ONLY for the point-in-time
+    // "outstanding" figure (price − paid-to-date on contracts not fully paid).
     const paidByBooking: Record<string, number> = {};
     for (const inst of mediaInstallments) {
       if (inst.status !== 'paid') continue;
       paidByBooking[inst.booking_id] = (paidByBooking[inst.booking_id] || 0) + (inst.amount_cents || 0);
     }
-    let revenue = 0, collected = 0, outstanding = 0;
+    let revenue = 0, outstanding = 0;
     for (const b of filteredMediaBookings) {
       const price = b.final_price_cents ?? 0;
       const paid = paidByBooking[b.id] !== undefined ? paidByBooking[b.id] : (b.actual_deposit_paid ?? 0);
-      revenue += price;
-      collected += paid;
+      revenue += price;                                    // "booked" — by contract date
       if (!b.final_paid_at) outstanding += Math.max(0, price - paid);
     }
+    // COLLECTED = cash received IN THE PERIOD, by installment paid_at (route-computed),
+    // NOT summed over contracts created in the period. So a June contract's July
+    // payment counts in July. Hub contracts have no per-engineer attribution, so a
+    // specific engineer's collected is $0 (matches the prior engineer-filter behavior).
+    const collected = engineerFilter === 'all' ? mediaCollectedCents : 0;
     return { total: filteredMediaBookings.length, revenue, collected, outstanding };
-  }, [filteredMediaBookings, mediaInstallments]);
+  }, [filteredMediaBookings, mediaInstallments, engineerFilter, mediaCollectedCents]);
 
   const filteredCancelledBookings = useMemo(() => {
     if (engineerFilter === 'all') return cancelledBookings;
@@ -834,7 +855,7 @@ export default function Accounting() {
       engineerNameMap,
       allTimePackageCommissions,
       allTimeRewardBonuses,
-      mediaManagerJobs,
+      allTimeMediaManagerJobs,
     );
 
     // All-time payouts by person (normalized)
@@ -877,7 +898,7 @@ export default function Accounting() {
       engineerNameMap,
       periodPackageCommissions,
       periodRewardBonuses,
-      mediaManagerJobs.filter((j) => j.paid_at && j.paid_at >= periodStartStr && j.paid_at <= periodEndStr),
+      allTimeMediaManagerJobs.filter((j) => j.paid_at && j.paid_at >= periodStartStr && j.paid_at <= periodEndStr),
     );
 
     // Pending sessions this period — bookings scheduled within the period that
@@ -987,7 +1008,7 @@ export default function Accounting() {
       periodLabel, periodStart: periodStartStr, periodEnd: periodEndStr,
       periodPayoutTotal, totalPeriodOwed, totalPeriodEarned,
     };
-  }, [allTimeBookings, allTimeMediaSales, allTimeBeatPurchases, allTimeCancelledBookings, allTimeMediaSessions, allTimePackageCommissions, allTimeRewardBonuses, engineerNameMap, payouts, payPeriods, payrollPeriodIndex, mediaManagerJobs, payableStaff]);
+  }, [allTimeBookings, allTimeMediaSales, allTimeBeatPurchases, allTimeCancelledBookings, allTimeMediaSessions, allTimePackageCommissions, allTimeRewardBonuses, engineerNameMap, payouts, payPeriods, payrollPeriodIndex, allTimeMediaManagerJobs, payableStaff]);
 
   // Payroll figure for the Overview — EXACT, not an estimate. Runs the same
   // earnings engine the Payroll tab pays from (per-row snapshot splits, the
@@ -1679,7 +1700,7 @@ export default function Accounting() {
 
                         // Media-manager pay this period — the assigned manager's % of
                         // collected media-booking installments (sliced by paid_at).
-                        const personManagerJobs = mediaManagerJobs
+                        const personManagerJobs = allTimeMediaManagerJobs
                           .filter((j) => normalizeName(j.manager_name) === name && j.paid_at && j.paid_at >= ps && j.paid_at <= pe);
                         const managerTotal = personManagerJobs.reduce((s, j) => s + Math.round(j.amount_cents * MEDIA_MANAGER_PCT), 0);
 

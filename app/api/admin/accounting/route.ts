@@ -129,17 +129,54 @@ export async function GET(request: NextRequest) {
     mediaInstallments = (insts as typeof mediaInstallments) || [];
   }
 
+  // ── Collected-cash basis (Cole 2026-07): recognize media-contract cash by each
+  // installment's PAYMENT date (paid_at), NOT the contract's created_at. So a
+  // June contract paid across June + July counts its July payments in July. This
+  // is INDEPENDENT of the created_at-scoped mediaBookings above (which remain the
+  // basis for "booked" revenue + outstanding). Test/cancelled contracts excluded.
+  let paidInPeriod: Array<{ booking_id: string; amount_cents: number; paid_at: string }> = [];
+  {
+    let q = admin
+      .from('media_payment_installments')
+      .select('booking_id, amount_cents, paid_at')
+      .eq('status', 'paid');
+    if (from) q = q.gte('paid_at', from);
+    if (to) q = q.lte('paid_at', `${to}T23:59:59`);
+    const { data: pins } = await q;
+    paidInPeriod = (pins as typeof paidInPeriod) || [];
+  }
+  // Keep only installments whose parent contract is real (non-test, non-cancelled).
+  const paidInPeriodBookingIds = Array.from(new Set(paidInPeriod.map((i) => i.booking_id)));
+  const validCollectedBookingIds = new Set<string>();
+  if (paidInPeriodBookingIds.length > 0) {
+    const { data: pbooks } = await admin
+      .from('media_bookings')
+      .select('id')
+      .in('id', paidInPeriodBookingIds)
+      .eq('is_test', false)
+      .not('status', 'eq', 'cancelled');
+    for (const b of (pbooks || []) as Array<{ id: string }>) validCollectedBookingIds.add(b.id);
+  }
+  const paidInPeriodValid = paidInPeriod.filter((i) => validCollectedBookingIds.has(i.booking_id));
+  // Total media-contract cash collected in the period (by paid_at). Feeds the
+  // Profit/Overview "collected" revenue + the Hub Orders — Collected card.
+  const mediaCollectedCents = paidInPeriodValid.reduce((s, i) => s + (i.amount_cents || 0), 0);
+
   // Media MANAGER pay: the person who runs a media contract
   // (media_session_bookings.media_manager_id) earns a % of what's COLLECTED on it.
   // Resolve each booking's manager, then emit one entry per PAID installment
   // (carrying paid_at) so payroll can slice it by pay period like every other
-  // earning. Studio keeps the rest.
+  // earning. Studio keeps the rest. Manager pay is recognized by paid_at (the
+  // paidInPeriodValid set), matching the collected-cash basis above.
   const managerByBooking: Record<string, string> = {};
-  if (mediaBookingIds.length > 0) {
+  // Resolve managers for BOTH the created_at bookings (booked/outstanding cards)
+  // AND the paid-in-period contracts (manager pay, by paid_at).
+  const managerLookupIds = Array.from(new Set([...mediaBookingIds, ...validCollectedBookingIds]));
+  if (managerLookupIds.length > 0) {
     const { data: msessions } = await admin
       .from('media_session_bookings')
       .select('parent_booking_id, media_manager_id, confirmed_at')
-      .in('parent_booking_id', mediaBookingIds)
+      .in('parent_booking_id', managerLookupIds)
       .not('media_manager_id', 'is', null);
     for (const s of (msessions || []) as Array<{ parent_booking_id: string; media_manager_id: string }>) {
       if (s.parent_booking_id && !managerByBooking[s.parent_booking_id]) {
@@ -160,11 +197,11 @@ export async function GET(request: NextRequest) {
       managerNameMap[p.user_id] = roster?.name || p.display_name || 'Unknown';
     }
   }
-  const mediaManagerJobs = mediaInstallments
+  const mediaManagerJobs = paidInPeriodValid
     .map((i) => {
       const mgrId = managerByBooking[i.booking_id];
       if (!mgrId) return null;
-      return { manager_name: managerNameMap[mgrId] || null, amount_cents: i.amount_cents, paid_at: i.paid_at };
+      return { manager_name: managerNameMap[mgrId] || null, amount_cents: i.amount_cents, paid_at: i.paid_at as string | null };
     })
     .filter((x): x is { manager_name: string | null; amount_cents: number; paid_at: string | null } => x !== null);
 
@@ -302,6 +339,7 @@ export async function GET(request: NextRequest) {
     mediaBookings: mediaBookings || [],
     mediaInstallments,
     mediaManagerJobs,
+    mediaCollectedCents,
     packageCommissions: packageCommissions || [],
     rewardBonuses,
     payableStaff,
