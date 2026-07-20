@@ -162,6 +162,10 @@ export default function Accounting() {
   // (route-computed). Feeds the Profit/Overview "collected" revenue + the Hub
   // Orders — Collected card. Independent of contract created_at.
   const [mediaCollectedCents, setMediaCollectedCents] = useState(0);
+  // All-time media-contract cash collected (from the no-filter payroll fetch). The
+  // Payroll tab's all-time "Business Keeps" folds this into gross so it offsets the
+  // all-time media-manager pay that now sits in totalPayroll (mirrors the Profit tab).
+  const [allTimeMediaCollectedCents, setAllTimeMediaCollectedCents] = useState(0);
   // Active staff roster (engineers + media managers) so the payroll tab lists
   // every staffer — and lets you pay them — even with no earnings this period.
   const [payableStaff, setPayableStaff] = useState<string[]>([]);
@@ -289,6 +293,8 @@ export default function Accounting() {
     // All-time media-manager jobs (by paid_at) — the Payroll tab slices these by
     // pay period, so a June contract's July payment pays the manager in July.
     setAllTimeMediaManagerJobs(data.mediaManagerJobs || []);
+    // All-time media-contract cash (no date filter → route returns lifetime total).
+    setAllTimeMediaCollectedCents(data.mediaCollectedCents || 0);
     setEngineerNameMap(data.engineerNameMap || {});
     setPayouts(payoutsData.payouts || []);
     setCashLedger(cashData.entries || []);
@@ -622,7 +628,6 @@ export default function Accounting() {
 
     const total = mediaBookings.length;
     let revenue = 0;
-    let collected = 0;
     let outstanding = 0;
     let depositsCount = 0;
     let fullyPaidCount = 0;
@@ -638,7 +643,6 @@ export default function Accounting() {
         ? paidByBooking[b.id]
         : (b.actual_deposit_paid ?? 0);
       revenue += price;
-      collected += paid;
       const owed = Math.max(0, price - paid);
       if (!b.final_paid_at) outstanding += owed;
       if (b.deposit_paid_at || paid > 0) depositsCount += 1;
@@ -652,12 +656,15 @@ export default function Accounting() {
     }
     const businessCut = Math.round(revenue * MEDIA_BUSINESS_CUT);
     return {
-      total, revenue, collected, outstanding, depositsCount, fullyPaidCount,
+      // `collected` = cash received IN THE PERIOD (by payment date), matching the
+      // Overview "Hub Orders — Collected" card. byOffering[].collected stays
+      // lifetime-to-date per contract (a detail breakdown), so the two need not sum.
+      total, revenue, collected: mediaCollectedCents, outstanding, depositsCount, fullyPaidCount,
       businessCut,
       byOffering: Object.entries(byOffering).sort((a, b) => b[1].revenue - a[1].revenue),
       byStatus,
     };
-  }, [mediaBookings, mediaInstallments, mediaOfferingMap]);
+  }, [mediaBookings, mediaInstallments, mediaOfferingMap, mediaCollectedCents]);
 
   // ── Engineer-scoped media/Hub/cancelled aggregates (OVERVIEW only) ───
   // The engineer filter must reach the media + Hub-orders + cancelled numbers,
@@ -996,7 +1003,9 @@ export default function Accounting() {
     const allTimeSessionRevenue = allTimeBookings.reduce((s, b) => s + b.total_amount, 0);
     const allTimeMediaRevenue = allTimeMediaSales.reduce((s, m) => s + m.amount, 0);
     const allTimeBeatRevenue = allTimeBeatPurchases.reduce((s, p) => s + p.amount_paid, 0);
-    const totalGrossRevenue = allTimeSessionRevenue + allTimeMediaRevenue + allTimeBeatRevenue;
+    // Include all-time media-CONTRACT cash so this gross offsets the all-time
+    // media-manager pay now in totalPayroll (mirrors the Profit tab's gross fold).
+    const totalGrossRevenue = allTimeSessionRevenue + allTimeMediaRevenue + allTimeBeatRevenue + allTimeMediaCollectedCents;
     const businessKeeps = totalGrossRevenue - totalPayroll;
     const keptDeposits = allTimeCancelledBookings.filter((b) => b.deposit_kept).reduce((s, b) => s + (b.actual_deposit_paid || 0), 0);
 
@@ -1008,7 +1017,7 @@ export default function Accounting() {
       periodLabel, periodStart: periodStartStr, periodEnd: periodEndStr,
       periodPayoutTotal, totalPeriodOwed, totalPeriodEarned,
     };
-  }, [allTimeBookings, allTimeMediaSales, allTimeBeatPurchases, allTimeCancelledBookings, allTimeMediaSessions, allTimePackageCommissions, allTimeRewardBonuses, engineerNameMap, payouts, payPeriods, payrollPeriodIndex, allTimeMediaManagerJobs, payableStaff]);
+  }, [allTimeBookings, allTimeMediaSales, allTimeBeatPurchases, allTimeCancelledBookings, allTimeMediaSessions, allTimePackageCommissions, allTimeRewardBonuses, engineerNameMap, payouts, payPeriods, payrollPeriodIndex, allTimeMediaManagerJobs, allTimeMediaCollectedCents, payableStaff]);
 
   // Payroll figure for the Overview — EXACT, not an estimate. Runs the same
   // earnings engine the Payroll tab pays from (per-row snapshot splits, the

@@ -158,9 +158,41 @@ export async function GET(request: NextRequest) {
     for (const b of (pbooks || []) as Array<{ id: string }>) validCollectedBookingIds.add(b.id);
   }
   const paidInPeriodValid = paidInPeriod.filter((i) => validCollectedBookingIds.has(i.booking_id));
-  // Total media-contract cash collected in the period (by paid_at). Feeds the
+  const installmentCollectedCents = paidInPeriodValid.reduce((s, i) => s + (i.amount_cents || 0), 0);
+
+  // Non-installment media-contract cash: contracts paid via actual_deposit_paid
+  // (manual-link, deposit-at-checkout, remainder) with NO installment plan — the
+  // installment ledger doesn't capture these. Recognize actual_deposit_paid by its
+  // payment stamp (deposit_paid_at, else final/remainder). Mirrors the pre-change
+  // "collected" fallback (paidByBooking ?? actual_deposit_paid), just re-dated to
+  // the payment date. Contracts WITH an installment plan are excluded (counted above).
+  let nonInstallmentCollectedCents = 0;
+  {
+    const { data: instBookingRows } = await admin
+      .from('media_payment_installments')
+      .select('booking_id');
+    const hasPlan = new Set((instBookingRows || []).map((r: { booking_id: string }) => r.booking_id));
+    const { data: depBookings } = await admin
+      .from('media_bookings')
+      .select('id, actual_deposit_paid, deposit_paid_at, final_paid_at, remainder_paid_at')
+      .eq('is_test', false)
+      .not('status', 'eq', 'cancelled')
+      .gt('actual_deposit_paid', 0);
+    const lo = from || null;
+    const hi = to ? `${to}T23:59:59` : null;
+    for (const b of (depBookings || []) as Array<{ id: string; actual_deposit_paid: number; deposit_paid_at: string | null; final_paid_at: string | null; remainder_paid_at: string | null }>) {
+      if (hasPlan.has(b.id)) continue; // installment cash already counted above
+      const payDate = b.deposit_paid_at || b.final_paid_at || b.remainder_paid_at;
+      if (!payDate) continue;
+      if (lo && payDate < lo) continue;
+      if (hi && payDate > hi) continue;
+      nonInstallmentCollectedCents += b.actual_deposit_paid || 0;
+    }
+  }
+
+  // Total media-contract cash collected in the period (by payment date). Feeds the
   // Profit/Overview "collected" revenue + the Hub Orders — Collected card.
-  const mediaCollectedCents = paidInPeriodValid.reduce((s, i) => s + (i.amount_cents || 0), 0);
+  const mediaCollectedCents = installmentCollectedCents + nonInstallmentCollectedCents;
 
   // Media MANAGER pay: the person who runs a media contract
   // (media_session_bookings.media_manager_id) earns a % of what's COLLECTED on it.
