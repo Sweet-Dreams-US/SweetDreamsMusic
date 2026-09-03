@@ -82,13 +82,13 @@ export default async function BeatsPage() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div>
-              <h2 className="text-heading-lg mb-4">WANT CUSTOM PRODUCTION?</h2>
+              <h2 className="text-heading-lg mb-4">NEED VISUALS FOR THE TRACK?</h2>
               <p className="font-mono text-black/70 text-body-sm mb-6">
-                Book a session with one of our producers and get a beat made specifically for you.
+                Music videos, shorts, cover art, and photo — everything to release what you make on these beats.
               </p>
-              <Link href="/book"
+              <Link href="/media"
                 className="bg-black text-white font-mono text-sm font-bold tracking-wider uppercase px-6 py-3 hover:bg-black/80 transition-colors no-underline inline-flex items-center justify-center">
-                BOOK A SESSION
+                SEE MEDIA SERVICES
               </Link>
             </div>
             <div>

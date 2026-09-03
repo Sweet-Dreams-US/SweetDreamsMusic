@@ -10,6 +10,7 @@
 // Sections not yet built render a ComingSoon placeholder so phases drop in
 // without reshaping the shell.
 
+import { STUDIO_BOOKING_OPEN } from '@/lib/constants';
 import { useState } from 'react';
 import { ToggleLeft, DollarSign, Percent, FileText, Building2, Mic, Calculator } from 'lucide-react';
 import FeaturesNavPanel from './FeaturesNavPanel';
@@ -22,7 +23,7 @@ import TaxProfileManager from './TaxProfileManager';
 
 type Section = 'features' | 'studios' | 'revenue' | 'content' | 'brand' | 'team' | 'tax';
 
-const SECTIONS: { key: Section; label: string; icon: typeof ToggleLeft }[] = [
+const ALL_SECTIONS: { key: Section; label: string; icon: typeof ToggleLeft }[] = [
   { key: 'features', label: 'Features & Nav', icon: ToggleLeft },
   { key: 'studios', label: 'Studios & Pricing', icon: DollarSign },
   { key: 'team', label: 'Team', icon: Mic },
@@ -31,6 +32,10 @@ const SECTIONS: { key: Section; label: string; icon: typeof ToggleLeft }[] = [
   { key: 'brand', label: 'Brand', icon: Building2 },
   { key: 'tax', label: 'Tax Profile', icon: Calculator },
 ];
+// 2026-09 MEDIA PIVOT: studio rooms/pricing + the engineer roster are hidden
+// (studio sessions are gone). Flip STUDIO_BOOKING_OPEN in lib/constants to restore.
+const HIDDEN_SECTIONS = new Set<Section>(['studios', 'team']);
+const SECTIONS = ALL_SECTIONS.filter((s) => STUDIO_BOOKING_OPEN || !HIDDEN_SECTIONS.has(s.key));
 
 export default function StudioControlPanel() {
   const [section, setSection] = useState<Section>('features');

@@ -233,21 +233,21 @@ export default async function BandHubPage({ params }: { params: Promise<{ id: st
               </Link>
             )}
 
-            {/* Book a band session — routes to the unified booking flow in
-                band mode. The page re-verifies canBook server-side; this is
-                just the entry point. */}
+            {/* Book media for the band — the Media Hub shows band-eligible
+                offerings (the Sweet Spot, by-request projects) to members.
+                Studio-session booking was removed in the 2026-09 media pivot. */}
             {canBook && (
               <Link
-                href={`/book?bandId=${band.id}`}
+                href="/dashboard/media"
                 className="border-2 border-black/10 hover:border-accent transition-colors p-6 no-underline group"
               >
                 <Calendar className="w-8 h-8 text-accent mb-4" strokeWidth={1.5} />
-                <p className="font-mono text-xs text-black/60 mb-1">BOOKINGS</p>
+                <p className="font-mono text-xs text-black/60 mb-1">MEDIA</p>
                 <p className="font-mono text-body-md font-bold group-hover:text-accent transition-colors">
-                  Book a band session
+                  Book media for the band
                 </p>
                 <p className="font-mono text-xs text-black/60 mt-2">
-                  Studio A, flat-rate 4h or 8h tiers — 50% deposit.
+                  The Sweet Spot, music videos, shorts, and photo — priced for bands.
                 </p>
               </Link>
             )}

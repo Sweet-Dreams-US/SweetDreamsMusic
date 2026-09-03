@@ -3,7 +3,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowRight, Package as PackageIcon, Sparkles } from 'lucide-react';
 import { SITE_URL } from '@/lib/constants';
-import { STUDIO_IMAGES } from '@/lib/images';
+import { SWEET_SPOT_IMAGES } from '@/lib/images';
+import { PORTFOLIO_VIDEOS } from '@/lib/portfolio';
 import { getActiveOfferings } from '@/lib/media-server';
 import { requireHref } from '@/lib/site-settings-server';
 import { groupOfferings, isOfferingVisibleTo } from '@/lib/media';
@@ -14,14 +15,14 @@ import InstagramFeedSection from '@/components/media/InstagramFeedSection';
 import MetaTrack from '@/components/analytics/MetaTrack';
 
 export const metadata: Metadata = {
-  title: 'Record, Rollout, Grow — Sweet Dreams Music',
+  title: 'Media — Music Videos, Shorts, Photo & Marketing',
   description:
-    'Studio packages, music videos, shorts, photo sessions, and marketing — bundled or à la carte. Sign in to see pricing and book.',
+    'Music videos, shorts, photo sessions, cover art, and release marketing — bundled or à la carte. Sign in to see pricing and book.',
   alternates: { canonical: `${SITE_URL}/media` },
   openGraph: {
-    title: 'Record, Rollout, Grow — Sweet Dreams Music',
+    title: 'Shoot, Rollout, Grow — Sweet Dreams Music',
     description:
-      'Studio packages, music videos, shorts, photo, marketing — bundled or à la carte.',
+      'Music videos, shorts, photo, cover art, marketing — bundled or à la carte.',
     url: `${SITE_URL}/media`,
     type: 'website',
   },
@@ -30,19 +31,6 @@ export const metadata: Metadata = {
 // Catalog rows can change at any time via admin edits, so we don't want stale
 // "what we offer" tiles after a catalog edit. Cheap query, dynamic is fine.
 export const dynamic = 'force-dynamic';
-
-// Embedded portfolio videos — bottom of page, "show, don't tell" proof of work.
-// Add IDs here when new videos go live; small enough list to keep inline rather
-// than paying for a CMS round trip. The Sweet Spot leads — it's our flagship
-// live-band format and the most recent release.
-const PORTFOLIO_VIDEOS = [
-  { id: 'hvfjYGGmcMQ', title: 'The Sweet Spot — Live Band Session' },
-  { id: 'tyQStwbljvo', title: 'Music Video' },
-  { id: 'aVDCLVVbVBM', title: 'Music Video' },
-  { id: '7BKNcbAsTaQ', title: 'Music Video' },
-  { id: 'QWmJm75ryxY', title: 'Music Video' },
-  { id: '270fw_HtGds', title: 'Music Video' },
-];
 
 /**
  * Public Media Hub. Section order (top → bottom):
@@ -104,7 +92,7 @@ export default async function MediaPage() {
       {/* ──────────────────── HERO ──────────────────── */}
       <section className="relative bg-black text-white py-20 sm:py-28 overflow-hidden">
         <Image
-          src={STUDIO_IMAGES.prvrbTopStudioAWide}
+          src={SWEET_SPOT_IMAGES.performance}
           alt="Sweet Dreams Media"
           fill
           className="object-cover opacity-30"
@@ -115,7 +103,7 @@ export default async function MediaPage() {
           <p className="font-mono text-accent text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-3">
             Music Videos · Shorts · Photo · Marketing · Packages
           </p>
-          <h1 className="text-display-md mb-8">RECORD, ROLLOUT, GROW.</h1>
+          <h1 className="text-display-md mb-8">SHOOT. ROLLOUT. GROW.</h1>
 
           <div className="flex flex-col sm:flex-row gap-4">
             {user ? (
@@ -182,13 +170,13 @@ export default async function MediaPage() {
             <div className="flex items-center gap-3 mb-3">
               <PackageIcon className="w-5 h-5 text-accent" />
               <p className="font-mono text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase text-white/60">
-                Studio Packages
+                Packages
               </p>
             </div>
             <p className="font-mono text-body-sm text-white/70 max-w-2xl mb-10">
               The bigger the bundle, the more you save vs booking the same work à la carte.
-              Studio time inside a package becomes a prepaid balance —
-              <span className="text-accent">&nbsp;book your sessions on your own schedule</span>.
+              Every package is built around a release —
+              <span className="text-accent">&nbsp;video, content, photo, and the rollout to match</span>.
             </p>
 
             {/* Grid: 2-col on mobile (so 4 packages = 2×2), 4-col on tablet+desktop */}
@@ -262,15 +250,16 @@ export default async function MediaPage() {
             <p className="font-mono text-black/70 text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-3">
               A Sweet Dreams Company
             </p>
-            <h2 className="text-heading-xl mb-6">MORE THAN A STUDIO</h2>
+            <h2 className="text-heading-xl mb-6">MORE THAN A VIDEO CREW</h2>
             <div className="font-mono text-body-sm text-black/80 space-y-4 mb-10">
               <p>
-                Sweet Dreams Music is the recording arm of{' '}
+                Sweet Dreams Music is the music arm of{' '}
                 <a href="https://sweetdreams.us" className="underline font-bold hover:text-black">
                   Sweet Dreams
                 </a>{' '}
-                — Fort Wayne&apos;s creative media company. From music production to music videos,
-                branding, and digital content, we handle every part of the creative process.
+                — Fort Wayne&apos;s creative media company. Music videos, live sessions, short-form
+                content, photo, and release marketing for artists and bands; branding, web, and
+                digital content for everyone else.
               </p>
               <p>
                 Need a music video? A visual identity? A full release strategy? Sweet Dreams does

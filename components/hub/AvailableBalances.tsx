@@ -24,6 +24,7 @@
 import Link from 'next/link';
 import { Wallet, Film, ArrowRight, CalendarPlus } from 'lucide-react';
 import { formatCents } from '@/lib/utils';
+import { STUDIO_BOOKING_OPEN } from '@/lib/constants';
 import type { MediaCreditBalance } from '@/lib/media-credits';
 
 export default function AvailableBalances({
@@ -35,7 +36,9 @@ export default function AvailableBalances({
   mediaCredits: MediaCreditBalance[];
   onNavigate?: (tab: string) => void;
 }) {
-  const hasHours = studioHours.hoursRemaining > 0;
+  // 2026-09 media pivot: studio sessions are gone, so prepaid/free hours are
+  // never surfaced as a spendable balance (admin handles them by hand).
+  const hasHours = STUDIO_BOOKING_OPEN && studioHours.hoursRemaining > 0;
   const hasMedia = mediaCredits.length > 0;
 
   // Nothing to show — render nothing (the Overview already has a permanent

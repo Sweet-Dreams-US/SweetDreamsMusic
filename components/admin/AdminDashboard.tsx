@@ -1,5 +1,6 @@
 'use client';
 
+import { STUDIO_BOOKING_OPEN } from '@/lib/constants';
 import { useState } from 'react';
 import { Calendar, Music, Users, DollarSign, Clock, Video, Mic, FileText, LayoutDashboard, BarChart3, Bell, PartyPopper, Film, ClipboardList, Package, Gift, SlidersHorizontal, Calculator, Megaphone, Instagram } from 'lucide-react';
 import type { SessionUser } from '@/lib/auth';
@@ -29,7 +30,7 @@ type Tab = 'overview' | 'control' | 'clients' | 'accounting' | 'tax' | 'marketin
 export default function AdminDashboard({ user }: { user: SessionUser }) {
   const [tab, setTab] = useState<Tab>('overview');
 
-  const tabs: { key: Tab; label: string; icon: typeof Calendar }[] = [
+  const ALL_TABS: { key: Tab; label: string; icon: typeof Calendar }[] = [
     { key: 'overview', label: 'Overview', icon: LayoutDashboard },
     { key: 'control', label: 'Control Panel', icon: SlidersHorizontal },
     { key: 'clients', label: 'Clients', icon: Users },
@@ -53,6 +54,14 @@ export default function AdminDashboard({ user }: { user: SessionUser }) {
     { key: 'analytics', label: 'Analytics', icon: BarChart3 },
     { key: 'notifications', label: 'Notifications', icon: Bell },
   ];
+  // 2026-09 MEDIA PIVOT: studio sessions are gone, so the booking-era tabs are
+  // hidden (not deleted — flip STUDIO_BOOKING_OPEN to bring them back):
+  //   bookings  — session booking manager        events  — public events (feature off)
+  //   blocks    — engineer/studio block-off       packages — prepaid-hour entitlements
+  //   rewards   — studio-hour loyalty ladders
+  // Everything left is artist marketing, media, contracts, and the numbers.
+  const HIDDEN_TABS = new Set<Tab>(['bookings', 'events', 'blocks', 'packages', 'rewards']);
+  const tabs = ALL_TABS.filter((t) => STUDIO_BOOKING_OPEN || !HIDDEN_TABS.has(t.key));
 
   return (
     <>

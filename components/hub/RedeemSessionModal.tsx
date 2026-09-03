@@ -147,7 +147,6 @@ export default function RedeemSessionModal({ entitlement, onClose, onRedeemed }:
                   <li>• Studio B only</li>
                   <li>• 24+ hours from now (no same-day)</li>
                   <li>• Between 8am and 10pm</li>
-                  <li>• Need other? Use <a href="/book" className="underline">/book</a> at full price.</li>
                 </ul>
               </div>
 

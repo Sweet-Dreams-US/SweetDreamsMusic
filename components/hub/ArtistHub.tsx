@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { LayoutDashboard, Folder, Target, BarChart3, CalendarDays, Award, BookOpen, FileText, Film, PartyPopper, Users, Gift } from 'lucide-react';
+import { LayoutDashboard, Folder, Target, BarChart3, CalendarDays, Award, BookOpen, Film, Users } from 'lucide-react';
 import { HUB_TABS, type HubTab } from '@/lib/hub-constants';
 import MobileTabPicker from '@/components/shared/MobileTabPicker';
 import { calculateLevel, getLevelTitle, getLevelColor } from '@/lib/xp-system';
@@ -13,17 +13,13 @@ import MetricsDashboard from './MetricsDashboard';
 import ContentCalendar from './ContentCalendar';
 import AchievementBadges from './AchievementBadges';
 import ArtistRoadmap from './ArtistRoadmap';
-import SessionNotes from './SessionNotes';
 import HubMedia from './HubMedia';
-import HubEvents from './HubEvents';
 import HubBands from './HubBands';
-import HubPerks from './HubPerks';
 import type { MediaOffering } from '@/lib/media';
 import type { MediaCreditBalance, CreditKind } from '@/lib/media-credits';
 import type { BandMembership, BandInvite, Band } from '@/lib/bands';
-import type { EventWithRsvp, EventRsvp, SweetEvent } from '@/lib/events';
 
-// Server-fetched data for the relocated Media / Events / Bands tabs. Plain
+// Server-fetched data for the relocated Media / Bands tabs. Plain
 // serializable objects passed down from app/dashboard/hub/page.tsx so the
 // tabs render without a client waterfall (and without new API routes).
 export interface HubRelocatedData {
@@ -43,10 +39,6 @@ export interface HubRelocatedData {
     // the contract banner so a signed project stays easy to find (and pay).
     activeProjects: { id: string; offering_title: string; status: string; total_cents: number; paid_cents: number; remaining_cents: number }[];
   };
-  events: {
-    myEvents: EventWithRsvp[];
-    pendingInvites: (EventRsvp & { event: SweetEvent })[];
-  };
   bands: {
     memberships: BandMembership[];
     pendingInvites: (BandInvite & { band: Band })[];
@@ -61,21 +53,15 @@ const TAB_ICONS: Record<string, typeof LayoutDashboard> = {
   metrics: BarChart3,
   calendar: CalendarDays,
   media: Film,
-  events: PartyPopper,
   bands: Users,
   achievements: Award,
-  perks: Gift,
   roadmap: BookOpen,
-  notes: FileText,
 };
 
-// Extended tabs with session notes
-const EXTENDED_TABS = [
-  ...HUB_TABS,
-  { key: 'notes' as const, label: 'Notes' },
-];
+// Session Notes tab was removed in the 2026-09 media pivot (no studio sessions).
+const EXTENDED_TABS = [...HUB_TABS];
 
-type ExtendedTab = HubTab | 'notes';
+type ExtendedTab = HubTab;
 
 interface XpHistoryItem {
   label: string;
@@ -247,9 +233,6 @@ export default function ArtistHub({ userId, relocated, initialTab }: { userId: s
                   orderCount={relocated.media.orderCount}
                 />
               )}
-              {tab === 'events' && (
-                <HubEvents myEvents={relocated.events.myEvents} pendingInvites={relocated.events.pendingInvites} />
-              )}
               {tab === 'bands' && (
                 <HubBands
                   memberships={relocated.bands.memberships}
@@ -258,9 +241,7 @@ export default function ArtistHub({ userId, relocated, initialTab }: { userId: s
                 />
               )}
               {tab === 'achievements' && <AchievementBadges newUnlocks={newAchievements} progress={achievementProgress} onDismiss={() => setNewAchievements([])} />}
-              {tab === 'perks' && <HubPerks onNavigate={(t) => setTab(t as ExtendedTab)} />}
               {tab === 'roadmap' && <ArtistRoadmap />}
-              {tab === 'notes' && <SessionNotes onXpEarned={onXpEarned} />}
             </div>
           </div>
         </div>

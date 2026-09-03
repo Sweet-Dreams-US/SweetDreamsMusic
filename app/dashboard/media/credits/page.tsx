@@ -12,11 +12,11 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Wallet } from 'lucide-react';
+import { ArrowLeft, Wallet, MessageCircle } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth';
 import { getUserBands } from '@/lib/bands-server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { ENGINEERS, ROOMS, type Room } from '@/lib/constants';
+import { ENGINEERS, ROOMS, STUDIO_BOOKING_OPEN, type Room } from '@/lib/constants';
 import { getStudioConfig } from '@/lib/studio-config-server';
 import type { StudioConfig } from '@/lib/studio-config';
 import { formatCents } from '@/lib/utils';
@@ -32,6 +32,51 @@ export const metadata: Metadata = {
 export default async function CreditsBookingPage() {
   const user = await getSessionUser();
   if (!user) redirect('/login?redirect=/dashboard/media/credits');
+
+  // 2026-09 MEDIA PIVOT: studio sessions are gone, so prepaid hours can't be
+  // self-served against a room any more. Show the balances (they're real
+  // liabilities) with a hand-off to Contact instead of the booking form.
+  // The API behind the form (/api/media/credits/book) is gated the same way.
+  if (!STUDIO_BOOKING_OPEN) {
+    return (
+      <>
+        <DashboardNav
+          role={user.role}
+          isProducer={user.is_producer}
+          displayName={user.profile?.display_name}
+          email={user.email}
+          profileSlug={user.profile?.public_profile_slug}
+        />
+        <section className="bg-white text-black min-h-[60vh]">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+            <Link
+              href="/dashboard/media"
+              className="font-mono text-xs text-black/60 hover:text-black no-underline inline-flex items-center gap-1 mb-6"
+            >
+              <ArrowLeft className="w-3 h-3" />
+              Back to Media Hub
+            </Link>
+            <div className="flex items-center gap-2 mb-2">
+              <Wallet className="w-5 h-5 text-accent" />
+              <p className="font-mono text-xs uppercase tracking-wider text-black/50">Prepaid studio hours</p>
+            </div>
+            <h1 className="text-heading-xl mb-4">WE&apos;LL SORT THESE OUT WITH YOU</h1>
+            <p className="font-mono text-sm text-black/60 mb-6 max-w-xl">
+              Sweet Dreams Music no longer books studio sessions, so prepaid hours can&apos;t be
+              scheduled here any more. Your balance is still on your account — reach out and we&apos;ll
+              work out how to use it.
+            </p>
+            <Link
+              href="/contact"
+              className="bg-accent text-black font-mono text-sm font-bold tracking-wider uppercase px-6 py-3 hover:bg-accent/90 transition-colors no-underline inline-flex items-center gap-2"
+            >
+              <MessageCircle className="w-4 h-4" /> Contact us about my hours
+            </Link>
+          </div>
+        </section>
+      </>
+    );
+  }
 
   const bandMemberships = await getUserBands(user.id);
   const service = createServiceClient();

@@ -47,3 +47,20 @@ export const STUDIO_IMAGES = {
   manleyGraphic: `${BASE}/manleygraphic.jpg`,
   mojaveGraphic: `${BASE}/mojavegraphic.jpg`,
 } as const;
+
+// Sweet Spot stills (Supabase Storage bucket `SweetSpot`). The media-era
+// marketing pages (home / about / recording) lean on these — they're the only
+// photos in the library that show video production rather than recording.
+// Same files app/bands/page.tsx renders in its gallery.
+const SWEET_SPOT_BASE = 'https://fweeyjnqwxywmpmnqpts.supabase.co/storage/v1/object/public/SweetSpot';
+export const SWEET_SPOT_IMAGES = {
+  logo: `${SWEET_SPOT_BASE}/sweetspotLogo.png`,
+  fullBand: `${SWEET_SPOT_BASE}/Timeline 1_01_00_26_07.jpg`,
+  vocalist: `${SWEET_SPOT_BASE}/Timeline 1_01_01_47_18.jpg`,
+  instrument: `${SWEET_SPOT_BASE}/Timeline 1_01_02_47_11.jpg`,
+  wide: `${SWEET_SPOT_BASE}/Timeline 1_01_03_05_09.jpg`,
+  drummer: `${SWEET_SPOT_BASE}/Timeline 1_01_03_54_18.jpg`,
+  performance: `${SWEET_SPOT_BASE}/Timeline 1_01_07_24_17.jpg`,
+  liveMoment: `${SWEET_SPOT_BASE}/Timeline 1_01_07_50_14.jpg`,
+  finalFrame: `${SWEET_SPOT_BASE}/Timeline 1_01_08_42_14.jpg`,
+} as const;

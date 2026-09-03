@@ -10,11 +10,11 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Contact Us — Get in Touch',
-  description: 'Contact Sweet Dreams Music recording studio in Fort Wayne, IN. Questions about booking, pricing, beat licensing, or studio services? Send us a message and we\'ll get back to you.',
+  description: 'Contact Sweet Dreams Music in Fort Wayne, IN. Questions about music videos, the Sweet Spot, short-form content, photo, beat licensing, or a release? Send us a message and we\'ll get back to you.',
   alternates: { canonical: `${SITE_URL}/contact` },
   openGraph: {
-    title: 'Contact Sweet Dreams Music — Fort Wayne Recording Studio',
-    description: 'Get in touch with Sweet Dreams Music. Questions about booking, pricing, or studio services in Fort Wayne, Indiana.',
+    title: 'Contact Sweet Dreams Music — Fort Wayne Music Media',
+    description: 'Get in touch with Sweet Dreams Music. Music videos, live sessions, content, and photo for artists and bands in Fort Wayne, Indiana.',
     url: `${SITE_URL}/contact`,
     type: 'website',
   },
@@ -33,7 +33,7 @@ export default async function ContactPage() {
           </p>
           <h1 className="text-display-md mb-6">{content(c, 'contact.hero.title')}</h1>
           <p className="font-mono text-white/70 text-body-md max-w-2xl">
-            {content(c, 'contact.hero.intro')}
+            {content(c, 'contact.hero.lede')}
           </p>
         </div>
       </section>

@@ -3,12 +3,42 @@ export { ACHIEVEMENTS } from './achievements';
 
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://sweetdreamsmusic.com';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// BRAND PIVOT (2026-09): Sweet Dreams Music no longer offers recording sessions
+// or studio bookings. The brand is media-only — music videos, live sessions,
+// short-form content, photo, and release marketing for artists, bands, and
+// musicians. Recording inquiries are referred to a partner studio.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Hard switch for the self-serve studio-session money path. false → the
+ *  public booking APIs return 410 and every "book a session" surface is gone.
+ *  Engineer/admin tooling for HISTORICAL sessions (payroll, files, completion)
+ *  is unaffected. */
+export const STUDIO_BOOKING_OPEN = false;
+
+/** Where we send people who still want studio time. Rendered on /recording
+ *  (the page /book, /pricing and /engineers now redirect to).
+ *  TODO(cole): fill in the real partner studio before deploy. An empty `url`
+ *  hides the link and falls back to "reach out and we'll point you there". */
+export const PARTNER_STUDIO = {
+  name: '',
+  url: '',
+  blurb: '',
+};
+
+/** Official social presence — footer links + JSON-LD `sameAs`. */
+export const SOCIAL_LINKS = {
+  instagram: 'https://www.instagram.com/sweetdreamsmusic',
+  youtube: 'https://www.youtube.com/@sweetdreamsmusic',
+  tiktok: 'https://www.tiktok.com/@sweetdreamsmusic',
+} as const;
+
 export const BRAND = {
   name: 'Sweet Dreams Music',
   legalName: 'Sweet Dreams LLC',
-  tagline: 'Fort Wayne Recording Studio',
+  tagline: 'Music Media for Artists & Bands',
   phone: '',
-  email: 'info@sweetdreamsmusic.com',
+  email: 'jayvalleo@sweetdreams.us',
   address: {
     street: '',
     city: 'Fort Wayne',
@@ -19,31 +49,28 @@ export const BRAND = {
 };
 
 export const SEO = {
-  defaultTitle: 'Sweet Dreams Music — Fort Wayne Recording Studio & Beat Store',
-  titleTemplate: '%s | Sweet Dreams Music — Fort Wayne Recording Studio',
-  defaultDescription: 'Professional recording studio in Fort Wayne, Indiana. Two studios, four engineers, open 24/7. Beat store with MP3 leases, trackout leases, and exclusive rights. Music production, mixing, mastering, and artist development. Sessions starting at $50/hour.',
+  defaultTitle: 'Sweet Dreams Music — Music Videos, Live Sessions & Content for Artists | Fort Wayne',
+  titleTemplate: '%s | Sweet Dreams Music — Fort Wayne Music Media',
+  defaultDescription: 'Music media for artists, bands, and musicians in Fort Wayne, Indiana. Music videos, the Sweet Spot live-band series, short-form content, photo sessions, cover art, and release marketing. Plus a beat store with MP3, trackout, and exclusive licenses.',
   keywords: [
-    'Fort Wayne recording studio',
-    'recording studio near me',
-    'recording studio Fort Wayne Indiana',
-    'music production Fort Wayne',
-    'studio booking online',
-    'mixing and mastering Fort Wayne',
-    'professional recording studio',
-    'studio rental Fort Wayne',
-    'vocal recording Fort Wayne',
-    'band recording Indiana',
+    'music video production Fort Wayne',
+    'music video Fort Wayne Indiana',
+    'music videographer Fort Wayne',
+    'live session video Fort Wayne',
+    'band video session Indiana',
+    'short-form content for musicians',
+    'artist photo shoot Fort Wayne',
+    'cover art design musicians',
+    'music marketing Fort Wayne',
+    'release rollout strategy artists',
+    'content creation for artists',
+    'music media company Indiana',
+    'The Sweet Spot live band series',
     'buy beats online',
     'beat store',
     'beat marketplace',
-    'buy beats Fort Wayne',
     'lease beats online',
     'exclusive beats for sale',
-    'music studio 24 hours',
-    'affordable recording studio',
-    'recording session booking',
-    'artist development Fort Wayne',
-    'music video production Fort Wayne',
     'sell beats online',
     'hip hop beats',
     'trap beats',
@@ -288,14 +315,13 @@ export const BEAT_GENRES: { value: string; label: string; bg: string; text: stri
 // Primary navigation — rendered in the Header on every page.
 // The logo links to '/' so Home is not repeated here.
 // Blog was moved to the footer; see FOOTER_EXTRA_LINKS below.
+// Book / Pricing / Engineers were removed in the 2026-09 media pivot — those
+// URLs now redirect to /recording (see next.config.ts). Events was dropped from
+// the nav at the same time (feature flag events_enabled=false hides the pages).
 export const NAV_LINKS = [
-  { href: '/book', label: 'Book' },
-  { href: '/beats', label: 'Beats' },
-  { href: '/pricing', label: 'Pricing' },
-  { href: '/engineers', label: 'Engineers' },
   { href: '/media', label: 'Media' },
   { href: '/bands', label: 'Bands' },
-  { href: '/events', label: 'Events' },
+  { href: '/beats', label: 'Beats' },
   { href: '/about', label: 'About' },
   { href: '/contact', label: 'Contact' },
 ] as const;

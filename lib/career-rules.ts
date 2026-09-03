@@ -550,7 +550,7 @@ export function nextSteps(ctx: CareerContext, opts?: { stage?: number }): NextSt
     add('first_share', 5, 'Before you release: share a private listening link and collect honest feedback while changes are still free.', '?tab=roadmap');
   }
   if (ctx.contactsCount < 3) add('network', 6, 'Log the creatives you already know — 3 contacts starts your network list.', '?tab=roadmap');
-  if (ctx.completedSessions === 0) add('book', 6, 'Book your first session — your roadmap starts in the studio.', '/book', false);
+  if (ctx.completedSessions === 0) add('book', 6, 'Book your first shoot — music videos, shorts, or photo from your Media Hub.', '/dashboard/media', false);
 
   return steps.sort((a, b) => a.priority - b.priority);
 }

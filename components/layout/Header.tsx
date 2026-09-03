@@ -14,8 +14,8 @@ import { trackMeta } from '@/lib/meta-pixel';
 const BRAND_LOGO_URL = 'https://fweeyjnqwxywmpmnqpts.supabase.co/storage/v1/object/public/SweetDreamsMusicPictures/SDMLogoJuly26.png';
 
 // navLinks are pre-filtered by the server (HeaderSlot) per the site's feature/nav
-// flags, so disabled features/pages never render. Locked items (Book, Beats,
-// Pricing) always survive the filter.
+// flags, so disabled features/pages never render. Locked items (Media, Beats)
+// always survive the filter.
 export default function Header({ navLinks, brandName }: { navLinks: readonly { href: string; label: string }[]; brandName: string }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [user, setUser] = useState<{ email: string } | null>(null);
@@ -72,10 +72,10 @@ export default function Header({ navLinks, brandName }: { navLinks: readonly { h
                   className="ml-2 text-white/70 hover:text-white font-mono text-sm font-medium tracking-wider uppercase px-4 py-2 transition-colors no-underline">
                   Sign In
                 </Link>
-                <Link href="/book"
-                  onClick={() => trackMeta('ViewContent', { content_name: 'Header nav - Book now', content_category: 'Studio session booking' })}
+                <Link href="/contact"
+                  onClick={() => trackMeta('ViewContent', { content_name: 'Header nav - Work with us', content_category: 'Media inquiry' })}
                   className="ml-2 bg-accent text-black font-mono text-sm font-bold tracking-wider uppercase px-6 py-3 hover:bg-accent/90 transition-colors no-underline">
-                  BOOK NOW
+                  WORK WITH US
                 </Link>
               </>
             )}
@@ -137,9 +137,9 @@ export default function Header({ navLinks, brandName }: { navLinks: readonly { h
               </Link>
             ) : (
               <>
-                <Link href="/book" onClick={() => { trackMeta('ViewContent', { content_name: 'Header nav - Book now', content_category: 'Studio session booking' }); setMobileOpen(false); }}
+                <Link href="/contact" onClick={() => { trackMeta('ViewContent', { content_name: 'Header nav - Work with us', content_category: 'Media inquiry' }); setMobileOpen(false); }}
                   className="w-full border border-accent text-accent font-mono text-base font-bold tracking-wider uppercase px-4 py-3.5 rounded-full text-center hover:bg-accent hover:text-black transition-colors no-underline whitespace-nowrap">
-                  Book a Session
+                  Work With Us
                 </Link>
                 <Link href="/login" onClick={() => setMobileOpen(false)}
                   className="font-mono text-sm tracking-wider uppercase text-white/60 hover:text-white transition-colors no-underline whitespace-nowrap">

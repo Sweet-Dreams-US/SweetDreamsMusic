@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 
-const words = ['RECORD.', 'CREATE.', 'RELEASE.'];
+const words = ['FILM.', 'RELEASE.', 'GROW.'];
 
 export default function HeroTitle() {
   const containerRef = useRef<HTMLHeadingElement>(null);

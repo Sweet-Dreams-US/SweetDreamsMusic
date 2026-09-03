@@ -1,3 +1,4 @@
+import { requireHref } from '@/lib/site-settings-server';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -48,6 +49,7 @@ export const dynamic = 'force-dynamic';
  * again from their dashboard even though it's hidden from public browsing.
  */
 export default async function EventDetailPage({ params }: Props) {
+  await requireHref('/events'); // 404 when Events is disabled in the control panel
   const { slug } = await params;
 
   const event = await getEventBySlug(slug);

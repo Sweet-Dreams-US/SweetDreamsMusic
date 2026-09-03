@@ -138,7 +138,8 @@ export const EVENT_TYPES = [
 
 export type EventType = (typeof EVENT_TYPES)[number]['value'];
 
-// Hub tabs
+// Hub tabs. Events + Perks (studio-hour reward ladders) were removed in the
+// 2026-09 media pivot; Notes (studio session notes) went with them (ArtistHub).
 export const HUB_TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'projects', label: 'Projects' },
@@ -146,10 +147,8 @@ export const HUB_TABS = [
   { key: 'metrics', label: 'Metrics' },
   { key: 'calendar', label: 'Calendar' },
   { key: 'media', label: 'Media' },
-  { key: 'events', label: 'Events' },
   { key: 'bands', label: 'Bands' },
   { key: 'achievements', label: 'Achievements' },
-  { key: 'perks', label: 'Perks' },
   { key: 'roadmap', label: 'Roadmap' },
 ] as const;
 

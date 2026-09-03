@@ -14,21 +14,18 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { SITE_URL } from '@/lib/constants';
-import { formatCents } from '@/lib/utils';
-import { createServiceClient } from '@/lib/supabase/server';
-import { getStudioConfigs } from '@/lib/studio-config-server';
 import { requireHref } from '@/lib/site-settings-server';
 import MetaTrack from '@/components/analytics/MetaTrack';
 
 export const metadata: Metadata = {
-  title: 'The Sweet Spot & Band Recording — Sweet Dreams Music',
+  title: 'The Sweet Spot — Live Band Video Series',
   description:
-    'The Sweet Spot is our premium live-band video showcase — full video, two songs in a professional mix, 3-6 short-form clips, featured on the Sweet Dreams YouTube. We also offer standard band recording sessions. Recorded in Fort Wayne, Indiana.',
+    'The Sweet Spot is our premium live-band video series — full video, two songs in a professional mix, 3-6 short-form clips, featured on the Sweet Dreams YouTube. Plus music videos, shorts, and photo for bands. Fort Wayne, Indiana.',
   alternates: { canonical: `${SITE_URL}/bands` },
   openGraph: {
-    title: 'The Sweet Spot & Band Recording — Sweet Dreams Music',
+    title: 'The Sweet Spot — Live Band Video Series — Sweet Dreams Music',
     description:
-      'Premium live-band video showcase and standard band recording in Fort Wayne. Full tracking room, multicam video, release-ready audio.',
+      'Premium live-band video series in Fort Wayne. Multicam video, a professional two-song mix, short-form clips, featured on our YouTube.',
     url: `${SITE_URL}/bands`,
     type: 'website',
     images: [
@@ -87,30 +84,15 @@ const SWEET_SPOT_INCLUDES = [
   },
 ] as const;
 
-// Standard band recording pricing. Mirrors BAND_PRICING in lib/constants.ts.
-// Updated 2026-04-28 per Cole: 4hr → $440 (was $400), 8hr → $700 flat (was
-// $680). Each booking now reserves an additional 1-hr SETUP slot before the
-// session — included free, but it changes the calendar math: a 4hr session
-// blocks a 5hr window, an 8hr blocks 9hr. The 3×8 day package only adds the
-// setup hour to day one (the rest of the studio is already on hold for those
-// dates). Pricing on `/book` and the band booking flow needs to follow.
-// Bespoke marketing copy (label + note). The headline PRICE is pulled live from
-// the band room's config tiers below, so /bands matches the booking engine + /pricing.
-const BAND_TIERS = [
-  { label: '4 Hours', hours: 4, note: 'Includes free 1-hr setup before' },
-  { label: '8 Hours', hours: 8, note: 'Flat rate. Free 1-hr setup before' },
-  { label: '3 × 8hr Days', hours: 24, note: 'setup hr on day 1 only' },
-] as const;
-
-// Quick pitch tiles for the new "What bands do here" section. Sweet Spot is
-// one of four — record, film, Sweet Spot, hub — instead of dominating the page.
+// Quick pitch tiles for the "What bands do here" section. Sweet Spot is one of
+// four — music videos, filming, Sweet Spot, hub — instead of dominating the page.
 const BAND_FEATURES = [
   {
-    icon: Mic2,
-    title: 'Band Recording',
-    blurb: 'Full-room tracking with the band rate. 4hr / 8hr / 3-day options. Live drums, amps, the works.',
-    href: '#band-recording',
-    cta: 'See pricing',
+    icon: Video,
+    title: 'Music Videos',
+    blurb: 'Full-production music videos for your band — concept, shoot, edit, release. Mid-tier to premium.',
+    href: '/media',
+    cta: 'See media catalog',
   },
   {
     icon: Camera,
@@ -137,11 +119,6 @@ const BAND_FEATURES = [
 
 export default async function BandsPage() {
   await requireHref('/bands'); // 404 when Bands is disabled in the control panel
-  // DB-driven band prices (studio_rooms band tiers) so this page matches the
-  // booking engine + /pricing. Constants fallback baked into the loader.
-  const studios = await getStudioConfigs(createServiceClient());
-  const bandCfg = studios.find((s) => s.slug === 'studio_a') ?? studios.find((s) => s.bandEnabled) ?? studios[0];
-  const bandPrice = (hours: number) => formatCents(bandCfg?.tiers.find((t) => t.kind === `band_${hours}h`)?.priceCents ?? 0);
   return (
     <>
       <MetaTrack event="ViewContent" params={{ content_name: 'Bands', content_category: 'marketing' }} />
@@ -164,21 +141,21 @@ export default async function BandsPage() {
           <p className="font-mono text-accent text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-3">
             Bands at Sweet Dreams Music
           </p>
-          <h1 className="text-display-md sm:text-display-lg mb-8">RECORD. FILM. RELEASE.</h1>
+          <h1 className="text-display-md sm:text-display-lg mb-8">PLAY. FILM. RELEASE.</h1>
           <div className="flex flex-col sm:flex-row gap-4">
             <Link
-              href="#band-recording"
+              href="/bands/sweet-spot/inquire"
               className="bg-accent text-black font-mono text-base font-bold tracking-wider uppercase px-8 py-4 hover:bg-accent/90 transition-colors no-underline inline-flex items-center justify-center gap-2"
             >
-              <Calendar className="w-4 h-4" />
-              Book a band session
+              <MessageCircle className="w-4 h-4" />
+              Inquire about the Sweet Spot
             </Link>
             <Link
-              href="/bands/sweet-spot/inquire"
+              href="#sweet-spot"
               className="border-2 border-white text-white font-mono text-base font-bold tracking-wider uppercase px-8 py-4 hover:bg-white hover:text-black transition-colors no-underline inline-flex items-center justify-center gap-2"
             >
-              <MessageCircle className="w-4 h-4" />
-              Inquire about Sweet Spot
+              <Video className="w-4 h-4" />
+              What the Sweet Spot is
             </Link>
           </div>
         </div>
@@ -244,8 +221,8 @@ export default async function BandsPage() {
               clips built to push the session on social.
             </p>
             <p className="font-mono text-black/70 text-body-sm">
-              It&apos;s different from a standard band recording session — the Sweet Spot is the full package:
-              multicam video, professional mix of two songs, short-form content, and a feature on our YouTube.
+              The Sweet Spot is the full package: multicam video, a professional mix of two songs,
+              short-form content, and a feature on our YouTube.
               It&apos;s made to be released the day it&apos;s posted.
             </p>
           </div>
@@ -333,21 +310,20 @@ export default async function BandsPage() {
               </div>
               <h3 className="text-heading-md mb-4">Book it directly</h3>
               <p className="font-mono text-black/70 text-body-sm mb-4">
-                If your band is set up on Sweet Dreams Music, you can book a Sweet Spot the same way you book
-                any band session. We reserve <strong>4 hours for filming</strong> plus{' '}
-                <strong>2 hours for setup</strong> (same day or day prior) — both blocks show up on the
-                studio calendar so nothing double-books.
+                If your band is set up on Sweet Dreams Music, book the Sweet Spot straight from your
+                Media Hub. We reserve <strong>4 hours for filming</strong> plus{' '}
+                <strong>2 hours for setup</strong> (same day or day prior) and schedule both with you.
               </p>
               <ul className="font-mono text-black/60 text-body-sm space-y-2 mb-6">
-                <li>· 4 hours filming + 2 hours setup held on the studio calendar</li>
+                <li>· 4 hours filming + 2 hours setup, scheduled around the band</li>
                 <li>· Stripe deposit holds your dates, remainder by cash, check, or transfer</li>
-                <li>· Flat-rate pricing visible inside your band hub once signed in</li>
+                <li>· Flat-rate pricing visible inside your Media Hub once signed in</li>
               </ul>
               <Link
-                href="/dashboard/bands"
+                href="/dashboard/media"
                 className="font-mono text-sm font-bold uppercase tracking-wider text-accent hover:underline no-underline inline-flex items-center gap-1"
               >
-                Go to your band hub <ArrowRight className="w-4 h-4" />
+                Open your Media Hub <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
 
@@ -378,56 +354,6 @@ export default async function BandsPage() {
               </Link>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* ═══════════════════════════════════════════════════════════════
-          BAND RECORDING — the standard non-Sweet-Spot flow
-          ═══════════════════════════════════════════════════════════════ */}
-      <section id="band-recording" className="bg-black text-white py-20 sm:py-28 border-t-4 border-accent">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="font-mono text-accent text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-3">
-            Not the Sweet Spot — just recording
-          </p>
-          <h2 className="text-heading-xl mb-6">BAND RECORDING SESSIONS</h2>
-          <p className="font-mono text-white/70 text-body-md max-w-3xl mb-12">
-            Want to track a full-length record, a single, or demos — no video, no Sweet Spot? Book Studio A
-            in band mode. Full tracking room, full engineering team, flat-rate blocks. Extra mixing is
-            billed at standard studio rates.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6 mb-12">
-            {BAND_TIERS.map((tier) => (
-              <div
-                key={tier.label}
-                className="border-2 border-white/10 hover:border-accent transition-colors p-8"
-              >
-                <p className="font-mono text-xs text-white/50 uppercase tracking-wider mb-2">{tier.label}</p>
-                <p className="text-display-sm text-accent mb-2">{bandPrice(tier.hours)}</p>
-                <p className="font-mono text-sm text-white/70">{tier.note}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-4">
-            <Link
-              href="/dashboard/bands"
-              className="bg-accent text-black font-mono text-base font-bold tracking-wider uppercase px-8 py-4 hover:bg-accent/90 transition-colors no-underline inline-flex items-center justify-center gap-2"
-            >
-              Book a band session <ArrowRight className="w-4 h-4" />
-            </Link>
-            <Link
-              href="/book"
-              className="border-2 border-white text-white font-mono text-base font-bold tracking-wider uppercase px-8 py-4 hover:bg-white hover:text-black transition-colors no-underline inline-flex items-center justify-center"
-            >
-              Or book solo / session time
-            </Link>
-          </div>
-
-          <p className="font-mono text-white/50 text-body-sm mt-8">
-            Need more than 3 days? Reach out and we&apos;ll custom-quote it. Band practice space is also
-            available at $60/hr, 2-hour minimum.
-          </p>
         </div>
       </section>
 

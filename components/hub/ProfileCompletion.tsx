@@ -89,11 +89,10 @@ export default function ProfileCompletion({
           <Sparkles className="w-4 h-4 text-accent" /> Profile Complete
         </h3>
         <p className="font-mono text-sm font-bold mb-1">
-          Your free hour is on the way — pending approval.
+          Nice work — every part of your profile is filled in.
         </p>
         <p className="font-mono text-xs text-black/60">
-          Nice work — every part of your profile is filled in. Look for your
-          free studio hour in Perks once it&apos;s approved.
+          A complete profile means better metrics, a stronger public page, and faster media quotes.
         </p>
       </div>
     );
@@ -105,10 +104,9 @@ export default function ProfileCompletion({
       {/* Carrot */}
       <h3 className="font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center gap-2 mb-1">
         <Gift className="w-4 h-4 text-accent" /> Complete your profile
-        <span className="text-accent">→ 1 free studio hour</span>
       </h3>
       <p className="font-mono text-xs text-black/60 mb-4">
-        Finish every item below to earn a free studio hour (pending approval).
+        Finish every item below — it powers your metrics, your public page, and faster media quotes.
       </p>
 
       {/* Progress */}

@@ -10,7 +10,6 @@ import { createServiceClient } from '@/lib/supabase/server';
  *
  *   • beats (status='active')                        → /beats/[id]
  *   • blog_posts (status='published')                → /blog/[slug]
- *   • events (visibility ∈ public|private_listed)    → /events/[slug]
  *   • bands (is_public=true)                         → /bands/[slug]
  *   • profiles (public_profile_slug is set)          → /u/[slug]
  *
@@ -31,20 +30,19 @@ export const revalidate = 3600;
 
 type Entry = MetadataRoute.Sitemap[number];
 
+// /book, /pricing, /engineers were dropped in the 2026-09 media pivot (they
+// 308 → /recording, which IS listed so crawlers pick up the new canonical).
 const STATIC_ROUTES: Entry[] = [
   { url: '/', changeFrequency: 'weekly', priority: 1.0 },
-  { url: '/book', changeFrequency: 'weekly', priority: 0.9 },
-  { url: '/pricing', changeFrequency: 'monthly', priority: 0.8 },
+  { url: '/media', changeFrequency: 'weekly', priority: 0.9 },
+  { url: '/bands', changeFrequency: 'weekly', priority: 0.8 },
   { url: '/beats', changeFrequency: 'daily', priority: 0.8 },
   { url: '/blog', changeFrequency: 'daily', priority: 0.8 },
-  { url: '/engineers', changeFrequency: 'monthly', priority: 0.7 },
-  { url: '/media', changeFrequency: 'weekly', priority: 0.7 },
   { url: '/sell-beats', changeFrequency: 'monthly', priority: 0.7 },
-  { url: '/bands', changeFrequency: 'weekly', priority: 0.7 },
-  { url: '/events', changeFrequency: 'weekly', priority: 0.7 },
   { url: '/bands/sweet-spot/inquire', changeFrequency: 'monthly', priority: 0.6 },
   { url: '/about', changeFrequency: 'monthly', priority: 0.6 },
   { url: '/contact', changeFrequency: 'monthly', priority: 0.6 },
+  { url: '/recording', changeFrequency: 'monthly', priority: 0.5 },
   { url: '/login', changeFrequency: 'yearly', priority: 0.3 },
 ];
 
@@ -66,7 +64,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let dynamicEntries: Entry[] = [];
   try {
     const supabase = createServiceClient();
-    const [beats, posts, events, bands, profiles] = await Promise.all([
+    const [beats, posts, bands, profiles] = await Promise.all([
       supabase
         .from('beats')
         .select('id, slug, updated_at, created_at')
@@ -78,13 +76,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         .select('slug, updated_at, published_at')
         .eq('status', 'published')
         .order('published_at', { ascending: false })
-        .limit(5000),
-      supabase
-        .from('events')
-        .select('slug, updated_at')
-        .in('visibility', ['public', 'private_listed'])
-        .not('slug', 'is', null)
-        .order('updated_at', { ascending: false })
         .limit(5000),
       supabase
         .from('bands')
@@ -112,12 +103,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         url: abs(`/blog/${p.slug}`),
         lastModified: new Date(p.updated_at || p.published_at || now),
         changeFrequency: 'monthly' as const,
-        priority: 0.7,
-      })),
-      ...(events.data ?? []).map((e) => ({
-        url: abs(`/events/${e.slug}`),
-        lastModified: new Date(e.updated_at || now),
-        changeFrequency: 'daily' as const,
         priority: 0.7,
       })),
       ...(bands.data ?? []).map((b) => ({

@@ -48,7 +48,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { stripe } from '@/lib/stripe';
 import { paidBookingStatus } from '@/lib/booking-status';
 import { getUserBands } from '@/lib/bands-server';
-import { ENGINEERS, PRICING, SITE_URL, ROOM_LABELS, type Room } from '@/lib/constants';
+import { ENGINEERS, PRICING, SITE_URL, ROOM_LABELS, STUDIO_BOOKING_OPEN, type Room } from '@/lib/constants';
 import { getStudioConfig } from '@/lib/studio-config-server';
 import { parseTimeSlot, formatDuration } from '@/lib/utils';
 import { computeCreditRedemptionPricing } from '@/lib/credit-redemption-pricing';
@@ -65,6 +65,14 @@ const padClockHm = (t: string) => {
 };
 
 export async function POST(request: NextRequest) {
+  // 2026-09 MEDIA PIVOT: studio sessions are closed — no new bookings rows,
+  // even $0 credit redemptions. Flip STUDIO_BOOKING_OPEN in lib/constants.
+  if (!STUDIO_BOOKING_OPEN) {
+    return NextResponse.json(
+      { error: 'Sweet Dreams Music no longer books studio sessions. Contact us about your prepaid hours.' },
+      { status: 410 },
+    );
+  }
   // ── Auth ────────────────────────────────────────────────────────────
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

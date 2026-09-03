@@ -313,9 +313,9 @@ export default async function OrderDetailPage({
                 {offering.studio_hours_included > 0 && (
                   <p className="font-mono text-xs text-black/60 pt-3 border-t border-black/10">
                     Includes <strong>{offering.studio_hours_included} hours</strong> of
-                    studio time on your prepaid balance — book those via{' '}
-                    <Link href="/book" className="underline hover:text-accent">/book</Link>{' '}
-                    when you&apos;re ready.
+                    studio time on your prepaid balance —{' '}
+                    <Link href="/contact" className="underline hover:text-accent">contact us</Link>{' '}
+                    to schedule them.
                   </p>
                 )}
               </div>

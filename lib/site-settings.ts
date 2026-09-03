@@ -1,18 +1,22 @@
-// lib/site-settings.ts — pure (no server deps): the white-label feature/nav
-// flag types, safe defaults, the locked-on clamp, and nav filtering. Imported by
-// the loader, the API route, the Header/Footer slots, and the admin panel.
+// lib/site-settings.ts — pure (no server deps): the feature/nav flag types,
+// safe defaults, the locked-on clamp, and nav filtering. Imported by the loader,
+// the API route, the Header/Footer slots, and the admin panel.
 //
-// LOCKED features can never be turned off: studio sessions (/book, /pricing) and
-// the beat store (/beats, /sell-beats). They have no DB column and always pass
-// the nav filter — so neither a missing row, a corrupt row, nor a tampered
-// request can hide them.
+// LOCKED features can never be turned off: the media catalog (/media — the core
+// of the brand since the 2026-09 media pivot) and the beat store (/beats,
+// /sell-beats). They always pass the nav filter — so neither a missing row, a
+// corrupt row, nor a tampered request can hide them.
+//
+// Studio sessions (/book, /pricing) and the /engineers roster were REMOVED in
+// the media pivot — those URLs redirect to /recording (next.config.ts). The
+// `nav.engineers` flag column still exists in the DB but nothing renders it.
 
-export const LOCKED_FEATURES = ['studio_sessions', 'beats'] as const;
+export const LOCKED_FEATURES = ['media', 'beats'] as const;
 
 export interface SiteSettings {
   bandsEnabled: boolean;
   eventsEnabled: boolean;
-  mediaEnabled: boolean;
+  mediaEnabled: boolean; // read for back-compat; /media is locked ON regardless
   nav: { about: boolean; contact: boolean; engineers: boolean; blog: boolean };
 }
 
@@ -43,7 +47,7 @@ export function siteSettingsFromRow(row: Record<string, unknown> | null | undefi
 }
 
 // Locked hrefs are NEVER filtered out, regardless of settings.
-const ALWAYS_ON_HREFS = new Set(['/book', '/pricing', '/beats', '/sell-beats']);
+const ALWAYS_ON_HREFS = new Set(['/media', '/beats', '/sell-beats', '/recording']);
 
 /** Is a given public route currently enabled? Locked routes are always true.
  *  Used by both the nav filter and the page-level guards. */
@@ -52,8 +56,6 @@ export function isHrefEnabled(href: string, s: SiteSettings): boolean {
   switch (href) {
     case '/bands': return s.bandsEnabled;
     case '/events': return s.eventsEnabled;
-    case '/media': return s.mediaEnabled;
-    case '/engineers': return s.nav.engineers;
     case '/about': return s.nav.about;
     case '/contact': return s.nav.contact;
     case '/blog': return s.nav.blog;

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Calendar, Mail, ArrowRight, MapPin, Clock, Lock, PartyPopper } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth';
+import { requireHref } from '@/lib/site-settings-server';
 import { getEventsForUser, getPendingEventInvitesForEmail } from '@/lib/events-server';
 import DashboardNav from '@/components/layout/DashboardNav';
 import { rsvpStatusLabel } from '@/lib/events';
@@ -25,6 +26,7 @@ export const metadata: Metadata = { title: 'Events' };
 export default async function DashboardEventsPage() {
   const user = await getSessionUser();
   if (!user) redirect('/login');
+  await requireHref('/events'); // 404 when Events is disabled in the control panel
 
   const [myEvents, pendingInvites] = await Promise.all([
     getEventsForUser(user.id),

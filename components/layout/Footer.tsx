@@ -1,11 +1,14 @@
 import Link from 'next/link';
+import { Instagram, Youtube, Mail, Phone, MapPin } from 'lucide-react';
+import { SOCIAL_LINKS } from '@/lib/constants';
 import { getSiteContent } from '@/lib/site-content-server';
 import { content } from '@/lib/site-content';
 import { getBrand } from '@/lib/brand-server';
 
 // navLinks + footerLinks are pre-filtered by the server (FooterSlot) per the
 // site's feature/nav flags. Locked items always survive the filter. Editorial
-// strings (hours headline, company label) come from the CMS (site_content).
+// strings (brand intro, contact headline, company label) come from the CMS
+// (site_content); contact details come from brand_settings via getBrand().
 export default async function Footer({
   navLinks,
   footerLinks,
@@ -15,6 +18,7 @@ export default async function Footer({
 }) {
   const c = await getSiteContent();
   const brand = await getBrand();
+  const telHref = brand.phone ? `tel:${brand.phone.replace(/[^\d+]/g, '')}` : '';
   return (
     <footer className="bg-black text-white border-t border-white/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
@@ -23,7 +27,7 @@ export default async function Footer({
           <div>
             <h3 className="text-2xl mb-4">{brand.name.toUpperCase()}</h3>
             <p className="font-mono text-white/60 text-sm leading-relaxed">
-              {content(c, 'footer.brand.blurb')}
+              {content(c, 'footer.brand.intro')}
             </p>
           </div>
 
@@ -49,18 +53,44 @@ export default async function Footer({
                   {link.label}
                 </Link>
               ))}
+              <Link
+                href="/recording"
+                className="font-mono text-sm text-white/60 hover:text-accent transition-colors no-underline"
+              >
+                Looking to record?
+              </Link>
             </nav>
           </div>
 
-          {/* Studio Hours */}
+          {/* Contact + socials */}
           <div>
-            <h4 className="text-lg mb-4">STUDIO HOURS</h4>
+            <h4 className="text-lg mb-4">GET IN TOUCH</h4>
             <div className="font-mono text-sm text-white/60 space-y-2">
-              <p>{content(c, 'footer.hours.headline')}</p>
-              <p className="text-white/60 text-xs mt-3">Regular: 9 AM – 10 PM</p>
-              <p className="text-amber-400/70 text-xs">Late Night: 10 PM – 2 AM (+$10/hr)</p>
-              <p className="text-red-400/70 text-xs">After Hours: 2 AM – 9 AM (+$30/hr)</p>
-              <p className="text-accent text-xs">Same-day booking: +$10/hr</p>
+              <p>{content(c, 'footer.contact.headline')}</p>
+              {brand.email && (
+                <a href={`mailto:${brand.email}`} className="flex items-center gap-2 hover:text-accent transition-colors no-underline text-white/60">
+                  <Mail className="w-4 h-4 shrink-0" /> {brand.email}
+                </a>
+              )}
+              {brand.phone && (
+                <a href={telHref} className="flex items-center gap-2 hover:text-accent transition-colors no-underline text-white/60">
+                  <Phone className="w-4 h-4 shrink-0" /> {brand.phone}
+                </a>
+              )}
+              <p className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 shrink-0" /> {brand.address.city}, {brand.address.state}
+              </p>
+              <div className="flex items-center gap-4 pt-2">
+                <a href={SOCIAL_LINKS.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="hover:text-accent transition-colors text-white/60">
+                  <Instagram className="w-5 h-5" />
+                </a>
+                <a href={SOCIAL_LINKS.youtube} target="_blank" rel="noopener noreferrer" aria-label="YouTube" className="hover:text-accent transition-colors text-white/60">
+                  <Youtube className="w-5 h-5" />
+                </a>
+                <a href={SOCIAL_LINKS.tiktok} target="_blank" rel="noopener noreferrer" className="font-mono text-xs font-bold uppercase tracking-wider hover:text-accent transition-colors no-underline text-white/60">
+                  TikTok
+                </a>
+              </div>
             </div>
           </div>
         </div>

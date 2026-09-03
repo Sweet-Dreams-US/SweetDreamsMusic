@@ -5,6 +5,7 @@
 // what-if preview (the persuasion) + a type-to-confirm. Historical payroll is
 // frozen by per-transaction snapshots, so edits only move future work.
 
+import { STUDIO_BOOKING_OPEN } from '@/lib/constants';
 import { useEffect, useState } from 'react';
 import { Loader2, Percent, TrendingUp } from 'lucide-react';
 import ConfirmDialog from './ConfirmDialog';
@@ -13,7 +14,7 @@ import ConfirmDialog from './ConfirmDialog';
 const fmt = (cents: number) => `${cents < 0 ? '-' : ''}$${Math.abs(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 type Tab = 'defaults' | 'engineers' | 'producers';
-const SETTINGS: { col: string; label: string; help?: string }[] = [
+const ALL_SETTINGS: { col: string; label: string; help?: string }[] = [
   { col: 'engineer_session_pct', label: 'Engineer solo session split', help: 'Engineer cut of a SOLO session; business keeps the rest.' },
   { col: 'engineer_band_session_pct', label: 'Engineer band session split', help: 'Engineer cut of a BAND session (higher — harder, multi-person work). Inherits the solo split when blank.' },
   { col: 'producer_commission_pct', label: 'Producer beat commission', help: 'Producer cut of a beat sale; platform keeps the rest.' },
@@ -22,6 +23,9 @@ const SETTINGS: { col: string; label: string; help?: string }[] = [
   { col: 'media_business_pct', label: 'Media business cut' },
   { col: 'renewal_discount_pct', label: 'Lease renewal price', help: '% of original price charged on a lease renewal.' },
 ];
+// 2026-09 MEDIA PIVOT: engineer session splits are hidden (no studio sessions).
+// Flip STUDIO_BOOKING_OPEN in lib/constants to restore them + the Engineers tab.
+const SETTINGS = ALL_SETTINGS.filter((s) => STUDIO_BOOKING_OPEN || !s.col.startsWith('engineer_'));
 
 export default function RevenueSharesManager() {
   const [tab, setTab] = useState<Tab>('defaults');
@@ -40,7 +44,7 @@ export default function RevenueSharesManager() {
   return (
     <div>
       <div className="flex gap-0 border-b border-black/10 mb-6">
-        {(['defaults', 'engineers', 'producers'] as Tab[]).map((t) => (
+        {(['defaults', 'engineers', 'producers'] as Tab[]).filter((t) => STUDIO_BOOKING_OPEN || t !== 'engineers').map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`font-mono text-xs font-bold uppercase tracking-wider px-4 py-3 border-b-2 transition-colors ${tab === t ? 'border-accent text-black' : 'border-transparent text-black/40 hover:text-black/70'}`}>
             {t}

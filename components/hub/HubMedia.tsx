@@ -7,6 +7,7 @@
 // checkout happen inline via the catalog; scheduling owned credits arrives
 // in Phase 5. Deep order management links out to /dashboard/media/orders.
 
+import { STUDIO_BOOKING_OPEN } from '@/lib/constants';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -117,7 +118,9 @@ export default function HubMedia({
           )}
         </div>
 
-        {/* Studio hours (gift card) */}
+        {/* Studio hours (gift card) — hidden since the 2026-09 media pivot (no
+            studio sessions to spend them on; admin settles leftovers by hand). */}
+        {STUDIO_BOOKING_OPEN && (
         <div className="border-2 border-black/10 p-5">
           <div className="flex items-center gap-2 mb-2">
             <Wallet className="w-4 h-4 text-accent" />
@@ -143,6 +146,7 @@ export default function HubMedia({
             <p className="font-mono text-3xl font-bold text-black/20">0 hrs</p>
           )}
         </div>
+        )}
 
         {/* Orders entry point */}
         <Link

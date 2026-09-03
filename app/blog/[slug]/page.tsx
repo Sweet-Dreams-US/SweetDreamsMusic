@@ -318,14 +318,14 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-heading-xl mb-6">READY TO CREATE?</h2>
           <p className="font-mono text-white/70 text-body-md max-w-xl mx-auto mb-8">
-            Put what you&apos;ve learned into practice. Book a session or browse beats.
+            Put what you&apos;ve learned into practice. Plan your next visual, or browse beats.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
-              href="/book"
+              href="/media"
               className="bg-accent text-black font-mono text-sm font-bold tracking-wider uppercase px-8 py-4 hover:bg-accent/90 transition-colors no-underline inline-flex items-center justify-center"
             >
-              Book a Session
+              See Our Work
             </Link>
             <Link
               href="/beats"

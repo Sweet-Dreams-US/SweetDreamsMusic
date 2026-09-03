@@ -1,5 +1,6 @@
 'use client';
 
+import { STUDIO_BOOKING_OPEN } from '@/lib/constants';
 import { useState, useEffect } from 'react';
 import { Calendar, DollarSign, Users, Music, ShoppingBag } from 'lucide-react';
 import { formatCents } from '@/lib/utils';
@@ -117,13 +118,17 @@ export default function AdminOverview({ onNavigate }: { onNavigate: (tab: AdminT
           <div>
             <SectionTitle>Today</SectionTitle>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <KpiCard label="Sessions Today" value={String(data.today.sessions)} icon={Calendar} />
-              <KpiCard
-                label="Revenue Today"
-                value={formatCents(data.today.revenue)}
-                icon={DollarSign}
-                sub="Deposits collected"
-              />
+              {STUDIO_BOOKING_OPEN && (
+                <>
+                  <KpiCard label="Sessions Today" value={String(data.today.sessions)} icon={Calendar} />
+                  <KpiCard
+                    label="Revenue Today"
+                    value={formatCents(data.today.revenue)}
+                    icon={DollarSign}
+                    sub="Deposits collected"
+                  />
+                </>
+              )}
               <KpiCard label="New Signups" value={String(data.today.signups)} icon={Users} />
             </div>
           </div>
@@ -132,8 +137,12 @@ export default function AdminOverview({ onNavigate }: { onNavigate: (tab: AdminT
           <div>
             <SectionTitle>This Week</SectionTitle>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <KpiCard label="Sessions" value={String(data.week.sessions)} icon={Calendar} />
-              <KpiCard label="Session Revenue" value={formatCents(data.week.revenue)} icon={DollarSign} />
+              {STUDIO_BOOKING_OPEN && (
+                <>
+                  <KpiCard label="Sessions" value={String(data.week.sessions)} icon={Calendar} />
+                  <KpiCard label="Session Revenue" value={formatCents(data.week.revenue)} icon={DollarSign} />
+                </>
+              )}
               <KpiCard
                 label="Beats Sold"
                 value={String(data.week.beatsSold)}
@@ -147,8 +156,12 @@ export default function AdminOverview({ onNavigate }: { onNavigate: (tab: AdminT
           <div>
             <SectionTitle>This Month</SectionTitle>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <KpiCard label="Total Sessions" value={String(data.month.sessions)} icon={Calendar} />
-              <KpiCard label="Session Revenue" value={formatCents(data.month.revenue)} icon={DollarSign} />
+              {STUDIO_BOOKING_OPEN && (
+                <>
+                  <KpiCard label="Total Sessions" value={String(data.month.sessions)} icon={Calendar} />
+                  <KpiCard label="Session Revenue" value={formatCents(data.month.revenue)} icon={DollarSign} />
+                </>
+              )}
               <KpiCard
                 label="Beats Sold"
                 value={String(data.month.beatsSold)}
@@ -166,7 +179,8 @@ export default function AdminOverview({ onNavigate }: { onNavigate: (tab: AdminT
 
           {/* RECENT ACTIVITY */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Recent Bookings */}
+            {/* Recent Bookings — studio sessions; hidden since the 2026-09 media pivot. */}
+            {STUDIO_BOOKING_OPEN && (
             <div>
               <SectionTitle>Recent Bookings</SectionTitle>
               <div className="border-2 border-black/10 divide-y divide-black/5">
@@ -196,6 +210,7 @@ export default function AdminOverview({ onNavigate }: { onNavigate: (tab: AdminT
                 )}
               </div>
             </div>
+            )}
 
             {/* Recent Beat Sales */}
             <div>

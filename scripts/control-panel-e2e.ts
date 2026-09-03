@@ -16,16 +16,18 @@ const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPAB
 let pass = 0, fail = 0; const fails: string[] = [];
 const ok = (n: string, c: boolean) => { if (c) { pass++; } else { fail++; fails.push(n); console.log(`  ✗ ${n}`); } };
 
+// 2026-09 media pivot: /media is locked ON (its media_enabled column is vestigial)
+// and /engineers has no route any more (it 308s to /recording), so neither is
+// toggleable here. /book + /pricing also redirect — the locked set is the
+// media catalog, the beat store, and the /recording hand-off page.
 const TOGGLEABLE = [
   { flag: 'bands_enabled', href: '/bands' },
   { flag: 'events_enabled', href: '/events' },
-  { flag: 'media_enabled', href: '/media' },
   { flag: 'nav_about_enabled', href: '/about' },
   { flag: 'nav_contact_enabled', href: '/contact' },
-  { flag: 'nav_engineers_enabled', href: '/engineers' },
   { flag: 'nav_blog_enabled', href: '/blog' },
 ];
-const LOCKED = ['/book', '/pricing', '/beats', '/sell-beats'];
+const LOCKED = ['/media', '/beats', '/sell-beats', '/recording'];
 
 async function status(path: string): Promise<number> {
   const r = await fetch(`${BASE}${path}?t=${Math.round(performance.now())}`, { redirect: 'manual' });
@@ -62,6 +64,12 @@ async function main() {
     for (const t of TOGGLEABLE) ok(`all-off: ${t.href} 404`, (await status(t.href)) === 404);
     for (const l of LOCKED) ok(`all-off: locked ${l} 200`, (await status(l)) === 200);
     ok('all-off: home / still 200', (await status('/')) === 200);
+    // media_enabled=false must NOT hide /media any more (locked on in code).
+    await db.from('site_settings').update({ media_enabled: false } as any).is('studio_id', null);
+    ok('media_enabled=false → /media still 200 (locked)', (await status('/media')) === 200);
+    await db.from('site_settings').update({ media_enabled: true } as any).is('studio_id', null);
+    // Retired booking routes redirect (308) rather than 404/200.
+    for (const r of ['/book', '/pricing', '/engineers']) ok(`${r} → 308 /recording`, (await status(r)) === 308);
 
     // 3. Tampered DB can't disable a locked feature — there's no column. Confirm
     //    the locked pages have no flag to flip (schema guarantee).

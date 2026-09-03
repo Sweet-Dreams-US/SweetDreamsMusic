@@ -1,16 +1,18 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { Users, Video, ArrowRight } from 'lucide-react';
-import { STUDIO_IMAGES } from '@/lib/images';
+import { SWEET_SPOT_IMAGES } from '@/lib/images';
 
 /**
- * BuiltForBands — homepage marketing section announcing Sweet Dreams' band capabilities
- * and The Sweet Spot showcase program.
+ * BuiltForBands — homepage marketing section for The Sweet Spot, the Sweet
+ * Dreams live-band video series.
  *
- * Placed between "OUR SERVICES" and "THE MICS" on the homepage so it:
- *  1. Breaks up two black sections with a bright yellow beat,
- *  2. Surfaces the band pivot before users land on mic showcases,
+ * Placed between "MEDIA FOR MUSICIANS" and "SELECTED WORK" on the homepage so it:
+ *  1. Breaks up two dark sections with a bright yellow beat,
+ *  2. Gives bands a dedicated hook before the general portfolio,
  *  3. Links directly to /bands (the Sweet Spot program landing page).
+ *
+ * Rendered only when the Bands feature is on (the home page checks the flag).
  */
 export default function BuiltForBands() {
   return (
@@ -20,25 +22,24 @@ export default function BuiltForBands() {
           {/* Left — copy */}
           <div>
             <p className="font-mono text-black text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-3">
-              New at Sweet Dreams
+              For Bands
             </p>
-            <h2 className="text-heading-xl mb-6">BUILT FOR BANDS</h2>
+            <h2 className="text-heading-xl mb-6">THE SWEET SPOT</h2>
             <p className="font-mono text-black/80 text-body-md mb-6 max-w-xl">
-              Full tracking room. Line-of-sight between the mix room and the booth. We record live bands
-              like few studios in Fort Wayne can — and we&apos;re turning that into a showcase series.
+              Our live-band video series. Think Tiny Desk, but Fort Wayne. You play two songs live;
+              we film it multicam, mix it properly, and cut the clips that push it on social.
             </p>
             <p className="font-mono text-black/80 text-body-md mb-8 max-w-xl">
-              Introducing <strong className="font-bold">The Sweet Spot</strong> — our band showcase program.
-              Think Tiny Desk, but Fort Wayne, and on our floor. Performance, multicam capture, live mix, and
-              a release-ready recording of your set.
+              Every Sweet Spot lands on the Sweet Dreams YouTube with full credit links, so our
+              audience finds you alongside everything else we publish. Release-ready the day it drops.
             </p>
 
             <div className="flex flex-wrap gap-4 mb-8 font-mono text-sm">
               <span className="flex items-center gap-2 bg-black text-yellow-300 px-4 py-2 font-bold uppercase tracking-wider">
-                <Users className="w-4 h-4" /> Live band tracking
+                <Video className="w-4 h-4" /> Multicam video
               </span>
               <span className="flex items-center gap-2 bg-black text-yellow-300 px-4 py-2 font-bold uppercase tracking-wider">
-                <Video className="w-4 h-4" /> Multicam video
+                <Users className="w-4 h-4" /> Built for full bands
               </span>
             </div>
 
@@ -50,10 +51,10 @@ export default function BuiltForBands() {
                 Explore The Sweet Spot <ArrowRight className="w-4 h-4" />
               </Link>
               <Link
-                href="/contact"
+                href="/bands/sweet-spot/inquire"
                 className="border-2 border-black text-black font-mono text-base font-bold tracking-wider uppercase px-8 py-4 hover:bg-black hover:text-yellow-300 transition-colors no-underline inline-flex items-center justify-center"
               >
-                Book your band
+                Inquire for your band
               </Link>
             </div>
           </div>
@@ -61,8 +62,8 @@ export default function BuiltForBands() {
           {/* Right — image */}
           <div className="relative aspect-[4/3] border-4 border-black overflow-hidden shadow-[8px_8px_0_0_rgba(0,0,0,1)]">
             <Image
-              src={STUDIO_IMAGES.jayIszacPrvrbStudioAWide}
-              alt="Full band tracking in Studio A"
+              src={SWEET_SPOT_IMAGES.fullBand}
+              alt="A Sweet Spot session — full band in frame"
               fill
               className="object-cover"
               sizes="(max-width: 1024px) 100vw, 50vw"

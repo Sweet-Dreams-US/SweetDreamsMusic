@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import { getSessionUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
-import { PRICING, SITE_URL, ROOM_LABELS, STUDIO_A_WEEKDAY_START, MAX_GUESTS, type Room } from '@/lib/constants';
+import { PRICING, SITE_URL, ROOM_LABELS, STUDIO_A_WEEKDAY_START, MAX_GUESTS, STUDIO_BOOKING_OPEN, type Room } from '@/lib/constants';
 import { isSelfServeBandHours, parseTimeSlot, formatDuration } from '@/lib/utils';
 import { getStudioConfig } from '@/lib/studio-config-server';
 import { priceSessionFromConfig, priceBandFromConfig } from '@/lib/studio-config';
@@ -25,6 +25,15 @@ const padClockHm = (t: string) => {
 };
 
 export async function POST(request: NextRequest) {
+  // 2026-09 MEDIA PIVOT: self-serve studio booking is closed. Fail fast before
+  // any Stripe/DB work so a cached /book tab or a scripted POST can't open a
+  // new session. Flip STUDIO_BOOKING_OPEN in lib/constants to re-enable.
+  if (!STUDIO_BOOKING_OPEN) {
+    return NextResponse.json(
+      { error: 'Sweet Dreams Music no longer offers studio sessions. See /recording for where to book studio time.' },
+      { status: 410 },
+    );
+  }
   try {
     const body = await request.json();
     const { date, startTime, duration, room, engineer: rawEngineer, customerName, customerEmail: bodyCustomerEmail, customerPhone, guestCount: rawGuestCount, notes, bandId, sweetSpotAddon: rawSweetSpotAddon, apply_free_hour: rawApplyFreeHour } = body;

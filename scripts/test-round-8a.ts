@@ -90,17 +90,11 @@ assert(
   /if\s*\(isBandBooking\)\s*{\s*\n[\s\S]*?sendBandSessionNeedsRescheduleAdmin[\s\S]*?return NextResponse/.test(respondSrc),
 );
 
-// 5. BookingFlow.tsx hides picker for bands.
-console.log('\n5. BookingFlow.tsx UI guard');
-const flowSrc = readFileSync('components/booking/BookingFlow.tsx', 'utf8');
-assert(
-  'useEffect forces Iszac when isBandMode',
-  /if\s*\(isBandMode\)\s*{\s*\n[\s\S]*?setEngineer\('Iszac Griner'\)/.test(flowSrc),
-);
-assert(
-  'Picker conditionally rendered on isBandMode',
-  /\{isBandMode\s*\?\s*\(/.test(flowSrc),
-);
+// 5. BookingFlow.tsx UI guard — RETIRED. The self-serve booking UI was deleted
+//    in the 2026-09 media pivot (studio sessions are no longer offered), so
+//    there is no picker to guard. Kept as a numbered placeholder so the
+//    section numbering in the output stays stable.
+console.log('\n5. BookingFlow.tsx UI guard — skipped (component removed in media pivot)');
 
 // 6. lib/email.ts exports the new admin reschedule helper.
 console.log('\n6. lib/email.ts new helper');

@@ -214,9 +214,9 @@ export default function ListenPage() {
 
         {/* Studio join prompt — every share is lead gen */}
         <div className="border-2 border-white/15 border-t-0 p-6 text-center bg-white/[0.03]">
-          <p className="font-mono text-xs text-white/60 mb-3">Recorded at Sweet Dreams Music, Fort Wayne.</p>
-          <Link href="/book" className="font-mono text-xs font-bold uppercase tracking-wider text-accent hover:underline">
-            Make your own music here →
+          <p className="font-mono text-xs text-white/60 mb-3">Shared from Sweet Dreams Music, Fort Wayne.</p>
+          <Link href="/media" className="font-mono text-xs font-bold uppercase tracking-wider text-accent hover:underline">
+            Music videos, shorts &amp; photo for artists →
           </Link>
         </div>
       </div>

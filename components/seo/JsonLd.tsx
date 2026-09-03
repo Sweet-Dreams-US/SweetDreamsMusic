@@ -1,5 +1,4 @@
-import { SITE_URL, BRAND, PRICING, GEO, ENGINEERS } from '@/lib/constants';
-import { formatCents } from '@/lib/utils';
+import { SITE_URL, BRAND, GEO, SOCIAL_LINKS } from '@/lib/constants';
 
 /**
  * Site-wide schema.org JSON-LD payload, injected once in the root layout
@@ -7,29 +6,26 @@ import { formatCents } from '@/lib/utils';
  * fail validation without breaking the others (Google's parser short-
  * circuits inside a single JSON object).
  *
- * Schemas emitted:
- *   • LocalBusiness / RecordingStudio  (the studio itself)
- *   • WebSite                          (with SearchAction)
- *   • MusicStore                       (the beat marketplace)
- *   • Person × N                       (one per engineer, linked to the studio)
- *   • FAQPage                          (common pricing / hours questions)
+ * Schemas emitted (post 2026-09 media pivot — no recording-studio claims):
+ *   • LocalBusiness / ProfessionalService  (the media company)
+ *   • WebSite                              (with SearchAction → beat store)
+ *   • MusicStore                           (the beat marketplace)
+ *   • FAQPage                              (what we do / where to record now)
  *
  * Per-page schemas (Article for blog posts, Product for beats,
  * MusicEvent for events, BreadcrumbList for sub-pages) live in their
  * respective page files using the helpers exported below.
+ *
+ * Public surfaces never show media prices (Cole's rule), so the offer
+ * catalog below is deliberately price-less.
  */
 
 const OG_IMAGE = `${SITE_URL}/og-image.png`;
 const PHONE = BRAND.phone || undefined;
 
-// Official social presence — extend as new accounts go live. Empty
-// strings are filtered out so a missing handle doesn't pollute the
-// `sameAs` array with empty references.
-const SOCIAL_LINKS = [
-  'https://www.instagram.com/sweetdreamsmusic',
-  'https://www.youtube.com/@sweetdreamsmusic',
-  'https://www.tiktok.com/@sweetdreamsmusic',
-].filter(Boolean);
+// Official social presence — `sameAs`. Empty strings are filtered out so a
+// missing handle doesn't pollute the array with empty references.
+const SAME_AS = Object.values(SOCIAL_LINKS).filter(Boolean);
 
 function script(data: unknown) {
   return (
@@ -40,15 +36,42 @@ function script(data: unknown) {
   );
 }
 
+const SERVICE_OFFERS = [
+  {
+    name: 'Music Video Production',
+    description: 'Concept, shoot, and edit — from a mid-tier single visual to a premium multi-location music video.',
+  },
+  {
+    name: 'The Sweet Spot — Live Band Video Session',
+    description: 'Live-band video series: two songs played live, multicam video, a professional mix, short-form clips, featured on the Sweet Dreams YouTube.',
+  },
+  {
+    name: 'Short-Form Content',
+    description: 'Reels, TikToks, and Shorts cut for the feed — basic, mid, and premium tiers.',
+  },
+  {
+    name: 'Photo Sessions',
+    description: 'Press shots, promo photos, and on-set stills for artists and bands.',
+  },
+  {
+    name: 'Cover Art',
+    description: 'Single and project artwork designed to read at thumbnail size.',
+  },
+  {
+    name: 'Release Marketing',
+    description: 'Rollout planning, content calendars, and campaign strategy — hourly or in 4-hour blocks.',
+  },
+];
+
 function LocalBusinessSchema() {
   const schema = {
     '@context': 'https://schema.org',
-    '@type': ['RecordingStudio', 'LocalBusiness', 'MusicGroup'],
+    '@type': ['ProfessionalService', 'LocalBusiness'],
     '@id': `${SITE_URL}/#organization`,
     name: BRAND.name,
     alternateName: BRAND.legalName,
     description:
-      'Professional 24/7 recording studio and beat marketplace in Fort Wayne, Indiana. Two studios, four engineers, music video production, band recording, and artist development. Sessions starting at $50/hour.',
+      'Music media company in Fort Wayne, Indiana. Music videos, the Sweet Spot live-band video series, short-form content, photo sessions, cover art, and release marketing for artists, bands, and musicians. Also home to the Sweet Dreams Beat Store.',
     url: SITE_URL,
     image: OG_IMAGE,
     logo: `${SITE_URL}/icon.png`,
@@ -65,13 +88,6 @@ function LocalBusinessSchema() {
       latitude: 41.0793,
       longitude: -85.1394,
     },
-    openingHoursSpecification: {
-      '@type': 'OpeningHoursSpecification',
-      dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-      opens: '00:00',
-      closes: '23:59',
-    },
-    priceRange: `${formatCents(PRICING.studioB)}-${formatCents(PRICING.studioASingleHour)}/hour`,
     currenciesAccepted: 'USD',
     paymentAccepted: 'Credit Card, Cash App Pay, Bank Transfer',
     areaServed: {
@@ -82,99 +98,31 @@ function LocalBusinessSchema() {
         name: 'Indiana',
       },
     },
-    numberOfEmployees: {
-      '@type': 'QuantitativeValue',
-      value: ENGINEERS.length,
-    },
     hasOfferCatalog: {
       '@type': 'OfferCatalog',
-      name: 'Recording Services',
-      itemListElement: [
-        {
-          '@type': 'Offer',
-          itemOffered: {
-            '@type': 'Service',
-            name: 'Studio A Recording Session',
-            description:
-              'Premium recording room with professional acoustics and equipment. Ideal for vocals, instruments, and full production.',
-          },
-          price: (PRICING.studioA / 100).toFixed(2),
-          priceCurrency: 'USD',
-          unitText: 'per hour',
-        },
-        {
-          '@type': 'Offer',
-          itemOffered: {
-            '@type': 'Service',
-            name: 'Studio B Recording Session',
-            description:
-              'Versatile recording studio for all session types. Professional equipment and acoustics.',
-          },
-          price: (PRICING.studioB / 100).toFixed(2),
-          priceCurrency: 'USD',
-          unitText: 'per hour',
-        },
-        {
-          '@type': 'Offer',
-          itemOffered: {
-            '@type': 'Service',
-            name: 'Mixing & Mastering',
-            description:
-              'Industry-standard mixing and mastering to make your tracks sound polished and radio-ready.',
-          },
-        },
-        {
-          '@type': 'Offer',
-          itemOffered: {
-            '@type': 'Service',
-            name: 'Music Production',
-            description: 'Full music production from beat-making to arrangement and sound design.',
-          },
-        },
-        {
-          '@type': 'Offer',
-          itemOffered: {
-            '@type': 'Service',
-            name: 'Band Recording',
-            description:
-              'Multi-instrument band recording in Studio A. 4-hour ($440), 8-hour ($700), and 3-day ($1,800) flat-rate packages with a free 1-hr setup window.',
-          },
-          price: '440.00',
-          priceCurrency: 'USD',
-          unitText: 'starting at',
-        },
-        {
-          '@type': 'Offer',
-          itemOffered: {
-            '@type': 'Service',
-            name: 'Music Video Production',
-            description:
-              'Music videos, live-band shoots, short-form content, and Sweet Spot single-take features.',
-          },
-        },
-      ],
+      name: 'Music Media Services',
+      itemListElement: SERVICE_OFFERS.map((o) => ({
+        '@type': 'Offer',
+        itemOffered: { '@type': 'Service', name: o.name, description: o.description },
+      })),
     },
-    sameAs: SOCIAL_LINKS,
+    sameAs: SAME_AS,
     knowsAbout: [
-      'Music Recording',
-      'Audio Mixing',
-      'Audio Mastering',
-      'Music Production',
-      'Beat Making',
-      'Vocal Recording',
-      'Band Recording',
-      'Sound Design',
       'Music Video Production',
-      'Artist Development',
+      'Live Session Video',
+      'Short-Form Video Content',
+      'Music Photography',
+      'Cover Art Design',
+      'Music Marketing',
+      'Release Strategy',
+      'Content Creation for Musicians',
+      'Beat Licensing',
     ],
-    employee: ENGINEERS.map((e) => ({
-      '@type': 'Person',
-      '@id': `${SITE_URL}/engineers#${e.name.toLowerCase().replace(/\s+/g, '-')}`,
-      name: e.displayName,
-      jobTitle: 'Recording Engineer',
-      knowsAbout: e.specialties,
-      worksFor: { '@id': `${SITE_URL}/#organization` },
-    })),
+    parentOrganization: {
+      '@type': 'Organization',
+      name: 'Sweet Dreams',
+      url: 'https://sweetdreams.us',
+    },
   };
 
   return script(schema);
@@ -188,7 +136,7 @@ function WebSiteSchema() {
     name: BRAND.name,
     url: SITE_URL,
     description:
-      'Professional recording studio in Fort Wayne, IN. Book sessions, browse beats, and connect with experienced engineers.',
+      'Music media for artists, bands, and musicians in Fort Wayne, IN. Music videos, live sessions, content, photo, marketing, and a beat store.',
     inLanguage: 'en-US',
     publisher: { '@id': `${SITE_URL}/#organization` },
     potentialAction: {
@@ -267,36 +215,34 @@ function MusicStoreSchema() {
 function FAQSchema() {
   const faqs = [
     {
-      question: 'How much does a recording session cost at Sweet Dreams Music?',
-      answer: `Studio A starts at $${PRICING.studioA / 100} per hour and Studio B starts at $${PRICING.studioB / 100} per hour (2+ hour sessions). Single hour sessions are $${PRICING.studioASingleHour / 100} for Studio A and $${PRICING.studioBSingleHour / 100} for Studio B. We also offer "The Sweet 4" 4-hour flat-rate deals ($260 Studio A / $180 Studio B) and band recording packages starting at $440 for 4 hours.`,
+      question: 'What does Sweet Dreams Music do?',
+      answer:
+        'Sweet Dreams Music is a music media company in Fort Wayne, Indiana. We make music videos, the Sweet Spot live-band video series, short-form content, photo sessions, and cover art for artists, bands, and musicians, and we help plan the release. We also run the Sweet Dreams Beat Store.',
     },
     {
-      question: 'What are your studio hours?',
+      question: 'Does Sweet Dreams Music still offer recording sessions?',
       answer:
-        'Sweet Dreams Music is open 24 hours a day, 7 days a week. Standard rates apply 9 AM-10 PM. Late-night sessions (10 PM-2 AM) have a $10/hr surcharge, and after-hours sessions (2 AM-9 AM) have a $30/hr surcharge. Studio A is available evenings only on weekdays (6:30 PM+) and all day on weekends; Studio B is available at any hour.',
+        'No. Sweet Dreams Music no longer offers recording sessions or studio bookings. We refer artists who need studio time to a partner studio — see sweetdreamsmusic.com/recording. Past clients can still download their session files from their dashboard.',
     },
     {
-      question: 'How do I book a recording session?',
+      question: 'What is the Sweet Spot?',
       answer:
-        'Visit our booking page at sweetdreamsmusic.com/book, select your date, time, studio, and session length. You pay a 50% deposit at booking via Stripe (credit card, Cash App Pay, or bank transfer), and the remainder is charged to your saved payment method after your session.',
+        'The Sweet Spot is our live-band video series. A band plays two songs live, we film it multicam, mix both songs professionally, cut short-form clips for social, and feature the session on the Sweet Dreams YouTube channel.',
     },
     {
-      question: 'Do you offer mixing and mastering services?',
+      question: 'How do I get pricing for a music video or media package?',
       answer:
-        'Yes. All four of our engineers offer recording, mixing, mastering, and full music production services. You can request a specific engineer when booking your session.',
+        'Create a free account and open the Media Hub in your dashboard to see pricing, configure a package, and book. You can also contact us at sweetdreamsmusic.com/contact and we will scope the project with you.',
+    },
+    {
+      question: 'Do you work with bands as well as solo artists?',
+      answer:
+        'Yes. Bands get the Sweet Spot, music videos, shorts, and photo, plus a shared band hub on the platform. Solo artists get the same media services and the artist hub.',
     },
     {
       question: 'Where is Sweet Dreams Music located?',
-      answer: 'Sweet Dreams Music is a professional recording studio located in Fort Wayne, Indiana.',
-    },
-    {
-      question: 'Can I choose my engineer?',
-      answer: `Yes, you can request a specific engineer when booking. We have ${ENGINEERS.length} engineers on staff, each with their own specialties. Your requested engineer holds a priority window to accept the session before it opens to other engineers in the same studio.`,
-    },
-    {
-      question: 'Do you record bands or just individual artists?',
       answer:
-        'Both. Band recording happens in Studio A on flat-rate packages: $440 for 4 hours, $700 for 8 hours, or $1,800 for a 3-day × 8-hour block. Each package includes a free 1-hour setup window before the metered session starts.',
+        'Sweet Dreams Music is based in Fort Wayne, Indiana. We shoot on location across the region and on our floor for live sessions and photo.',
     },
     {
       question: 'How do beat licenses work on Sweet Dreams Beat Store?',

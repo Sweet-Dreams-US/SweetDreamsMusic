@@ -1,26 +1,24 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Mic, Music, Headphones, Clock, DollarSign, Users } from 'lucide-react';
-import { ENGINEERS, SITE_URL } from '@/lib/constants';
-import { formatCents } from '@/lib/utils';
-import { createServiceClient } from '@/lib/supabase/server';
-import { getStudioConfigs } from '@/lib/studio-config-server';
+import { Video, Clapperboard, Camera, Palette, Megaphone, Sparkles, ArrowRight, MessageCircle, Music } from 'lucide-react';
+import { SITE_URL } from '@/lib/constants';
 import { getSiteSettings } from '@/lib/site-settings-server';
 import { getSiteContent } from '@/lib/site-content-server';
 import { content } from '@/lib/site-content';
-import { STUDIO_IMAGES } from '@/lib/images';
+import { STUDIO_IMAGES, SWEET_SPOT_IMAGES } from '@/lib/images';
+import { PORTFOLIO_VIDEOS } from '@/lib/portfolio';
 import HeroTitle from '@/components/home/HeroTitle';
 import BuiltForBands from '@/components/marketing/BuiltForBands';
 import MetaTrack from '@/components/analytics/MetaTrack';
 
 export const metadata: Metadata = {
-  title: 'Sweet Dreams Music — Fort Wayne Recording Studio & Beat Store | Book Sessions Online',
-  description: 'Professional recording studio and beat store in Fort Wayne, Indiana. Two studios, four engineers, open 24 hours. Recording, mixing, mastering, music production, and beat marketplace. Sessions starting at $50/hour. Book online with 50% deposit.',
+  title: 'Sweet Dreams Music — Music Videos, Live Sessions & Content for Artists | Fort Wayne, IN',
+  description: 'Music media for artists, bands, and musicians in Fort Wayne, Indiana. Music videos, the Sweet Spot live-band series, short-form content, photo sessions, cover art, and release marketing. Plus a beat store with MP3, trackout, and exclusive licenses.',
   alternates: { canonical: '/' },
   openGraph: {
-    title: 'Sweet Dreams Music — Fort Wayne Recording Studio & Beat Store',
-    description: 'Professional recording studio and beat marketplace in Fort Wayne, IN. Two studios, four engineers, open 24/7. Recording, mixing, mastering, production, and artist development. Sessions starting at $50/hour.',
+    title: 'Sweet Dreams Music — Music Media for Artists & Bands',
+    description: 'Music videos, live sessions, short-form content, photo, and release marketing for artists, bands, and musicians. Fort Wayne, Indiana.',
     url: SITE_URL,
     type: 'website',
     images: [
@@ -28,52 +26,90 @@ export const metadata: Metadata = {
         url: `${SITE_URL}/og-image.png`,
         width: 1200,
         height: 630,
-        alt: 'Sweet Dreams Music — Fort Wayne Recording Studio & Beat Store',
+        alt: 'Sweet Dreams Music — Music Media for Artists & Bands',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Sweet Dreams Music — Fort Wayne Recording Studio & Beat Store',
-    description: 'Professional recording studio in Fort Wayne, IN. Two studios, four engineers, open 24/7. Beat store, recording, mixing, mastering & production.',
+    title: 'Sweet Dreams Music — Music Media for Artists & Bands',
+    description: 'Music videos, live sessions, short-form content, photo, and release marketing for musicians. Fort Wayne, IN.',
     images: [`${SITE_URL}/og-image.png`],
   },
 };
 
-const services = [
+// The public service line-up. Mirrors the live media catalog (media_offerings)
+// at the category level — prices never appear on public surfaces (Cole's rule),
+// so these tiles sell the WHAT and hand off to /media for the how-much.
+const SERVICES = [
   {
-    icon: Mic,
-    title: 'Recording',
-    description: 'Professional vocal and instrument recording in our acoustically treated studios.',
-    image: STUDIO_IMAGES.ayeGBoothWide,
+    icon: Video,
+    title: 'Music Videos',
+    description: 'Concept, shoot, and edit — from a mid-tier single visual to a premium multi-location production.',
+    image: SWEET_SPOT_IMAGES.performance,
+    href: '/media',
   },
   {
-    icon: Music,
-    title: 'Mixing',
-    description: 'Industry-standard mixing to make your tracks sound polished and radio-ready.',
-    image: STUDIO_IMAGES.adamSpeakersWide,
+    icon: Clapperboard,
+    title: 'Short-Form Content',
+    description: 'Reels, TikToks, and Shorts cut for the feed. Basic to premium, built to keep a release moving.',
+    image: SWEET_SPOT_IMAGES.vocalist,
+    href: '/media',
   },
   {
-    icon: Headphones,
-    title: 'Production',
-    description: 'Full music production from beat-making to arrangement and sound design.',
+    icon: Sparkles,
+    title: 'The Sweet Spot',
+    description: 'Our live-band video series. Two songs, multicam, a professional mix, and a feature on our YouTube.',
+    image: SWEET_SPOT_IMAGES.wide,
+    href: '/bands',
+    bandsOnly: true,
+  },
+  {
+    icon: Camera,
+    title: 'Photo Sessions',
+    description: 'Press shots, promo photos, and on-set stills so every drop has visuals to go with it.',
+    image: STUDIO_IMAGES.doloWindowSquare,
+    href: '/media',
+  },
+  {
+    icon: Palette,
+    title: 'Cover Art',
+    description: 'Single and project artwork designed to read at thumbnail size and hold up on a wall.',
     image: STUDIO_IMAGES.jayStudioBWritingWide,
+    href: '/media',
   },
-];
+  {
+    icon: Megaphone,
+    title: 'Release Marketing',
+    description: 'Rollout planning, content calendars, and campaign strategy — hourly or in 4-hour blocks.',
+    image: STUDIO_IMAGES.adamCloseupWide,
+    href: '/media',
+  },
+] as const;
+
+const STEPS = [
+  {
+    n: '01',
+    title: 'Tell us the vision',
+    blurb: 'Send the song, the references, and the release date. We reply within a business day and scope it with you.',
+  },
+  {
+    n: '02',
+    title: 'We plan, shoot, and edit',
+    blurb: 'Locations, crew, and a shot list built around the track. You approve the cut; we handle the rest.',
+  },
+  {
+    n: '03',
+    title: 'You release, we push it',
+    blurb: 'Finished video, shorts, and stills delivered together — with a feature on our channels when it fits.',
+  },
+] as const;
 
 export default async function HomePage() {
-  // DB-driven headline rates (studio_rooms) so the homepage matches the booking
-  // engine + pricing page. Constants fallback baked into the loader.
-  const studios = await getStudioConfigs(createServiceClient());
-  const bySlug = new Map(studios.map((s) => [s.slug, s]));
-  const rateA = bySlug.get('studio_a')?.hourlyRateCents ?? studios[0]?.hourlyRateCents ?? 0;
-  const rateB = bySlug.get('studio_b')?.hourlyRateCents ?? studios[1]?.hourlyRateCents ?? rateA;
-  const surchCfg = bySlug.get('studio_a') ?? studios[0];
-  const lateNight = surchCfg?.surcharges.find((s) => s.kind === 'late_night')?.amountCents ?? 0;
-  const deepNight = surchCfg?.surcharges.find((s) => s.kind === 'deep_night')?.amountCents ?? 0;
-  // Hide the bands marketing section when Bands is turned off (its CTA would 404).
+  // Hide the Sweet Spot tile + section when Bands is turned off (its CTA would 404).
   const flags = await getSiteSettings();
   const c = await getSiteContent();
+  const services = SERVICES.filter((s) => !('bandsOnly' in s && s.bandsOnly) || flags.bandsEnabled);
 
   return (
     <>
@@ -81,8 +117,8 @@ export default async function HomePage() {
       {/* Hero */}
       <section className="relative bg-black text-white min-h-[90vh] flex items-center justify-center overflow-hidden">
         <Image
-          src={content(c, 'home.hero.image')}
-          alt="Sweet Dreams Music Studio"
+          src={content(c, 'home.hero.background')}
+          alt="Sweet Dreams Music — on set"
           fill
           className="object-cover opacity-40"
           priority
@@ -91,21 +127,21 @@ export default async function HomePage() {
         <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/20 to-black" />
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center py-20">
           <p className="font-mono text-accent text-sm sm:text-base font-semibold tracking-[0.3em] uppercase mb-6">
-            {content(c, 'home.hero.kicker')}
+            {content(c, 'home.hero.eyebrow')}
           </p>
           <HeroTitle />
           <p className="font-mono text-white/70 text-body-md max-w-2xl mx-auto mb-10">
-            Professional recording sessions starting at {formatCents(rateB)}/hour.
-            Two studios. Four engineers. 30+ years of mixing experience combined.
+            Music videos, live sessions, short-form content, photo, and release marketing —
+            made for artists, bands, and musicians.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/book"
+            <Link href="/media"
               className="bg-accent text-black font-mono text-base font-bold tracking-wider uppercase px-8 py-4 hover:bg-accent/90 transition-colors no-underline inline-flex items-center justify-center">
-              BOOK A SESSION
+              SEE OUR WORK
             </Link>
-            <Link href="/beats"
+            <Link href="/contact"
               className="border-2 border-white text-white font-mono text-base font-bold tracking-wider uppercase px-8 py-4 hover:bg-white hover:text-black transition-colors no-underline inline-flex items-center justify-center">
-              BROWSE BEATS
+              START A PROJECT
             </Link>
           </div>
         </div>
@@ -114,11 +150,15 @@ export default async function HomePage() {
       {/* Services - Black */}
       <section className="bg-black text-white py-20 sm:py-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="font-mono text-accent text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-3">What We Do</p>
-          <h2 className="text-heading-xl mb-12 sm:mb-16">OUR SERVICES</h2>
+          <p className="font-mono text-accent text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-3">What We Make</p>
+          <h2 className="text-heading-xl mb-12 sm:mb-16">MEDIA FOR MUSICIANS</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 sm:gap-12">
             {services.map((service) => (
-              <div key={service.title} className="border border-white/10 hover:border-accent/50 transition-colors overflow-hidden group">
+              <Link
+                key={service.title}
+                href={service.href}
+                className="border border-white/10 hover:border-accent/50 transition-colors overflow-hidden group no-underline text-white flex flex-col"
+              >
                 <div className="relative aspect-[16/9] overflow-hidden">
                   <Image
                     src={service.image}
@@ -128,162 +168,117 @@ export default async function HomePage() {
                     sizes="(max-width: 768px) 100vw, 33vw"
                   />
                 </div>
-                <div className="p-8 sm:p-10">
+                <div className="p-8 sm:p-10 flex flex-col flex-grow">
                   <service.icon className="w-10 h-10 text-accent mb-6" strokeWidth={1.5} />
                   <h3 className="text-heading-sm mb-4">{service.title}</h3>
-                  <p className="font-mono text-white/60 text-body-sm">{service.description}</p>
+                  <p className="font-mono text-white/60 text-body-sm flex-grow">{service.description}</p>
+                  <span className="font-mono text-[11px] font-bold uppercase tracking-wider inline-flex items-center gap-1 text-accent mt-6 group-hover:gap-2 transition-all">
+                    Learn more <ArrowRight className="w-3 h-3" />
+                  </span>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Built For Bands — yellow break between Services and equipment showcase */}
+      {/* The Sweet Spot — yellow break between Services and Selected Work */}
       {flags.bandsEnabled && <BuiltForBands />}
 
-      {/* Equipment Showcase - White */}
+      {/* Selected Work - White */}
       <section className="bg-white text-black py-20 sm:py-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="font-mono text-sm font-semibold tracking-[0.3em] uppercase mb-3 text-black/50">Professional Equipment</p>
-          <h2 className="text-heading-xl mb-12 sm:mb-16">THE MICS</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
-            {[
-              { src: STUDIO_IMAGES.akgGraphic, alt: 'AKG Microphone' },
-              { src: STUDIO_IMAGES.manleyGraphic, alt: 'Manley' },
-              { src: STUDIO_IMAGES.mojaveGraphic, alt: 'Mojave' },
-              { src: STUDIO_IMAGES.bockGraphic, alt: 'Bock Audio Microphone' },
-            ].map((item) => (
-              <div key={item.alt} className="relative aspect-square overflow-hidden bg-black/5">
-                <Image
-                  src={item.src}
-                  alt={item.alt}
-                  fill
-                  className="object-cover hover:scale-105 transition-transform duration-500"
-                  sizes="(max-width: 768px) 50vw, 25vw"
+          <p className="font-mono text-sm font-semibold tracking-[0.3em] uppercase mb-3 text-black/50">Selected Work</p>
+          <h2 className="text-heading-xl mb-12 sm:mb-16">WHAT WE&apos;VE MADE</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+            {PORTFOLIO_VIDEOS.slice(0, 4).map((video) => (
+              <div
+                key={video.id}
+                className="w-full border-2 border-black"
+                style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', background: '#000' }}
+              >
+                <iframe
+                  src={`https://www.youtube.com/embed/${video.id}`}
+                  title={video.title}
+                  loading="lazy"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  allowFullScreen
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
                 />
+              </div>
+            ))}
+          </div>
+          <div className="mt-10">
+            <Link href="/media"
+              className="border-2 border-black text-black font-mono text-base font-bold tracking-wider uppercase px-8 py-4 hover:bg-black hover:text-white transition-colors no-underline inline-flex items-center justify-center gap-2">
+              See more work <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* How it works - Black */}
+      <section className="bg-black text-white py-20 sm:py-28">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <p className="font-mono text-accent text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-3">How It Works</p>
+          <h2 className="text-heading-xl mb-12 sm:mb-16">FROM SONG TO SCREEN</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
+            {STEPS.map((step) => (
+              <div key={step.n} className="border border-white/10 p-8 sm:p-10">
+                <p className="font-heading text-display-sm text-accent mb-4">{step.n}</p>
+                <h3 className="text-heading-sm mb-4">{step.title}</h3>
+                <p className="font-mono text-white/60 text-body-sm">{step.blurb}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Pricing - Black */}
-      <section className="bg-black text-white py-20 sm:py-28">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="font-mono text-accent text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-3">Transparent Pricing</p>
-          <h2 className="text-heading-xl mb-12 sm:mb-16">OUR RATES</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 mb-8">
-            <div className="border border-white/10 overflow-hidden">
-              <div className="relative aspect-[16/9]">
-                <Image src={STUDIO_IMAGES.iszacStudioAWide} alt="Studio A" fill className="object-cover" sizes="(max-width: 768px) 100vw, 50vw" />
-              </div>
-              <div className="p-8 sm:p-10">
-                <h3 className="text-heading-sm mb-2">STUDIO A</h3>
-                <div className="flex items-baseline gap-1 mb-3">
-                  <span className="font-heading text-display-sm text-accent">{formatCents(rateA)}</span>
-                  <span className="font-mono text-sm text-white/80">/hour</span>
-                </div>
-                <p className="font-mono text-sm text-white/60">Our primary recording room. Premium acoustics and equipment.</p>
-              </div>
-            </div>
-            <div className="border border-white/10 overflow-hidden">
-              <div className="relative aspect-[16/9]">
-                <Image src={STUDIO_IMAGES.studioBSideLowAngleWide} alt="Studio B" fill className="object-cover" sizes="(max-width: 768px) 100vw, 50vw" />
-              </div>
-              <div className="p-8 sm:p-10">
-                <h3 className="text-heading-sm mb-2">STUDIO B</h3>
-                <div className="flex items-baseline gap-1 mb-3">
-                  <span className="font-heading text-display-sm text-accent">{formatCents(rateB)}</span>
-                  <span className="font-mono text-sm text-white/80">/hour</span>
-                </div>
-                <p className="font-mono text-sm text-white/60">Versatile second studio. Perfect for all session types.</p>
-              </div>
+      {/* Beat store strip - White */}
+      <section className="bg-white text-black py-12 sm:py-16 border-t-2 border-black/5">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+          <div className="flex items-start gap-4">
+            <Music className="w-8 h-8 text-accent shrink-0" strokeWidth={1.5} />
+            <div>
+              <h2 className="text-heading-md mb-1">NEED A BEAT FIRST?</h2>
+              <p className="font-mono text-sm text-black/60">
+                The Sweet Dreams Beat Store — MP3 leases, trackouts, and exclusives from our producers.
+              </p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-4 font-mono text-sm text-white/80 mb-8">
-            <span className="text-accent font-semibold">The Sweet 4 (4hr flat rate) available</span>
-            <span className="text-white/20">|</span>
-            <span>Open 24 hours</span>
-            <span className="text-white/20">|</span>
-            <span>Late night +{formatCents(lateNight)}/hr · After hours +{formatCents(deepNight)}/hr</span>
-            <span className="text-white/20">|</span>
-            <span>Band recording available</span>
-          </div>
-          <Link href="/pricing"
-            className="border-2 border-white text-white font-mono text-base font-bold tracking-wider uppercase px-8 py-4 hover:bg-white hover:text-black transition-colors no-underline inline-flex items-center justify-center">
-            FULL PRICING DETAILS
+          <Link href="/beats"
+            className="border-2 border-black text-black font-mono text-sm font-bold tracking-wider uppercase px-6 py-3 hover:bg-black hover:text-white transition-colors no-underline inline-flex items-center justify-center gap-2 shrink-0">
+            Browse beats <ArrowRight className="w-4 h-4" />
           </Link>
-        </div>
-      </section>
-
-      {/* Stats */}
-      <section className="bg-white text-black py-16 sm:py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            {[
-              { icon: Users, value: String(ENGINEERS.length), label: 'Engineers' },
-              { icon: DollarSign, value: '$60', label: 'Starting Rate' },
-              { icon: Clock, value: '7', label: 'Days a Week' },
-              { icon: Mic, value: String(studios.length), label: 'Studios' },
-            ].map((stat) => (
-              <div key={stat.label}>
-                <stat.icon className="w-8 h-8 text-accent mx-auto mb-3" strokeWidth={1.5} />
-                <p className="font-heading text-display-sm">{stat.value}</p>
-                <p className="font-mono text-sm text-black/60 uppercase tracking-wider">{stat.label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Studio Gallery - Black */}
-      <section className="bg-black text-white py-20 sm:py-28">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="font-mono text-accent text-xs sm:text-sm font-semibold tracking-[0.3em] uppercase mb-3">Inside the Studio</p>
-          <h2 className="text-heading-xl mb-12 sm:mb-16">THE SPACE</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
-            {[
-              { src: STUDIO_IMAGES.jayBoothWide, alt: 'Recording booth', className: 'col-span-2 aspect-[2/1]' },
-              { src: STUDIO_IMAGES.iszacVert, alt: 'Iszac engineering', className: 'aspect-square' },
-              { src: STUDIO_IMAGES.doloBoothSquare, alt: 'Recording session', className: 'aspect-square' },
-              { src: STUDIO_IMAGES.bockMicWide, alt: 'Bock Audio microphone', className: 'aspect-square' },
-              { src: STUDIO_IMAGES.akgMicWide, alt: 'AKG microphone setup', className: 'aspect-square' },
-              { src: STUDIO_IMAGES.adamCloseupWide, alt: 'Adam Audio monitors', className: 'col-span-2 aspect-[2/1]' },
-              { src: STUDIO_IMAGES.jebJayStudioAVert, alt: 'Studio A session', className: 'aspect-square' },
-            ].map((item) => (
-              <div key={item.alt} className={`relative overflow-hidden ${item.className}`}>
-                <Image
-                  src={item.src}
-                  alt={item.alt}
-                  fill
-                  className="object-cover hover:scale-105 transition-transform duration-500"
-                  sizes="(max-width: 768px) 50vw, 33vw"
-                />
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
       {/* CTA */}
       <section className="relative bg-black text-white py-20 sm:py-28 overflow-hidden">
         <Image
-          src={STUDIO_IMAGES.doloWindowSquare}
+          src={SWEET_SPOT_IMAGES.liveMoment}
           alt=""
           fill
           className="object-cover opacity-20"
           sizes="100vw"
         />
         <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-display-md mb-6">READY TO RECORD?</h2>
+          <h2 className="text-display-md mb-6">READY TO RELEASE?</h2>
           <p className="font-mono text-white/70 text-body-md max-w-2xl mx-auto mb-10">
-            Book your session today. Pay a 50% deposit, and the rest after your session.
+            Tell us about the song and the date. We&apos;ll come back with a plan for the visuals,
+            the content, and the rollout.
           </p>
-          <Link href="/book"
-            className="bg-accent text-black font-mono text-lg font-bold tracking-wider uppercase px-10 py-5 hover:bg-accent/90 transition-colors no-underline inline-flex items-center justify-center">
-            BOOK YOUR SESSION
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link href="/contact"
+              className="bg-accent text-black font-mono text-lg font-bold tracking-wider uppercase px-10 py-5 hover:bg-accent/90 transition-colors no-underline inline-flex items-center justify-center gap-2">
+              <MessageCircle className="w-5 h-5" /> Start a project
+            </Link>
+            <Link href="/media"
+              className="border-2 border-white text-white font-mono text-lg font-bold tracking-wider uppercase px-10 py-5 hover:bg-white hover:text-black transition-colors no-underline inline-flex items-center justify-center">
+              Browse the catalog
+            </Link>
+          </div>
         </div>
       </section>
     </>

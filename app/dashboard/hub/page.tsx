@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { getUserBands, getPendingInvitesForEmail } from '@/lib/bands-server';
-import { getEventsForUser, getPendingEventInvitesForEmail } from '@/lib/events-server';
 import { getActiveOfferings, getStudioCreditBalanceForUser, getMediaCreditsForOwner, getSchedulableMediaCredits } from '@/lib/media-server';
 import { getMediaBookingsForOwner, getContractsAwaitingSignature, getActiveMediaProjectsForOwner } from '@/lib/media-scheduling-server';
 import { groupOfferings, isOfferingVisibleTo, viewerEligibilityFromBands } from '@/lib/media';
@@ -40,8 +39,6 @@ export default async function ArtistHubPage({
   const supabase = await createClient();
   const [
     bandInvites,
-    myEvents,
-    eventInvites,
     allOfferings,
     studioHours,
     mediaCredits,
@@ -52,8 +49,6 @@ export default async function ArtistHubPage({
     activeProjects,
   ] = await Promise.all([
     getPendingInvitesForEmail(user.email),
-    getEventsForUser(user.id),
-    getPendingEventInvitesForEmail(user.email),
     getActiveOfferings(),
     getStudioCreditBalanceForUser(user.id),
     getMediaCreditsForOwner({ userId: user.id, bandIds }),
@@ -81,7 +76,6 @@ export default async function ArtistHubPage({
       awaitingContracts,
       activeProjects,
     },
-    events: { myEvents, pendingInvites: eventInvites },
     bands: { memberships, pendingInvites: bandInvites, hasProfile: !!user.profile },
   };
 

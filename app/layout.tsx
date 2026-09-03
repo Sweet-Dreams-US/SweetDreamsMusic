@@ -50,7 +50,7 @@ export const metadata: Metadata = {
     canonical: '/',
   },
   category: 'music',
-  classification: 'Recording Studio',
+  classification: 'Music Media Production',
   other: {
     'geo.region': GEO.region,
     'geo.placename': GEO.placeName,
@@ -61,7 +61,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     title: SEO.defaultTitle,
-    description: 'Professional recording studio and beat store in Fort Wayne, Indiana. Two studios, four engineers, open 24/7. Recording, mixing, mastering, music production, and beat marketplace. Sessions starting at $50/hour.',
+    description: 'Music media for artists, bands, and musicians in Fort Wayne, Indiana. Music videos, the Sweet Spot live-band series, short-form content, photo, cover art, and release marketing — plus a beat store.',
     url: SITE_URL,
     siteName: BRAND.name,
     locale: 'en_US',
@@ -70,7 +70,7 @@ export const metadata: Metadata = {
         url: `${SITE_URL}/og-image.png`,
         width: 1200,
         height: 630,
-        alt: 'Sweet Dreams Music — Fort Wayne Recording Studio & Beat Store',
+        alt: 'Sweet Dreams Music — Music Media for Artists & Bands',
         type: 'image/png',
       },
     ],
@@ -78,7 +78,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: SEO.defaultTitle,
-    description: 'Professional recording studio and beat store in Fort Wayne, IN. Two studios, four engineers, open 24/7. Sessions starting at $50/hour.',
+    description: 'Music videos, live sessions, short-form content, photo, and release marketing for musicians. Fort Wayne, IN.',
     images: [`${SITE_URL}/og-image.png`],
   },
   verification: {

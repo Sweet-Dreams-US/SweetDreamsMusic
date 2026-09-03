@@ -1,18 +1,17 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { Calendar, Music, FileAudio, Download, Heart, PenLine, ShoppingBag } from 'lucide-react';
+import { Calendar, Music, FileAudio, Download, Heart, PenLine, ShoppingBag, Film } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { formatCents, formatDuration } from '@/lib/utils';
+import { STUDIO_BOOKING_OPEN } from '@/lib/constants';
 import { fmtSessionDate, fmtSessionTime, fmtStampDate } from '@/lib/studio-time';
 import DashboardNav from '@/components/layout/DashboardNav';
 import RescheduleButton from '@/components/dashboard/RescheduleButton';
 import { bookingStatusLabel } from '@/lib/booking-status';
 import XPWidget from '@/components/dashboard/XPWidget';
 import FileShowcaseToggle from '@/components/dashboard/FileShowcaseToggle';
-import PricingCalculator from '@/components/dashboard/PricingCalculator';
-import { getStudioConfigs } from '@/lib/studio-config-server';
 import ProfileBeatGrid from '@/components/beats/ProfileBeatGrid';
 import { getStudioCreditBalanceForUser, getMediaCreditsForOwner } from '@/lib/media-server';
 import { getUserBands } from '@/lib/bands-server';
@@ -34,9 +33,6 @@ export default async function DashboardPage() {
   if (user.role === 'agent') redirect('/agent/stats');
 
   const supabase = await createClient();
-
-  // DB-driven room configs for the price calculator (matches the booking engine).
-  const studios = await getStudioConfigs(createServiceClient());
 
   // Spendable balances — surfaced at the top so a user who has a free studio hour
   // (or media credits) sees it the moment they land on /dashboard, instead of only
@@ -131,11 +127,11 @@ export default async function DashboardPage() {
           <div className="flex flex-col sm:flex-row gap-4 sm:items-start">
             <div className="flex flex-wrap gap-3">
               <Link
-                href="/book"
+                href="/dashboard/media"
                 className="bg-accent text-black font-mono text-sm font-bold uppercase tracking-wider px-5 py-3 hover:bg-accent/90 transition-colors no-underline inline-flex items-center gap-2"
               >
-                <Calendar className="w-4 h-4" />
-                Book a Session
+                <Film className="w-4 h-4" />
+                Book Media
               </Link>
               <Link
                 href="/beats"
@@ -191,7 +187,9 @@ export default async function DashboardPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12">
 
-            {/* Bookings */}
+            {/* Bookings — studio-session history. Hidden since the 2026-09 media
+                pivot (no more sessions); flip STUDIO_BOOKING_OPEN to restore. */}
+            {STUDIO_BOOKING_OPEN && (
             <div>
               <h2 className="text-heading-md mb-6 flex items-center gap-3">
                 <Calendar className="w-6 h-6 text-accent" />
@@ -200,13 +198,12 @@ export default async function DashboardPage() {
 
               {(!bookings || bookings.length === 0) ? (
                 <div className="border-2 border-black/10 p-8 text-center">
-                  <p className="font-mono text-sm text-black/70 mb-4">No sessions yet</p>
-                  <Link
-                    href="/book"
-                    className="font-mono text-sm font-bold text-accent hover:underline"
-                  >
-                    Book your first session
-                  </Link>
+                  <p className="font-mono text-sm text-black/70 mb-2">No studio sessions on file</p>
+                  <p className="font-mono text-xs text-black/50">
+                    Past sessions and the files your engineer delivered live here. Sweet Dreams Music no
+                    longer books new studio sessions —{' '}
+                    <Link href="/recording" className="text-accent hover:underline">here&apos;s where to record</Link>.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -265,6 +262,7 @@ export default async function DashboardPage() {
                 </div>
               )}
             </div>
+            )}
 
             {/* Files / Deliverables */}
             <div>
@@ -368,9 +366,6 @@ export default async function DashboardPage() {
               </div>
             </Link>
           </div>
-
-          {/* Session Price Calculator */}
-          <PricingCalculator studios={studios} />
 
           {/* My Lyrics */}
           {userLyrics && userLyrics.length > 0 && (

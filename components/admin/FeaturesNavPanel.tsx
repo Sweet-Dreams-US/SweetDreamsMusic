@@ -1,10 +1,12 @@
 'use client';
 
-// FeaturesNavPanel — the "Features & Navigation" section of the Studio Control
-// Panel. Toggles whole features (bands/events/media) and individual nav/marketing
-// pages (about/contact/engineers/blog) on/off. Studio Sessions + Beat Store are
-// shown LOCKED ON (no toggle). Disabling anything opens the ConfirmDialog
-// persuasion; disabling Events shows an extra "keep it on" nudge.
+// FeaturesNavPanel — the "Features & Navigation" section of the Control Panel.
+// Toggles whole features (bands/events) and individual nav/marketing pages
+// (about/contact/blog) on/off. Media + Beat Store are shown LOCKED ON (no
+// toggle). Studio Sessions + the Engineers page were removed in the 2026-09
+// media pivot (/book, /pricing, /engineers redirect to /recording). Disabling
+// anything opens the ConfirmDialog persuasion; disabling Events shows an extra
+// "keep it on" nudge.
 
 import { useEffect, useState } from 'react';
 import { Lock, Loader2, Sparkles } from 'lucide-react';
@@ -21,19 +23,17 @@ interface ToggleDef {
 
 const FEATURE_TOGGLES: ToggleDef[] = [
   { col: 'bands_enabled', label: 'Bands', desc: 'Public Bands page + band session booking + band hub.', get: (s) => s.bandsEnabled },
-  { col: 'events_enabled', label: 'Events', desc: 'Public Events page + RSVPs.', get: (s) => s.eventsEnabled, encouraged: true },
-  { col: 'media_enabled', label: 'Media', desc: 'Media services catalog (video / photo / packages).', get: (s) => s.mediaEnabled },
+  { col: 'events_enabled', label: 'Events', desc: 'Public Events page + RSVPs. Off since the 2026-09 media pivot (also removed from the nav).', get: (s) => s.eventsEnabled },
 ];
 
 const NAV_TOGGLES: ToggleDef[] = [
   { col: 'nav_about_enabled', label: 'About page', desc: 'The /about marketing page + its nav link.', get: (s) => s.nav.about },
   { col: 'nav_contact_enabled', label: 'Contact page', desc: 'The /contact page + its nav link.', get: (s) => s.nav.contact },
-  { col: 'nav_engineers_enabled', label: 'Engineers page', desc: 'The /engineers roster page + its nav link.', get: (s) => s.nav.engineers },
   { col: 'nav_blog_enabled', label: 'Blog', desc: 'The /blog + its footer link.', get: (s) => s.nav.blog },
 ];
 
 const LOCKED = [
-  { label: 'Studio Sessions', desc: 'Booking + pricing. The core of your studio — always on.' },
+  { label: 'Media', desc: 'Music videos, live sessions, content, photo, marketing. The core of the brand — always on.' },
   { label: 'Beat Store', desc: 'Beats marketplace + producer applications — always on.' },
 ];
 

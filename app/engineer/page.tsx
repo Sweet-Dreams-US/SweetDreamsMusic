@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth';
+import { STUDIO_BOOKING_OPEN } from '@/lib/constants';
 import { createServiceClient } from '@/lib/supabase/server';
 import { getStudioConfigs } from '@/lib/studio-config-server';
 import { getEngineers } from '@/lib/engineers-server';
@@ -13,6 +14,10 @@ export default async function EngineerPage() {
   const user = await getSessionUser();
   if (!user) redirect('/login');
   if (user.role !== 'engineer' && user.role !== 'admin') redirect('/dashboard');
+  // 2026-09 MEDIA PIVOT: no studio sessions → no engineer work surface. The
+  // route stays (historical payroll/files tooling is admin-side) but users are
+  // sent to the regular dashboard. Flip STUDIO_BOOKING_OPEN to restore.
+  if (!STUDIO_BOOKING_OPEN) redirect('/dashboard');
 
   // DB-driven room configs for the invite flow's pricing (matches the charge).
   const studios = await getStudioConfigs(createServiceClient());

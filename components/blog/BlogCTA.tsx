@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Music, Headphones, Mail, DollarSign } from 'lucide-react';
+import { Music, Video, Mail, DollarSign } from 'lucide-react';
 
 type CTAType = 'book' | 'beats' | 'contact' | 'sell-beats';
 
@@ -10,12 +10,14 @@ interface BlogCTAProps {
 }
 
 const CTA_CONFIG: Record<CTAType, { icon: typeof Music; title: string; description: string; buttonText: string; href: string }> = {
+  // 'book' is kept as a key because published posts reference it in their CTA
+  // settings — since the 2026-09 media pivot it points at the media catalog.
   book: {
-    icon: Headphones,
-    title: 'Ready to Record?',
-    description: 'Book a session at Sweet Dreams Music. Two studios, four engineers, professional results.',
-    buttonText: 'BOOK A SESSION',
-    href: '/book',
+    icon: Video,
+    title: 'Ready to Shoot?',
+    description: 'Music videos, shorts, photo, and live sessions from Sweet Dreams Music. Made for artists and bands.',
+    buttonText: 'SEE THE MEDIA CATALOG',
+    href: '/media',
   },
   beats: {
     icon: Music,

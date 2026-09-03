@@ -6,6 +6,7 @@
 // lg:grid-cols-2 card grid: Stage, Tier, Goals, Projects, Sessions, Events,
 // Achievements — every grid card renders ONLY when it has content.
 
+import { STUDIO_BOOKING_OPEN } from '@/lib/constants';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
@@ -218,7 +219,8 @@ export default function HubOverview({
   const hasProjects = data.projects.length > 0;
   const hasGoals = data.goals.length > 0;
   const hasAchievements = data.achievements.length > 0;
-  const hasSessions = data.upcomingSessions.length > 0;
+  // Studio sessions were retired in the 2026-09 media pivot — never render the card.
+  const hasSessions = STUDIO_BOOKING_OPEN && data.upcomingSessions.length > 0;
   const hasEvents = data.upcomingEvents.length > 0;
   const hasMetrics = Object.keys(data.latestMetrics ?? {}).length > 0;
   const goalsAutoSync = hasGoals && data.goals.some((g) => g.linked_platform);
@@ -280,50 +282,22 @@ export default function HubOverview({
         </div>
       )}
 
-      {/* BOOK A STUDIO SESSION — always visible. The owner flagged that there
-          was no obvious place to book from the Hub. When the artist has a free
-          hour, that ($0) redemption is the prominent CTA and the general paid
-          booking (/book) is secondary; otherwise /book is the primary CTA. */}
-      {(() => {
-        const hasFreeHour = (studioHours?.hoursRemaining ?? 0) > 0;
-        return (
-          <div className="border-2 border-accent p-5 mb-6">
-            <h3 className="font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center gap-2 mb-2">
-              <Calendar className="w-4 h-4 text-accent" /> Book a Studio Session
-            </h3>
-            <p className="font-mono text-sm text-black/60 mb-4">
-              {hasFreeHour
-                ? 'You have free studio time on your account — redeem it, or book a new paid session anytime.'
-                : 'Reserve studio time with our engineers whenever you’re ready to record.'}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {hasFreeHour ? (
-                <>
-                  <Link
-                    href="/dashboard/media/credits"
-                    className="font-mono text-[10px] font-bold uppercase tracking-wider bg-accent text-black px-3 py-1.5 hover:opacity-80 transition-opacity duration-200 inline-flex items-center gap-1 no-underline"
-                  >
-                    Book your free hour <ArrowRight className="w-3 h-3" />
-                  </Link>
-                  <Link
-                    href="/book"
-                    className="font-mono text-[10px] font-bold uppercase tracking-wider border-2 border-black/10 text-black px-3 py-1.5 hover:border-accent/30 transition-colors duration-200 inline-flex items-center gap-1 no-underline"
-                  >
-                    Book a Paid Session <ArrowRight className="w-3 h-3" />
-                  </Link>
-                </>
-              ) : (
-                <Link
-                  href="/book"
-                  className="font-mono text-[10px] font-bold uppercase tracking-wider bg-accent text-black px-3 py-1.5 hover:opacity-80 transition-opacity duration-200 inline-flex items-center gap-1 no-underline"
-                >
-                  Book a Session <ArrowRight className="w-3 h-3" />
-                </Link>
-              )}
-            </div>
-          </div>
-        );
-      })()}
+      {/* BOOK MEDIA — the Hub's primary action since the 2026-09 media pivot
+          (studio sessions are gone; leftover free hours are handled by admin). */}
+      <div className="border-2 border-accent p-5 mb-6">
+        <h3 className="font-mono text-xs font-bold uppercase tracking-wider inline-flex items-center gap-2 mb-2">
+          <Calendar className="w-4 h-4 text-accent" /> Book Media
+        </h3>
+        <p className="font-mono text-sm text-black/60 mb-4">
+          Music videos, shorts, photo, cover art, and marketing — pick what your next release needs.
+        </p>
+        <Link
+          href="/dashboard/media"
+          className="font-mono text-[10px] font-bold uppercase tracking-wider bg-accent text-black px-3 py-1.5 hover:opacity-80 transition-opacity duration-200 inline-flex items-center gap-1 no-underline"
+        >
+          Open the Media Hub <ArrowRight className="w-3 h-3" />
+        </Link>
+      </div>
 
       {/* WELCOME — brand-new users with zero content of any kind. Gives them a
           first move instead of a page of empty space. */}
@@ -333,7 +307,7 @@ export default function HubOverview({
             <Zap className="w-4 h-4 text-accent" /> Welcome
           </h3>
           <p className="font-mono text-sm text-black/60 mb-4">
-            Start by connecting your platforms or booking a session.
+            Start by connecting your platforms or booking your first shoot.
           </p>
           <div className="flex flex-wrap gap-2">
             <button
@@ -343,10 +317,10 @@ export default function HubOverview({
               Connect Platforms <ArrowRight className="w-3 h-3" />
             </button>
             <Link
-              href="/book"
+              href="/dashboard/media"
               className="font-mono text-[10px] font-bold uppercase tracking-wider border-2 border-black/10 text-black px-3 py-1.5 hover:border-accent/30 transition-colors duration-200 inline-flex items-center gap-1"
             >
-              Book a Session <ArrowRight className="w-3 h-3" />
+              Book Media <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
         </div>
