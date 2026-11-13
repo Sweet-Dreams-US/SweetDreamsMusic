@@ -1,16 +1,16 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import Image from 'next/image';
 import { notFound } from 'next/navigation';
-import { Clock, Calendar, ChevronRight, ArrowLeft, ArrowRight } from 'lucide-react';
-import { createServiceClient } from '@/lib/supabase/server';
+import { ArrowLeft, ArrowRight, Calendar, Clock } from 'lucide-react';
 import { SITE_URL, BRAND } from '@/lib/constants';
-import BlogContent from '@/components/blog/BlogContent';
-import TableOfContents from '@/components/blog/TableOfContents';
-import BlogCTA from '@/components/blog/BlogCTA';
-import BlogPostCard from '@/components/blog/BlogPostCard';
-import MobileTOC from '@/components/blog/MobileTOC';
-import { fmtStampDate } from '@/lib/studio-time';
+import { requireHref } from '@/lib/site-settings-server';
+import { getReleasedPost, getReleasedPosts, formatReleaseDate } from '@/lib/blog/posts';
+import { renderPostBody, safeUrl } from '@/lib/blog/markdown';
+import PostContents from '@/components/blog/PostContents';
+
+// The release date is checked every time this page renders, and it renders at
+// least hourly. A post that has not reached its date is a 404.
+export const revalidate = 3600;
 
 interface BlogPostPageProps {
   params: Promise<{ slug: string }>;
@@ -18,318 +18,174 @@ interface BlogPostPageProps {
 
 export async function generateMetadata({ params }: BlogPostPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const supabase = createServiceClient();
+  const post = await getReleasedPost(slug);
+  if (!post) return { title: { absolute: 'Not found | Sweet Dreams Music' }, robots: { index: false } };
 
-  const { data: post } = await supabase
-    .from('blog_posts')
-    .select('title, meta_title, meta_description, excerpt, featured_image_url, featured_image_alt, category, author_name, published_at')
-    .eq('slug', slug)
-    .eq('status', 'published')
-    .single();
-
-  if (!post) return { title: 'Post Not Found' };
-
-  const title = post.meta_title || post.title;
-  const description = post.meta_description || post.excerpt || '';
-
+  const title = `${post.title} | Sweet Dreams Music`;
+  const url = `${SITE_URL}/blog/${post.slug}`;
   return {
-    title,
-    description,
-    alternates: { canonical: `${SITE_URL}/blog/${slug}` },
+    title: { absolute: title },
+    description: post.description,
+    alternates: { canonical: url },
     openGraph: {
-      title: `${title} | Sweet Dreams Music`,
-      description,
-      url: `${SITE_URL}/blog/${slug}`,
+      title,
+      description: post.description,
+      url,
       type: 'article',
-      publishedTime: post.published_at || undefined,
-      authors: post.author_name ? [post.author_name] : undefined,
-      images: post.featured_image_url
-        ? [{ url: post.featured_image_url, alt: post.featured_image_alt || title }]
-        : undefined,
+      publishedTime: post.release_on,
     },
-    twitter: {
-      card: 'summary_large_image',
-      title: `${title} | Sweet Dreams Music`,
-      description,
-      images: post.featured_image_url ? [post.featured_image_url] : undefined,
-    },
+    twitter: { card: 'summary_large_image', title, description: post.description },
   };
 }
 
-function formatDate(dateStr: string): string {
-  return fmtStampDate(dateStr, { month: 'long', day: 'numeric', year: 'numeric' });
-}
-
 export default async function BlogPostPage({ params }: BlogPostPageProps) {
+  await requireHref('/blog'); // 404 when the Blog is switched off in the control panel
   const { slug } = await params;
-  const supabase = createServiceClient();
+  const post = await getReleasedPost(slug);
+  if (!post) notFound();
 
-  // Fetch post
-  const { data: post, error } = await supabase
-    .from('blog_posts')
-    .select('*')
-    .eq('slug', slug)
-    .eq('status', 'published')
-    .single();
+  const all = await getReleasedPosts();
+  const at = all.findIndex((p) => p.slug === post.slug);
+  const newer = at > 0 ? all[at - 1] : null;
+  const older = at >= 0 && at < all.length - 1 ? all[at + 1] : null;
 
-  if (error || !post) notFound();
+  const { html, headings } = renderPostBody(post.body, { title: post.title });
+  const sources = post.sources.filter((s) => safeUrl(s.url) && /^https?:/i.test(s.url));
 
-  // Increment view count (fire and forget)
-  supabase
-    .from('blog_posts')
-    .update({ view_count: (post.view_count || 0) + 1 })
-    .eq('id', post.id)
-    .then(() => {});
-
-  // Fetch category info
-  const { data: categoryInfo } = post.category
-    ? await supabase
-        .from('blog_categories')
-        .select('name, slug, color')
-        .eq('slug', post.category)
-        .single()
-    : { data: null };
-
-  // Fetch related posts (same category, excluding current)
-  const { data: relatedPosts } = post.category
-    ? await supabase
-        .from('blog_posts')
-        .select('id, slug, title, excerpt, category, featured_image_url, featured_image_alt, read_time_minutes, published_at, author_name')
-        .eq('status', 'published')
-        .eq('category', post.category)
-        .neq('id', post.id)
-        .order('published_at', { ascending: false })
-        .limit(3)
-    : { data: null };
-
-  // Fetch prev/next posts
-  const { data: prevPost } = await supabase
-    .from('blog_posts')
-    .select('slug, title')
-    .eq('status', 'published')
-    .lt('published_at', post.published_at)
-    .order('published_at', { ascending: false })
-    .limit(1)
-    .single();
-
-  const { data: nextPost } = await supabase
-    .from('blog_posts')
-    .select('slug, title')
-    .eq('status', 'published')
-    .gt('published_at', post.published_at)
-    .order('published_at', { ascending: true })
-    .limit(1)
-    .single();
-
-  // Get category colors for related posts
-  const { data: allCategories } = await supabase
-    .from('blog_categories')
-    .select('slug, color');
-  const categoryColorMap: Record<string, string> = {};
-  if (allCategories) {
-    for (const cat of allCategories) {
-      categoryColorMap[cat.slug] = cat.color || '#F4C430';
-    }
-  }
-
-  const catColor = categoryInfo?.color || '#F4C430';
-
-  // JSON-LD
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
     headline: post.title,
-    description: post.meta_description || post.excerpt || '',
-    image: post.featured_image_url || undefined,
-    datePublished: post.published_at,
-    dateModified: post.updated_at || post.published_at,
-    author: {
-      '@type': 'Person',
-      name: post.author_name || BRAND.name,
-    },
-    publisher: {
-      '@type': 'Organization',
-      name: BRAND.name,
-      url: SITE_URL,
-    },
-    mainEntityOfPage: {
-      '@type': 'WebPage',
-      '@id': `${SITE_URL}/blog/${slug}`,
-    },
-    wordCount: post.content ? post.content.split(/\s+/).length : undefined,
-    articleSection: categoryInfo?.name || post.category || undefined,
+    description: post.description,
+    datePublished: post.release_on,
+    dateModified: post.release_on,
+    author: { '@type': 'Organization', name: BRAND.name, url: SITE_URL },
+    publisher: { '@type': 'Organization', name: BRAND.name, url: SITE_URL },
+    mainEntityOfPage: { '@type': 'WebPage', '@id': `${SITE_URL}/blog/${post.slug}` },
+    wordCount: post.body.split(/\s+/).filter(Boolean).length,
+    ...(sources.length
+      ? {
+          citation: sources.map((s) => ({
+            '@type': 'CreativeWork',
+            name: s.title,
+            url: s.url,
+            ...(s.author ? { author: { '@type': 'Organization', name: s.author } } : {}),
+          })),
+        }
+      : {}),
   };
 
   return (
     <>
-      {/* JSON-LD */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }}
       />
 
       {/* Hero */}
-      <section className="relative bg-black text-white py-16 sm:py-24 overflow-hidden">
-        {post.featured_image_url && (
-          <Image
-            src={post.featured_image_url}
-            alt={post.featured_image_alt || post.title}
-            fill
-            className="object-cover opacity-30"
-            priority
-            sizes="100vw"
-          />
-        )}
-        <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Breadcrumbs */}
-          <nav className="flex items-center gap-2 font-mono text-[10px] sm:text-xs text-white/40 uppercase tracking-wider mb-6 flex-wrap">
-            <Link href="/" className="hover:text-white/70 no-underline">Home</Link>
-            <ChevronRight className="w-3 h-3" />
-            <Link href="/blog" className="hover:text-white/70 no-underline">Blog</Link>
-            {categoryInfo && (
-              <>
-                <ChevronRight className="w-3 h-3" />
-                <Link href={`/blog/category/${categoryInfo.slug}`} className="hover:text-white/70 no-underline">
-                  {categoryInfo.name}
-                </Link>
-              </>
-            )}
-            <ChevronRight className="w-3 h-3" />
-            <span className="text-white/60 truncate max-w-[200px]">{post.title}</span>
-          </nav>
-
-          {/* Category badge */}
-          {post.category && (
-            <Link
-              href={`/blog/category/${post.category}`}
-              className="inline-block px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider mb-5 no-underline"
-              style={{ backgroundColor: catColor, color: '#000' }}
-            >
-              {categoryInfo?.name || post.category}
-            </Link>
-          )}
-
-          <h1 className="text-2xl sm:text-4xl lg:text-5xl font-bold uppercase tracking-wide leading-tight mb-6">
-            {post.title}
-          </h1>
-
-          <div className="flex flex-wrap items-center gap-4 font-mono text-xs text-white/50">
-            {post.author_name && (
-              <span>By {post.author_name}</span>
-            )}
-            {post.published_at && (
-              <span className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5" />
-                {formatDate(post.published_at)}
-              </span>
-            )}
-            {post.read_time_minutes && (
-              <span className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5" />
-                {post.read_time_minutes} min read
-              </span>
-            )}
+      <section className="bg-black text-white py-10 sm:py-16">
+        <div className="max-w-[44rem] mx-auto px-4 sm:px-6 lg:px-8">
+          <Link
+            href="/blog"
+            className="mb-6 inline-flex items-center gap-2 font-mono text-[11px] sm:text-xs uppercase tracking-wider text-white/50 no-underline transition-colors hover:text-accent"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
+            All posts
+          </Link>
+          <h1 className="mb-5 text-heading-xl leading-tight">{post.title}</h1>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-xs text-white/60">
+            <span className="flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5" aria-hidden />
+              <time dateTime={post.release_on}>{formatReleaseDate(post.release_on)}</time>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5" aria-hidden />
+              {post.reading_minutes} min read
+            </span>
           </div>
         </div>
       </section>
 
-      {/* Content */}
-      <section className="bg-white text-black py-12 sm:py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex gap-12 lg:gap-16">
-            {/* Main content */}
-            <article className="flex-1 max-w-3xl">
-              <BlogContent content={post.content || ''} />
+      {/* Body */}
+      <section className="bg-white text-black py-10 sm:py-14">
+        <div className="max-w-[44rem] mx-auto px-4 sm:px-6 lg:px-8">
+          <article>
+            <div id="post-body" className="blog-prose" dangerouslySetInnerHTML={{ __html: html }} />
 
-              {/* Mid-content CTA */}
-              {post.cta_type && (
-                <BlogCTA
-                  type={post.cta_type as 'book' | 'beats' | 'contact' | 'sell-beats'}
-                  customText={post.cta_text}
-                  customUrl={post.cta_url}
-                />
-              )}
-
-              {/* Tags */}
-              {post.tags && post.tags.length > 0 && (
-                <div className="mt-12 pt-8 border-t border-black/10">
-                  <p className="font-mono text-[10px] font-semibold tracking-[0.3em] uppercase text-black/40 mb-3">
-                    Tags
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {post.tags.map((tag: string) => (
-                      <span
-                        key={tag}
-                        className="font-mono text-[10px] px-3 py-1 bg-black/5 text-black/50 uppercase tracking-wider"
+            {sources.length > 0 && (
+              <section aria-labelledby="post-sources" className="mt-14 border-t-2 border-black pt-8">
+                <h2 id="post-sources" className="mb-5 text-heading-md">
+                  Sources
+                </h2>
+                <ol className="space-y-4">
+                  {sources.map((s) => (
+                    <li key={s.url} className="font-mono text-sm leading-snug">
+                      <a
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-black underline decoration-[#F4C430] decoration-2 underline-offset-4 hover:bg-[#F4C430]/25"
                       >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
+                        {s.title}
+                      </a>
+                      {s.author && <span className="mt-0.5 block text-xs text-black/50">{s.author}</span>}
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
 
-              {/* Prev / Next */}
-              <div className="mt-12 pt-8 border-t border-black/10 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {prevPost ? (
+            {(newer || older) && (
+              <div className="mt-12 grid grid-cols-1 gap-4 border-t border-black/10 pt-8 sm:grid-cols-2">
+                {older ? (
                   <Link
-                    href={`/blog/${prevPost.slug}`}
-                    className="group flex items-center gap-3 p-4 border-2 border-black/10 hover:border-black transition-colors no-underline"
+                    href={`/blog/${older.slug}`}
+                    className="group flex items-center gap-3 border-2 border-black/10 p-4 no-underline transition-colors hover:border-black"
                   >
-                    <ArrowLeft className="w-4 h-4 text-black/40 group-hover:text-black shrink-0" />
-                    <div>
-                      <span className="font-mono text-[10px] text-black/40 uppercase tracking-wider block">Previous</span>
-                      <span className="font-mono text-xs text-black font-semibold line-clamp-1">{prevPost.title}</span>
-                    </div>
+                    <ArrowLeft className="h-4 w-4 shrink-0 text-black/40 group-hover:text-black" aria-hidden />
+                    <span>
+                      <span className="block font-mono text-[10px] uppercase tracking-wider text-black/40">Older</span>
+                      <span className="line-clamp-2 font-mono text-xs font-semibold text-black">{older.title}</span>
+                    </span>
                   </Link>
                 ) : (
                   <div />
                 )}
-                {nextPost && (
+                {newer && (
                   <Link
-                    href={`/blog/${nextPost.slug}`}
-                    className="group flex items-center justify-end gap-3 p-4 border-2 border-black/10 hover:border-black transition-colors no-underline text-right"
+                    href={`/blog/${newer.slug}`}
+                    className="group flex items-center justify-end gap-3 border-2 border-black/10 p-4 text-right no-underline transition-colors hover:border-black"
                   >
-                    <div>
-                      <span className="font-mono text-[10px] text-black/40 uppercase tracking-wider block">Next</span>
-                      <span className="font-mono text-xs text-black font-semibold line-clamp-1">{nextPost.title}</span>
-                    </div>
-                    <ArrowRight className="w-4 h-4 text-black/40 group-hover:text-black shrink-0" />
+                    <span>
+                      <span className="block font-mono text-[10px] uppercase tracking-wider text-black/40">Newer</span>
+                      <span className="line-clamp-2 font-mono text-xs font-semibold text-black">{newer.title}</span>
+                    </span>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-black/40 group-hover:text-black" aria-hidden />
                   </Link>
                 )}
               </div>
-            </article>
-
-            {/* Sidebar: Table of Contents (desktop — sticky) */}
-            <aside className="hidden lg:block w-64 shrink-0 self-start sticky top-24">
-              <TableOfContents content={post.content || ''} />
-            </aside>
-          </div>
-        </div>
-
-        {/* Mobile TOC — fixed bottom bar */}
-        <div className="lg:hidden">
-          <MobileTOC content={post.content || ''} />
+            )}
+          </article>
         </div>
       </section>
 
-      {/* End CTA */}
-      <section className="bg-black text-white py-16 sm:py-20">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-heading-xl mb-6">READY TO CREATE?</h2>
-          <p className="font-mono text-white/70 text-body-md max-w-xl mx-auto mb-8">
-            Put what you&apos;ve learned into practice. Plan your next visual, or browse beats.
+      {/* End call to action */}
+      <section className="bg-black text-white py-14 sm:py-20">
+        <div className="mx-auto max-w-3xl px-4 text-center sm:px-6 lg:px-8">
+          <h2 className="mb-5 text-heading-xl">READY TO CREATE?</h2>
+          <p className="mx-auto mb-8 max-w-xl font-mono text-body-md text-white/70">
+            Put what you have learned into practice. Plan your next visual, or browse beats.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex flex-col justify-center gap-4 sm:flex-row">
             <Link
               href="/media"
-              className="bg-accent text-black font-mono text-sm font-bold tracking-wider uppercase px-8 py-4 hover:bg-accent/90 transition-colors no-underline inline-flex items-center justify-center"
+              className="inline-flex items-center justify-center bg-accent px-8 py-4 font-mono text-sm font-bold uppercase tracking-wider text-black no-underline transition-colors hover:bg-accent/90"
             >
               See Our Work
             </Link>
             <Link
               href="/beats"
-              className="border-2 border-white text-white font-mono text-sm font-bold tracking-wider uppercase px-8 py-4 hover:bg-white hover:text-black transition-colors no-underline inline-flex items-center justify-center"
+              className="inline-flex items-center justify-center border-2 border-white px-8 py-4 font-mono text-sm font-bold uppercase tracking-wider text-white no-underline transition-colors hover:bg-white hover:text-black"
             >
               Browse Beats
             </Link>
@@ -337,34 +193,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
         </div>
       </section>
 
-      {/* Related Posts */}
-      {relatedPosts && relatedPosts.length > 0 && (
-        <section className="bg-white text-black py-16 sm:py-20">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <p className="font-mono text-[10px] font-semibold tracking-[0.3em] uppercase text-[#F4C430] mb-3">
-              Keep Reading
-            </p>
-            <h2 className="text-heading-xl mb-10">RELATED POSTS</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
-              {relatedPosts.map((rp) => (
-                <BlogPostCard
-                  key={rp.id}
-                  slug={rp.slug}
-                  title={rp.title}
-                  excerpt={rp.excerpt}
-                  category={rp.category}
-                  categoryColor={categoryColorMap[rp.category || ''] || null}
-                  featuredImageUrl={rp.featured_image_url}
-                  featuredImageAlt={rp.featured_image_alt}
-                  readTimeMinutes={rp.read_time_minutes}
-                  publishedAt={rp.published_at}
-                  authorName={rp.author_name}
-                />
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
+      <PostContents sections={headings} bodyId="post-body" />
     </>
   );
 }

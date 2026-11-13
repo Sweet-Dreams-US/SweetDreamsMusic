@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { SITE_URL } from '@/lib/constants';
 import { createServiceClient } from '@/lib/supabase/server';
+import { getReleasedPosts } from '@/lib/blog/posts';
 
 /**
  * Dynamic sitemap.
@@ -9,7 +10,7 @@ import { createServiceClient } from '@/lib/supabase/server';
  * indexable URL, not just the home/nav routes. Pulls from:
  *
  *   • beats (status='active')                        → /beats/[id]
- *   • blog_posts (status='published')                → /blog/[slug]
+ *   • content/blog files, released posts only         → /blog/[slug]
  *   • bands (is_public=true)                         → /bands/[slug]
  *   • profiles (public_profile_slug is set)          → /u/[slug]
  *
@@ -37,7 +38,6 @@ const STATIC_ROUTES: Entry[] = [
   { url: '/media', changeFrequency: 'weekly', priority: 0.9 },
   { url: '/bands', changeFrequency: 'weekly', priority: 0.8 },
   { url: '/beats', changeFrequency: 'daily', priority: 0.8 },
-  { url: '/blog', changeFrequency: 'daily', priority: 0.8 },
   { url: '/sell-beats', changeFrequency: 'monthly', priority: 0.7 },
   { url: '/bands/sweet-spot/inquire', changeFrequency: 'monthly', priority: 0.6 },
   { url: '/about', changeFrequency: 'monthly', priority: 0.6 },
@@ -56,7 +56,27 @@ function withDate(entry: Entry, iso?: string | null): Entry {
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date().toISOString();
-  const staticEntries: Entry[] = STATIC_ROUTES.map((e) => withDate(e, now));
+  // Blog: file based. Only posts that have reached their release date (Fort
+  // Wayne time) are listed, and /blog itself only once one has.
+  let blogEntries: Entry[] = [];
+  try {
+    const released = await getReleasedPosts();
+    if (released.length > 0) {
+      blogEntries = [
+        withDate({ url: '/blog', changeFrequency: 'daily', priority: 0.8 }, now),
+        ...released.map((p) => ({
+          url: abs(`/blog/${p.slug}`),
+          lastModified: new Date(`${p.release_on}T12:00:00Z`),
+          changeFrequency: 'monthly' as const,
+          priority: 0.7,
+        })),
+      ];
+    }
+  } catch (err) {
+    console.error('[sitemap] could not read the blog posts:', err);
+  }
+
+  const staticEntries: Entry[] = [...STATIC_ROUTES.map((e) => withDate(e, now)), ...blogEntries];
 
   // Service client — bypasses RLS so the sitemap reflects what's truly
   // public, not what any one user can see. Errors are swallowed at the
@@ -64,18 +84,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let dynamicEntries: Entry[] = [];
   try {
     const supabase = createServiceClient();
-    const [beats, posts, bands, profiles] = await Promise.all([
+    const [beats, bands, profiles] = await Promise.all([
       supabase
         .from('beats')
         .select('id, slug, updated_at, created_at')
         .eq('status', 'active')
         .order('updated_at', { ascending: false })
-        .limit(5000),
-      supabase
-        .from('blog_posts')
-        .select('slug, updated_at, published_at')
-        .eq('status', 'published')
-        .order('published_at', { ascending: false })
         .limit(5000),
       supabase
         .from('bands')
@@ -98,12 +112,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         lastModified: new Date(b.updated_at || b.created_at || now),
         changeFrequency: 'weekly' as const,
         priority: 0.6,
-      })),
-      ...(posts.data ?? []).map((p) => ({
-        url: abs(`/blog/${p.slug}`),
-        lastModified: new Date(p.updated_at || p.published_at || now),
-        changeFrequency: 'monthly' as const,
-        priority: 0.7,
       })),
       ...(bands.data ?? []).map((b) => ({
         url: abs(`/bands/${b.slug}`),
